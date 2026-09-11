@@ -11,12 +11,13 @@ const TEMPLATE_B64 = Object.freeze({
   diamonds: 'AAAAAAAAAB8AAB8AAB8AwH8AwH8A4H8A4H8A4P8D+P8P+P8P+P8D+P8D4P8DwH8AwH8AwH8AwH8AAB8AAAcAAAcAAAAAAAAA',
 });
 
-// PokerStars compact hole cards place the rank at the far left and repeat the
-// suit glyph to its right. Prefer the right-most glyph so the rank can never win
-// the connected-component search; fall back to the first suit when clipped.
+// PokerStars compact cards repeat suit pips across the card face. Three cheap
+// windows give redundancy without OCR or network calls. The far-left rank glyph
+// is deliberately excluded from every profile.
 const ROI_PROFILES = Object.freeze([
-  { name: 'right-suit', x0: 0.47, x1: 0.98, y0: 0.00, y1: 0.47, bonus: 0.08 },
-  { name: 'mid-suit', x0: 0.27, x1: 0.74, y0: 0.00, y1: 0.47, bonus: 0.00 },
+  { name: 'right-top',   x0: 0.45, x1: 0.99, y0: 0.00, y1: 0.50, bonus: 0.08 },
+  { name: 'right-lower', x0: 0.42, x1: 0.99, y0: 0.24, y1: 0.84, bonus: 0.05 },
+  { name: 'mid-top',     x0: 0.25, x1: 0.76, y0: 0.00, y1: 0.52, bonus: 0.00 },
 ]);
 
 let decoded = null;
@@ -74,14 +75,7 @@ function normalizeComponent(c, redInk, rw, outW, outH, profile) {
   const redRatio = redCount / Math.max(1, c.area);
   const compactness = Math.min(1, c.area / Math.max(1, c.w * c.h * 0.42));
   const quality = Math.min(1, 0.58 + compactness * 0.28 + (profile.bonus || 0));
-  return {
-    mask: out,
-    family: redRatio >= 0.28 ? 'red' : 'black',
-    redRatio,
-    quality,
-    roi: profile.name,
-    bounds: { x: c.minX, y: c.minY, w: c.w, h: c.h },
-  };
+  return { mask: out, family: redRatio >= 0.28 ? 'red' : 'black', redRatio, quality, roi: profile.name };
 }
 
 function extractFromProfile(data, w, h, box, profile, outW, outH) {
@@ -114,11 +108,9 @@ function extractFromProfile(data, w, h, box, profile, outW, outH) {
 
   comps.sort((a, b) => {
     const score = (c) => {
-      const cx = (c.minX + c.maxX + 1) / 2 / rw;
-      const cy = (c.minY + c.maxY + 1) / 2 / rh;
-      const center = Math.max(0.2, 1 - Math.abs(cx - 0.52) * 0.75 - Math.abs(cy - 0.38) * 0.35);
       const shape = Math.min(1.35, c.area / Math.max(1, c.w * c.h * 0.42));
-      return c.area * center * shape;
+      const aspect = Math.min(c.w, c.h) / Math.max(1, Math.max(c.w, c.h));
+      return c.area * shape * (0.72 + aspect * 0.28);
     };
     return score(b) - score(a);
   });
@@ -153,19 +145,36 @@ export function classifySuitMask(mask, family = null) {
 
 export function classifySuitPixels(data, w, h) {
   const extracted = extractSuitCandidates(data, w, h);
-  if (!extracted.length) return { suit: null, confidence: 0, distance: 1, margin: 0, family: null, mask: null, redRatio: 0, roi: null };
+  if (!extracted.length) return { suit: null, confidence: 0, distance: 1, margin: 0, family: null, mask: null, redRatio: 0, roi: null, voteCount: 0 };
   const results = extracted.map((candidate) => ({
     ...classifySuitMask(candidate.mask, candidate.family),
     mask: candidate.mask,
     redRatio: candidate.redRatio,
     roi: candidate.roi,
     quality: candidate.quality,
-  })).sort((a, b) => {
-    const aa = a.suit ? 1 : 0, bb = b.suit ? 1 : 0;
-    return bb - aa || (b.confidence + b.quality * 0.08) - (a.confidence + a.quality * 0.08);
-  });
+  }));
+
+  const accepted = results.filter((r) => r.suit);
+  const votes = new Map();
+  for (const r of accepted) {
+    const v = votes.get(r.suit) || { suit: r.suit, count: 0, score: 0, best: r };
+    v.count++;
+    v.score += r.confidence * (0.75 + r.quality * 0.25);
+    if (r.confidence > v.best.confidence) v.best = r;
+    votes.set(r.suit, v);
+  }
+  const rankedVotes = [...votes.values()].sort((a,b) => b.score - a.score || b.count - a.count);
+  if (rankedVotes.length) {
+    const winner = rankedVotes[0], runner = rankedVotes[1];
+    const dominant = !runner || winner.score >= runner.score * 1.22;
+    const singleStrong = winner.count === 1 && winner.best.confidence >= 0.88 && winner.best.margin >= 0.045;
+    if (dominant && (winner.count >= 2 || singleStrong)) {
+      const confidence = Math.min(0.995, Math.max(winner.best.confidence, 0.80 + Math.min(0.15, (winner.count - 1) * 0.055)));
+      return { ...winner.best, suit: winner.suit, confidence, voteCount: winner.count, voteScore: winner.score };
+    }
+  }
+
+  results.sort((a, b) => (b.confidence + b.quality * 0.08) - (a.confidence + a.quality * 0.08));
   const best = results[0];
-  const conflicting = results.slice(1).find((r) => r.suit && best.suit && r.suit !== best.suit && Math.abs(r.confidence - best.confidence) < 0.055);
-  if (conflicting) return { ...best, suit: null, confidence: Math.min(best.confidence, 0.62), ambiguous: true };
-  return best;
+  return { ...best, suit: null, confidence: Math.min(best.confidence, 0.68), ambiguous: true, voteCount: rankedVotes[0]?.count || 0 };
 }
