@@ -26,7 +26,7 @@ if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnost
 
 const ocr = new OcrService();
 const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
-const heroSuitConsensus = new SuitConsensus({ windowMs: 320, slots: 2 });
+const heroSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 2, allowFacePairCandidates: true });
 const boardSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 5 });
 let consensusHandId = 0;
 let boardConsensusHandId = 0;
@@ -77,9 +77,6 @@ function syncHeroHand(machine, now = performance.now()) {
   diagnostics.heroSuitConsensus = '0/2';
   diagnostics.hero = '—';
   diagnostics.rolloverResets++;
-  // For a few hundred milliseconds after rollover, read the new Hero cards on
-  // the foreground schedule instead of waiting for browser idle time. This is a
-  // bounded burst, not a permanent extra loop.
   heroBurstUntil = now + 320;
   lastReadAt = 0;
   return true;
@@ -134,6 +131,18 @@ function installCardConsensus(machine) {
 
 installCardConsensus(activeHandMachine);
 
+function suitMeta(suit) {
+  return {
+    suitCandidate: suit.candidate || null,
+    suitCandidateConfidence: Number(suit.confidence) || 0,
+    suitMargin: Number(suit.margin) || 0,
+    suitDistance: Number.isFinite(suit.distance) ? suit.distance : 1,
+    suitFamily: suit.family || null,
+    suitRoi: suit.roi || null,
+    voteCount: suit.voteCount || 0,
+  };
+}
+
 function classifyLocalCard(crop) {
   const rank = classifyRankPixels(crop.data, crop.w, crop.h);
   const suit = classifySuitPixels(crop.data, crop.w, crop.h, rank.rank || null);
@@ -141,12 +150,10 @@ function classifyLocalCard(crop) {
     rank: rank.rank || null,
     suit: suit.suit || null,
     confidence: rank.confidence || 0,
-    suitConfidence: suit.confidence || 0,
+    suitConfidence: suit.suit ? (suit.confidence || 0) : 0,
     source: 'card-refiner-local',
     rankCandidate: rank.candidate || null,
-    suitCandidate: suit.candidate || null,
-    suitRoi: suit.roi || null,
-    voteCount: suit.voteCount || 0,
+    ...suitMeta(suit),
   };
 }
 
@@ -163,9 +170,7 @@ function classifyHeroCard(crop, index, machine) {
     suitConfidence: suit.suit ? suit.confidence || 0 : Number(confirmed?.suitConfidence) || 0,
     source: suit.suit ? 'hero-suit-refiner' : (confirmed?.source || 'hero-rank-confirmed'),
     rankCandidate: confirmedRank,
-    suitCandidate: suit.candidate || null,
-    suitRoi: suit.roi || null,
-    voteCount: suit.voteCount || 0,
+    ...suitMeta(suit),
   };
 }
 
@@ -178,10 +183,8 @@ async function completeRank(card, crop, lane) {
     ...card,
     rank: read.value,
     suit: suit.suit || null,
-    suitConfidence: suit.confidence || 0,
-    suitCandidate: suit.candidate || null,
-    suitRoi: suit.roi || null,
-    voteCount: suit.voteCount || 0,
+    suitConfidence: suit.suit ? (suit.confidence || 0) : 0,
+    ...suitMeta(suit),
     confidence: Math.max(card.confidence || 0, Math.max(0.45, (read.confidence || 0) / 100)),
     source: 'ocr-refiner',
   };
