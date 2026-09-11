@@ -24,6 +24,11 @@ function tokenMatches(expected, provided) {
 
 function finiteOrNull(v) { return Number.isFinite(v) ? v : null; }
 function text(v, max = 160) { return typeof v === 'string' ? v.slice(0, max) : null; }
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+function avg(values) {
+  const clean = values.filter(Number.isFinite);
+  return clean.length ? clean.reduce((a, b) => a + b, 0) / clean.length : null;
+}
 
 function sanitizeCard(c) {
   if (!c || !'23456789TJQKA'.includes(String(c.rank || '').toUpperCase())) return null;
@@ -144,6 +149,102 @@ function allowedDecision(decision, actions) {
   return actions.some((a) => a.type === decision);
 }
 
+function objectiveDataQuality(state) {
+  let score = 0;
+  const heroConf = avg((state.hero || []).map((c) => c.confidence));
+  score += 25 * (heroConf ?? (state.hero?.length === 2 ? 0.7 : 0));
+
+  if (state.street === 'preflop') score += 20;
+  else {
+    const expected = state.street === 'flop' ? 3 : state.street === 'turn' ? 4 : 5;
+    const boardComplete = Math.min(1, (state.board?.length || 0) / expected);
+    const boardConf = avg((state.board || []).map((c) => c.confidence));
+    score += 20 * boardComplete * (boardConf ?? 0.7);
+  }
+
+  if (Number.isFinite(state.pot) && state.pot > 0) score += 15;
+
+  const meaningful = (state.actions || []).filter((a) => ['call','bet','raise','allin'].includes(a.type));
+  const actionBase = state.actions?.length ? 10 : 0;
+  const amountQuality = !meaningful.length ? 1 : meaningful.filter((a) => Number.isFinite(a.amount)).length / meaningful.length;
+  score += actionBase + 5 * amountQuality;
+
+  const eventConf = avg((state.events || []).map((e) => e.confidence));
+  const eventCoverage = Math.min(1, (state.events?.length || 0) / 4);
+  score += 15 * eventCoverage * (eventConf ?? 0.65);
+
+  if (state.actorName) score += 5;
+  const hands = Number(state.opponentStats?.hands) || 0;
+  score += 5 * Math.min(1, hands / 12);
+
+  return Math.round(clamp(score, 0, 100));
+}
+
+function sortedAlternativeScores(result) {
+  return (result?.alternatives || [])
+    .map((x) => Number(x?.score))
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a);
+}
+
+function shouldVerifyDecision(result, objectiveQuality) {
+  if (!result || result.decision === 'insufficient') return false;
+  const scores = sortedAlternativeScores(result);
+  const gap = scores.length >= 2 ? scores[0] - scores[1] : 100;
+  return Number(result.confidence) < 88 || objectiveQuality < 82 || gap < 15 || (result.uncertainties || []).length >= 2;
+}
+
+function calibrateConfidence(result, objectiveQuality, verification = null) {
+  const raw = clamp(Number(result?.confidence) || 0, 0, 100);
+  let cap = Math.min(97, objectiveQuality + 12);
+  if (result?.decision === 'insufficient') cap = Math.min(cap, 40);
+  if (verification?.performed && verification.agreement === false) cap = Math.min(cap, 72);
+  return Math.round(Math.min(raw, cap));
+}
+
+function reasoningInstructions() {
+  return [
+    'You are the decision brain of Poker Replay Coach. This endpoint is ONLY for replay/simulation/post-game study, never live real-money play.',
+    'Reason independently from the observed state. Do NOT follow the baseline recommendation automatically; it is a secondary calculator/guardrail and can be wrong.',
+    'Think in ranges and competing hypotheses, not exact hidden opponent cards. Hidden cards are never known. Never call a bluff confirmed.',
+    'Use only observed or explicitly supplied facts. Do not invent position, stack size, prior actions, population reads, tournament stage, rake, player identity, or sizing history.',
+    'Compare every action that is physically available. Consider hand strength, range interaction, board texture, blockers, pot odds, line coherence, sizing, missed/completed draws, and opponent tendencies only when supported by sample size.',
+    'Seek maximum justified confidence, not a high confidence number. Stress-test the preferred action against the strongest plausible alternative before committing.',
+    'When information is missing, lower confidence and name the uncertainty. Choose insufficient only when a responsible decision cannot be made from the observed state.',
+    'For preflop, avoid static hand-strength-only logic: distinguish unopened/raised/3-bet contexts only if the reconstructed action timeline actually supports them. If context is missing, say so.',
+    'For postflop, distinguish value, bluff-catcher, draw/semi-bluff, thin value, and pure bluff candidates from the actual line. River raises should not be treated as bluffy without strong evidence.',
+    'Do not provide private chain-of-thought. Return concise decision rationale and observable key factors only.',
+    'The final decision MUST be one of the physically available action types, unless decision=insufficient.',
+  ].join('\n');
+}
+
+async function callCoachModel({ key, state, controller, effort = 'medium', auditOf = null }) {
+  const audit = auditOf
+    ? '\nThis is a verification pass. Act as an adversarial senior poker coach: try to falsify the first recommendation, re-rank every available action, and change the decision if the evidence supports it. Do not preserve the first answer for consistency. First answer to audit:\n' + JSON.stringify(auditOf)
+    : '';
+  const body = {
+    model: 'gpt-5.6-sol',
+    reasoning: { effort },
+    store: false,
+    max_output_tokens: 1500,
+    input: [
+      { role: 'developer', content: [{ type: 'input_text', text: reasoningInstructions() }] },
+      { role: 'user', content: [{ type: 'input_text', text: `Analyze this replay decision state.${audit}\n${JSON.stringify(state)}` }] },
+    ],
+    text: { format: { type: 'json_schema', name: 'poker_replay_coach_decision', strict: true, schema: responseSchema() } },
+  };
+  const r = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  });
+  const j = await r.json();
+  if (!r.ok) return { error: j?.error?.message || 'coach reasoning failed', status: r.status };
+  try { return { value: JSON.parse(extractOutputText(j) || '{}') }; }
+  catch { return { error: 'invalid coach json', status: 502 }; }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
@@ -165,49 +266,31 @@ export default async function handler(req, res) {
   if (state.street !== 'preflop' && state.board.length < 3) return res.status(422).json({ error: 'board incomplete' });
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6500);
+  const timer = setTimeout(() => controller.abort(), 11000);
   const t0 = Date.now();
 
-  const instructions = [
-    'You are the decision brain of Poker Replay Coach. This endpoint is ONLY for replay/simulation/post-game study, never live real-money play.',
-    'Reason independently from the observed state. Do NOT follow the baseline recommendation automatically; it is a secondary calculator/guardrail and can be wrong.',
-    'Think in ranges and competing hypotheses, not exact hidden opponent cards. Hidden cards are never known. Never call a bluff confirmed.',
-    'Use only observed or explicitly supplied facts. Do not invent position, stack size, prior actions, population reads, tournament stage, rake, player identity, or sizing history.',
-    'Compare every action that is physically available. Consider hand strength, range interaction, board texture, blockers, pot odds, line coherence, sizing, missed/completed draws, and opponent tendencies only when supported by sample size.',
-    'When information is missing, lower confidence and name the uncertainty. Choose insufficient only when a responsible decision cannot be made from the observed state.',
-    'For preflop, avoid static hand-strength-only logic: distinguish unopened/raised/3-bet contexts only if the reconstructed action timeline actually supports them. If context is missing, say so.',
-    'For postflop, distinguish value, bluff-catcher, draw/semi-bluff, thin value, and pure bluff candidates from the actual line. River raises should not be treated as bluffy without strong evidence.',
-    'Do not provide private chain-of-thought. Return concise decision rationale and observable key factors only.',
-    'The final decision MUST be one of the physically available action types, unless decision=insufficient.',
-  ].join('\n');
-
   try {
-    const body = {
-      model: 'gpt-5.6-sol',
-      reasoning: { effort: 'medium' },
-      store: false,
-      max_output_tokens: 1500,
-      input: [
-        { role: 'developer', content: [{ type: 'input_text', text: instructions }] },
-        { role: 'user', content: [{ type: 'input_text', text: `Analyze this replay decision state.\n${JSON.stringify(state)}` }] },
-      ],
-      text: { format: { type: 'json_schema', name: 'poker_replay_coach_decision', strict: true, schema: responseSchema() } },
-    };
-
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    const j = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: j?.error?.message || 'coach reasoning failed' });
-
-    let parsed;
-    try { parsed = JSON.parse(extractOutputText(j) || '{}'); }
-    catch { return res.status(502).json({ error: 'invalid coach json' }); }
-
+    const quality = objectiveDataQuality(state);
+    const first = await callCoachModel({ key, state, controller, effort: 'medium' });
+    if (first.error) return res.status(first.status || 502).json({ error: first.error });
+    let parsed = first.value;
     if (!DECISIONS.includes(parsed.decision)) return res.status(422).json({ error: 'invalid coach decision' });
+
+    let verification = { performed: false, agreement: null, firstDecision: parsed.decision };
+    if (shouldVerifyDecision(parsed, quality)) {
+      const second = await callCoachModel({ key, state, controller, effort: 'high', auditOf: parsed });
+      if (!second.error && DECISIONS.includes(second.value?.decision)) {
+        verification = {
+          performed: true,
+          agreement: second.value.decision === parsed.decision,
+          firstDecision: parsed.decision,
+        };
+        parsed = second.value;
+      } else {
+        verification = { performed: true, agreement: null, firstDecision: parsed.decision };
+      }
+    }
+
     if (!allowedDecision(parsed.decision, state.actions)) {
       parsed.uncertainties = [...(parsed.uncertainties || []), `Model proposed unavailable action: ${parsed.decision}.`].slice(0, 5);
       parsed.decision = 'insufficient';
@@ -215,8 +298,14 @@ export default async function handler(req, res) {
       parsed.headline = 'Ação sugerida não está disponível no estado observado';
     }
 
+    const modelDataQuality = Number(parsed.dataQuality) || 0;
+    parsed.dataQuality = quality;
+    parsed.confidence = calibrateConfidence(parsed, quality, verification);
+
     return res.status(200).json({
       ...parsed,
+      modelDataQuality,
+      verification,
       handId: state.handId,
       fingerprint: state.fingerprint,
       engine: 'dynamic-reasoning-v1',
@@ -230,4 +319,4 @@ export default async function handler(req, res) {
   }
 }
 
-export { sanitizePayload, allowedDecision };
+export { sanitizePayload, allowedDecision, objectiveDataQuality, shouldVerifyDecision, calibrateConfidence };
