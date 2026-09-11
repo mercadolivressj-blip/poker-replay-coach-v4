@@ -1,3 +1,5 @@
+import { activeHandMachine } from '../core/state-machine.js';
+
 function patchOpponentCopy() {
   const title = document.getElementById('proOpponentTitle');
   const meta = document.getElementById('proOpponentMeta');
@@ -9,7 +11,22 @@ function patchOpponentCopy() {
   }
 }
 
-const observer = new MutationObserver(() => patchOpponentCopy());
+function clearStaleConfidence() {
+  const machine = activeHandMachine;
+  if (!machine || machine.state?.heroToAct) return;
+  const confidence = document.getElementById('confidence');
+  const decision = document.getElementById('decisionText');
+  if (confidence && (!decision || decision.textContent?.trim() === '—' || /aguardando/i.test(decision.textContent || ''))) {
+    confidence.textContent = '—';
+  }
+}
+
+function patchUi() {
+  patchOpponentCopy();
+  clearStaleConfidence();
+}
+
+const observer = new MutationObserver(() => patchUi());
 observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
-patchOpponentCopy();
-setInterval(patchOpponentCopy, 300);
+patchUi();
+setInterval(patchUi, 120);
