@@ -9,6 +9,7 @@ const diagnostics = {
   reads: 0,
   heroSuitCommits: 0,
   boardSuitCommits: 0,
+  manualResets: 0,
   lastMs: 0,
   hero: '—',
   board: '—',
@@ -41,8 +42,6 @@ function captureFrame(source) {
   const sw = source.videoWidth || source.naturalWidth || source.width || 0;
   const sh = source.videoHeight || source.naturalHeight || source.height || 0;
   if (!sw || !sh) return null;
-  // Keep the corner glyph crisp. This lane handles only tiny card crops and does
-  // not run OCR, so a slightly larger source frame is still cheap.
   const scale = Math.min(1, 1280 / sw);
   capture.width = Math.max(480, Math.round(sw * scale));
   capture.height = Math.max(270, Math.round(sh * scale));
@@ -173,6 +172,21 @@ function tick() {
   }
   if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 180 });
   else void readOnce();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('prc:recalibrate', (event) => {
+    const token = event?.detail?.token || null;
+    const machine = activeHandMachine;
+    if (!machine || !token || token.generation !== machine.handId) return;
+    heroConsensus.resetHand(machine.handId);
+    boardConsensus.resetHand(machine.handId);
+    felt = null;
+    layout = null;
+    lastGeomAt = 0;
+    lastReadAt = 0;
+    diagnostics.manualResets++;
+  });
 }
 
 setInterval(tick, 55);
