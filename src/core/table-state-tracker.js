@@ -16,7 +16,7 @@ const POSITIONS = {
 };
 
 function finite(v) { return Number.isFinite(v) ? v : null; }
-function seatKey(s) { return s?.actorName ? `name:${s.actorName.trim().toLowerCase()}` : `seat:${s?.seatIndex}`; }
+function seatKey(s) { return `seat:${Number.isInteger(s?.seatIndex) ? s.seatIndex : 'unknown'}`; }
 function byIndex(a, b) { return a.seatIndex - b.seatIndex; }
 
 function normalizeSeats(seats = []) {
@@ -53,13 +53,14 @@ function maxCommitted(seats) {
   const vals = seats.map((s) => finite(s.committed)).filter((v) => v !== null);
   return vals.length ? Math.max(...vals) : null;
 }
+function actorName(curr, prev = null) { return curr?.actorName || prev?.actorName || null; }
 
-function eventFromVisibleAction(curr, street, confidence) {
+function eventFromVisibleAction(curr, street, confidence, prev = null) {
   if (!ACTIONS.has(curr.visibleAction)) return null;
   return {
     street,
-    actorName: curr.actorName,
-    seatLabel: curr.position || `Seat ${curr.seatIndex + 1}`,
+    actorName: actorName(curr, prev),
+    seatLabel: curr.position || prev?.position || `Seat ${curr.seatIndex + 1}`,
     action: curr.visibleAction,
     amount: finite(curr.visibleActionAmount) ?? (['bet','raise','call','allin'].includes(curr.visibleAction) ? finite(curr.committed) : null),
     source: 'table-action-text',
@@ -146,7 +147,7 @@ export function inferEvents(previous, next) {
     const confidence = Math.min(prev.confidence || 0, curr.confidence || 0);
     if (confidence < 0.62) continue;
 
-    const explicit = eventFromVisibleAction(curr, next.street, curr.confidence || confidence);
+    const explicit = eventFromVisibleAction(curr, next.street, curr.confidence || confidence, prev);
     if (explicit) {
       events.push(explicit);
       continue;
@@ -155,8 +156,8 @@ export function inferEvents(previous, next) {
     if (curr.folded === true && prev.folded !== true) {
       events.push({
         street: next.street,
-        actorName: curr.actorName,
-        seatLabel: curr.position || `Seat ${curr.seatIndex + 1}`,
+        actorName: actorName(curr, prev),
+        seatLabel: curr.position || prev.position || `Seat ${curr.seatIndex + 1}`,
         action: 'fold',
         amount: null,
         source: 'table-diff',
@@ -181,8 +182,8 @@ export function inferEvents(previous, next) {
     if (!action) continue;
     events.push({
       street: next.street,
-      actorName: curr.actorName,
-      seatLabel: curr.position || `Seat ${curr.seatIndex + 1}`,
+      actorName: actorName(curr, prev),
+      seatLabel: curr.position || prev.position || `Seat ${curr.seatIndex + 1}`,
       action,
       amount: currCommitted,
       source: 'table-diff',

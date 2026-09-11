@@ -15,6 +15,10 @@ const FACE_RANKS = new Set(['A','J','Q','K']);
 const CORNER_PROFILE = Object.freeze({
   name: 'corner-under-rank', x0: 0.00, x1: 0.36, y0: 0.29, y1: 0.82, bonus: 0.16,
 });
+const FACE_SIDE_PROFILE = Object.freeze({
+  name: 'face-side-glyph', x0: 0.16, x1: 0.43, y0: 0.08, y1: 0.45, bonus: 0.24,
+});
+const FACE_ROI_PROFILES = Object.freeze([FACE_SIDE_PROFILE, CORNER_PROFILE]);
 const NUMERIC_ROI_PROFILES = Object.freeze([
   CORNER_PROFILE,
   { name: 'right-top',   x0: 0.45, x1: 0.99, y0: 0.00, y1: 0.50, bonus: 0.08 },
@@ -61,10 +65,6 @@ function mergeComponents(comps) {
   if (!comps.length) return null;
   const pts = comps.flatMap((c) => c.pts);
   let minX = Infinity, maxX = -1, minY = Infinity, maxY = -1;
-  for (const p of pts) {
-    const c = comps.find((x) => x.pts.includes(p));
-    if (!c) continue;
-  }
   for (const c of comps) {
     minX = Math.min(minX, c.minX); maxX = Math.max(maxX, c.maxX);
     minY = Math.min(minY, c.minY); maxY = Math.max(maxY, c.maxY);
@@ -75,7 +75,7 @@ function mergeComponents(comps) {
 function cornerComponent(raw, rw, rh) {
   const usable = raw.filter((c) => {
     if (c.area < 2 || c.w < 2 || c.h < 1) return false;
-    if (c.minY <= Math.max(1, Math.floor(rh * 0.06))) return false; // rank tail/top-border fragment
+    if (c.minY <= Math.max(1, Math.floor(rh * 0.06))) return false;
     if (c.w > rw * 0.82 || c.h > rh * 0.90) return false;
     return true;
   });
@@ -135,11 +135,11 @@ function extractFromProfile(data, w, h, box, profile, outW, outH) {
 
   const raw = connected(ink, rw, rh);
   let component = null;
-  if (profile.name === 'corner-under-rank') {
+  if (profile.name === 'corner-under-rank' || profile.name === 'face-side-glyph') {
     component = cornerComponent(raw, rw, rh);
   } else {
     const comps = raw.filter((c) => {
-      if (c.area < 5 || c.w < 3 || c.h < 3) return false;
+      if (c.area < 4 || c.w < 2 || c.h < 2) return false;
       if (c.w > rw * 0.86 || c.h > rh * 0.92) return false;
       if (c.minX === 0 && c.w <= 2) return false;
       if (c.minY === 0 && c.h <= 2) return false;
@@ -165,7 +165,7 @@ function extractSuitCandidates(data, w, h, outW = SUIT_MASK_W, outH = SUIT_MASK_
   const box = cardFaceBox(data, w, h);
   if (!box) return [];
   const r = rank ? String(rank).toUpperCase() : null;
-  const profiles = FACE_RANKS.has(r) ? [CORNER_PROFILE] : NUMERIC_ROI_PROFILES;
+  const profiles = FACE_RANKS.has(r) ? FACE_ROI_PROFILES : NUMERIC_ROI_PROFILES;
   return profiles.map((profile) => extractFromProfile(data, w, h, box, profile, outW, outH)).filter(Boolean);
 }
 

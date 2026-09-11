@@ -11,11 +11,41 @@ function weight(card) {
   const votes = Math.max(0, Number(card?.voteCount) || Number(card?.pipCount) || 0);
   return base * (1 + Math.min(0.3, votes * 0.07));
 }
+function candidateWeight(card) {
+  const conf = Number(card?.suitCandidateConfidence);
+  const margin = Number(card?.suitMargin);
+  const quality = Number.isFinite(conf) ? conf : 0;
+  return Math.max(0.08, quality * 0.58 + Math.max(0, margin) * 0.9);
+}
+function candidateEvidence(card, { facePair = false, board = false, hero = false } = {}) {
+  const suit = normSuit(card?.suitCandidate);
+  const confidence = Number(card?.suitCandidateConfidence);
+  const margin = Number(card?.suitMargin);
+  const distance = Number(card?.suitDistance);
+  if (!suit || !Number.isFinite(confidence) || !Number.isFinite(margin) || !Number.isFinite(distance)) return null;
+  if (facePair) {
+    if (confidence < 0.34 || margin < 0.008 || distance > 0.64) return null;
+  } else if (hero) {
+    // Hero cards are static for many frames too. The dedicated suit crop can be
+    // ambiguous on a single frame (T♣ was the real-world failure), so accept a
+    // moderately weak candidate only when temporal consensus later confirms it.
+    if (confidence < 0.16 || margin < 0.004 || distance > 0.72) return null;
+  } else if (board) {
+    // Board cards are static for many frames. A single ambiguous frame is never
+    // enough, but repeated agreement from the same rank is useful evidence.
+    // Keep this deliberately permissive per-frame and strict temporally.
+    if (confidence < 0.08 || margin < 0.002 || distance > 0.76) return null;
+  } else return null;
+  return { suit, confidence, margin, distance };
+}
 
 export class SuitConsensus {
-  constructor({ windowMs = 360, slots = 2 } = {}) {
+  constructor({ windowMs = 360, slots = 2, allowFacePairCandidates = false, allowCandidates = false, candidateMinHits = 4 } = {}) {
     this.windowMs = windowMs;
     this.slots = Math.max(1, Math.floor(slots));
+    this.allowFacePairCandidates = Boolean(allowFacePairCandidates);
+    this.allowCandidates = Boolean(allowCandidates);
+    this.candidateMinHits = Math.max(3, Math.floor(candidateMinHits));
     this.resetSession();
   }
   blank() {
@@ -32,41 +62,94 @@ export class SuitConsensus {
     if (!Number.isInteger(handId) || handId !== this.handId || !Array.isArray(cards) || cards.length > this.slots) {
       return { cards: cloneCards(cards), confirmedCount: this.confirmed.filter(Boolean).length, stale: true };
     }
+    const incomingRanks = cards.map((c) => normRank(c?.rank));
+    const sameFacePair = this.allowFacePairCandidates && cards.length === 2 && incomingRanks[0] && incomingRanks[0] === incomingRanks[1] && faceRank(incomingRanks[0]);
+    const heroTemporalCandidates = this.allowFacePairCandidates && this.slots === 2 && !sameFacePair;
+
     for (let i = 0; i < cards.length; i++) {
-      const rank = normRank(cards[i]?.rank);
+      const rank = incomingRanks[i];
       if (rank && this.ranks[i] && rank !== this.ranks[i]) {
         this.samples[i] = [];
         this.confirmed[i] = null;
       }
       if (rank) this.ranks[i] = rank;
       if (this.confirmed[i]) continue;
-      const suit = normSuit(cards[i]?.suit);
+
+      let suit = normSuit(cards[i]?.suit);
+      let soft = false;
+      let conf = Number(cards[i]?.suitConfidence) || 0;
+      let w = weight(cards[i]);
+      if (!suit && (sameFacePair || this.allowCandidates || heroTemporalCandidates)) {
+        const candidate = candidateEvidence(cards[i], {
+          facePair: sameFacePair,
+          board: this.allowCandidates && !sameFacePair,
+          hero: heroTemporalCandidates,
+        });
+        if (candidate) {
+          suit = candidate.suit;
+          soft = true;
+          conf = candidate.confidence;
+          w = candidateWeight(cards[i]);
+        }
+      }
       if (!suit) continue;
-      this.samples[i].push({ suit, at: now, w: weight(cards[i]), conf: Number(cards[i]?.suitConfidence) || 0, votes: Number(cards[i]?.voteCount) || 0 });
-      this.samples[i] = this.samples[i].filter((s) => now - s.at <= this.windowMs).slice(-8);
+
+      this.samples[i].push({ suit, at: now, w, conf, votes: Number(cards[i]?.voteCount) || 0, soft });
+      this.samples[i] = this.samples[i].filter((s) => now - s.at <= this.windowMs).slice(-12);
 
       const buckets = new Map();
       for (const s of this.samples[i]) {
-        const b = buckets.get(s.suit) || { suit: s.suit, hits: 0, score: 0, strong: 0, voted: 0 };
-        b.hits++; b.score += s.w;
-        if (s.conf >= 0.84) b.strong++;
-        if (s.votes >= 2) b.voted++;
+        const b = buckets.get(s.suit) || { suit: s.suit, hits: 0, hardHits: 0, softHits: 0, score: 0, strong: 0, voted: 0, confSum: 0, softConfSum: 0 };
+        b.hits++; b.score += s.w; b.confSum += s.conf;
+        if (s.soft) { b.softHits++; b.softConfSum += s.conf; } else b.hardHits++;
+        if (!s.soft && s.conf >= 0.84) b.strong++;
+        if (!s.soft && s.votes >= 2) b.voted++;
         buckets.set(s.suit, b);
       }
       const ranked = [...buckets.values()].sort((a,b) => b.score - a.score || b.hits - a.hits);
       const best = ranked[0];
       const second = ranked[1];
       if (!best) continue;
-      const dominant = !second || best.score >= second.score * 1.55;
+      const temporalCandidates = this.allowCandidates || heroTemporalCandidates;
+      const dominant = !second || best.score >= second.score * (temporalCandidates ? 1.42 : 1.55);
       const isFace = faceRank(this.ranks[i]);
-      // Face/ace cards expose only the authoritative corner glyph. Require three
-      // agreeing frames so a single decorative face/watermark region can never
-      // become sticky after just two repeated mistakes. Numeric cards can use
-      // repeated pip votes and keep the faster two-frame confirmation.
-      const enough = isFace
-        ? best.hits >= 3 && best.strong >= 2
-        : best.hits >= 2 && (best.strong >= 1 || best.score >= 1.25 || best.voted >= 1);
-      if (dominant && enough) this.confirmed[i] = best.suit;
+      const hardEnough = isFace
+        ? best.hardHits >= 3 && best.strong >= 2
+        : best.hardHits >= 2 && (best.strong >= 1 || best.score >= 1.25 || best.voted >= 1);
+      const softAvg = best.softConfSum / Math.max(1, best.softHits);
+      const minSoftAvg = heroTemporalCandidates ? 0.16 : 0.08;
+      const candidateEnough = temporalCandidates
+        && best.softHits >= this.candidateMinHits
+        && softAvg >= minSoftAvg
+        && best.score >= this.candidateMinHits * (heroTemporalCandidates ? 0.105 : 0.078);
+      if (dominant && (hardEnough || candidateEnough)) this.confirmed[i] = best.suit;
+    }
+
+    if (sameFacePair) {
+      const softBest = (slot) => {
+        if (this.confirmed[slot]) return { suit: this.confirmed[slot], ready: true, hard: true, hits: 99, avg: 1, dominant: true };
+        const buckets = new Map();
+        for (const s of this.samples[slot].filter((x) => x.soft)) {
+          const b = buckets.get(s.suit) || { suit: s.suit, hits: 0, score: 0, confSum: 0 };
+          b.hits++; b.score += s.w; b.confSum += s.conf; buckets.set(s.suit, b);
+        }
+        const ranked = [...buckets.values()].sort((a,b) => b.score - a.score || b.hits - a.hits);
+        const best = ranked[0], second = ranked[1];
+        if (!best) return null;
+        const avg = best.confSum / Math.max(1, best.hits);
+        const dominant = !second || best.score >= second.score * 1.42;
+        return { suit: best.suit, ready: dominant && best.hits >= 4 && avg >= 0.40, hard: false, hits: best.hits, avg, dominant };
+      };
+      const a = softBest(0), b = softBest(1);
+
+      if (this.confirmed[0] && !this.confirmed[1] && b?.dominant && b.hits >= 3 && b.avg >= 0.37 && b.suit !== this.confirmed[0]) {
+        this.confirmed[1] = b.suit;
+      } else if (this.confirmed[1] && !this.confirmed[0] && a?.dominant && a.hits >= 3 && a.avg >= 0.37 && a.suit !== this.confirmed[1]) {
+        this.confirmed[0] = a.suit;
+      } else if (a?.ready && b?.ready && a.suit !== b.suit) {
+        if (!this.confirmed[0]) this.confirmed[0] = a.suit;
+        if (!this.confirmed[1]) this.confirmed[1] = b.suit;
+      }
     }
 
     const out = cloneCards(cards);

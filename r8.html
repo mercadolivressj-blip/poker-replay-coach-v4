@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Poker Replay Coach V4</title>
+  <title>Poker Replay Coach V4 R8</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand"><span class="logo">♠</span><strong>Poker Replay Coach</strong><span class="badge">V4 STANDALONE · R6</span></div>
+      <div class="brand"><span class="logo">♠</span><strong>Poker Replay Coach</strong><span class="badge">V4 STANDALONE · R8</span></div>
       <div class="status-row"><span id="modeBadge" class="pill ok">REPLAY</span><span id="fpsBadge" class="pill">0 FPS</span><span id="latencyBadge" class="pill">— ms</span></div>
     </header>
 
@@ -28,7 +28,7 @@
           <div id="emptyState" class="empty-state">
             <div class="empty-icon">▶</div>
             <h2>Abra ou compartilhe um replay</h2>
-            <p>Leitura local rápida + resolver contínuo. O auditor remoto é opcional e nunca bloqueia sua decisão.</p>
+            <p>R8 isolada: fast-path não confirma; refiner dedicado + rollover visual fail-closed.</p>
           </div>
         </div>
       </section>
@@ -47,7 +47,7 @@
         <div class="decision-box">
           <span class="eyebrow">RECOMENDAÇÃO</span>
           <div id="decisionText" class="decision">Esperando estado confiável.</div>
-          <div id="decisionReason" class="reason">O resolver local pensa continuamente enquanto o replay avança.</div>
+          <div id="decisionReason" class="reason">R8 só decide depois de Hero e board necessários estarem confirmados pelo caminho confiável.</div>
           <div id="decisionDetails" class="decision-details"></div>
         </div>
         <div class="actions" id="actions"></div>
@@ -72,11 +72,11 @@
       <div class="vision-auth">
         <input id="visionToken" type="password" autocomplete="off" placeholder="Token privado da Vision (opcional)" />
         <button id="visionTokenBtn" type="button">Ativar Vision Teacher</button>
-        <span>O resolver local funciona sem depender do auditor remoto.</span>
+        <span>R8 local: leitura de cartas isolada. Observer remoto continua fora deste preview.</span>
       </div>
       <pre id="diagLog"></pre>
     </section>
   </div>
-  <script type="module" src="./src/bootstrap.js"></script>
+  <script type="module" src="./src/bootstrap-r8.js"></script>
 </body>
 </html>

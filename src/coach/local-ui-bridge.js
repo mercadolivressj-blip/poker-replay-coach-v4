@@ -2,10 +2,12 @@ function patchOpponentCopy() {
   const title = document.getElementById('proOpponentTitle');
   const meta = document.getElementById('proOpponentMeta');
   const reasons = document.getElementById('proOpponentReasons');
-  if (title && /ative a vision/i.test(title.textContent || '')) {
-    title.textContent = 'Aguardando ação explícita do rival';
-    if (meta) meta.textContent = 'Range oculto · histórico local + observações do replay';
-    if (reasons && !reasons.textContent?.trim()) reasons.textContent = 'O Coach só usa ações que conseguiu observar; sem evidência, a confiança cai.';
+  const current = String(title?.textContent || '');
+  if (!title) return;
+  if (/ative a vision|aguardando linha|aguardando ações|aguardando ação explícita/i.test(current)) {
+    title.textContent = 'Aguardando ação observável na mesa';
+    if (meta) meta.textContent = 'Range oculto · stacks + fichas comprometidas + ações visíveis';
+    if (reasons) reasons.textContent = 'O chat do Dealer não é requisito. Sem evidência visual suficiente, o Coach reduz a confiança e não inventa a ação.';
   }
 }
 

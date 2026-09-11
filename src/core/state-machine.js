@@ -4,8 +4,7 @@ export let activeHandMachine = null;
 
 function semanticSlots(v) {
   if (typeof v === 'string' && v.length === 2) return [v[0], v[1]];
-  if (Array.isArray(v) && v.length === 2 && v.every((x) => x == null || typeof x === 'string'))
-    return v;
+  if (Array.isArray(v) && v.length === 2 && v.every((x) => x == null || typeof x === 'string')) return v;
   return null;
 }
 
@@ -25,12 +24,8 @@ function heroIdentityDistance(a, b) {
   return pairVectorDistance(a, b);
 }
 
-function identityConfirmationHits(fp, reappearArmed = false) {
-  // Semantic ranks can be transiently misclassified (e.g. 7↔K/J, 6↔T) while the
-  // physical card is unchanged. After a real disappearance, three stable semantic
-  // reads are enough for a new hand; without disappearance, semantic text alone is
-  // never allowed to rotate the hand lifecycle.
-  if (semanticSlots(fp)) return reappearArmed ? 3 : Number.POSITIVE_INFINITY;
+function identityConfirmationHits(fp, hinted = false) {
+  if (semanticSlots(fp)) return hinted ? 2 : 3;
   return 2;
 }
 
@@ -54,25 +49,74 @@ function mergeStickyHero(current, incoming) {
   });
 }
 
+function mergeStickyBoard(current, incoming) {
+  const out = [];
+  const keep = Math.min(current.length, incoming.length);
+  for (let i = 0; i < keep; i++) {
+    const old = current[i] || {};
+    const next = incoming[i] || {};
+    const oldRank = old?.rank ? String(old.rank).toUpperCase() : null;
+    const nextRank = next?.rank ? String(next.rank).toUpperCase() : null;
+    if (oldRank && nextRank && oldRank !== nextRank) {
+      out.push({ ...old, conflictCandidate: nextRank });
+      continue;
+    }
+    const oldSuit = old?.suit || null;
+    const nextSuit = next?.suit || null;
+    const suitConflict = oldSuit && nextSuit && oldSuit !== nextSuit;
+    out.push({
+      ...old,
+      ...next,
+      rank: old.rank || next.rank,
+      suit: suitConflict ? oldSuit : (oldSuit || nextSuit || null),
+      confidence: Math.max(Number(old?.confidence) || 0, Number(next?.confidence) || 0),
+      suitConfidence: suitConflict
+        ? Number(old?.suitConfidence) || 0
+        : Math.max(Number(old?.suitConfidence) || 0, Number(next?.suitConfidence) || 0),
+      source: old?.source || next?.source || null,
+    });
+  }
+  for (let i = keep; i < incoming.length; i++) out.push({ ...incoming[i] });
+  return out;
+}
+
 export class HandMachine {
   constructor() { this.resetSession(); activeHandMachine = this; }
   resetSession() {
     this.handId = 0; this.lastFp = null; this.pendingFp = null; this.pendingHits = 0;
-    this.heroMissing = 0; this.reappearArmed = false; this.adoptNextHero = false; this.lastHeroSeenAt = 0;
-    this.lastBoardCountVisual = 0; this.boardZeroHits = 0; this.actionMisses = 0;
+    this.heroMissing = 0; this.reappearArmed = false; this.reappearHinted = false; this.adoptNextHero = false; this.lastHeroSeenAt = 0;
+    this.transitionHintAt = 0; this.transitionHintReason = null;
+    this.lastBoardCountVisual = 0; this.boardZeroHits = 0; this.boardZeroSince = 0; this.actionMisses = 0;
     this.potResetPending = null; this.potResetHits = 0; this.state = this.blank(0);
   }
   blank(now = performance.now()) {
     return { hero: [], board: [], street: 'preflop', pot: null, actions: [], heroToAct: false, confidence: 0, startedAt: now, reason: 'waiting', provisionalDecision: null };
   }
+  markTransitionHint(reason, now = performance.now()) {
+    this.transitionHintAt = now;
+    this.transitionHintReason = reason;
+  }
+  hasFreshTransitionHint(now = performance.now()) {
+    return this.transitionHintAt > 0 && now - this.transitionHintAt <= 2200;
+  }
   newHand(reason, now = performance.now()) {
     this.handId++; this.state = this.blank(now); this.state.reason = reason; this.actionMisses = 0;
-    this.boardZeroHits = 0; this.lastBoardCountVisual = 0; this.potResetPending = null; this.potResetHits = 0;
+    this.boardZeroHits = 0; this.boardZeroSince = 0; this.lastBoardCountVisual = 0; this.potResetPending = null; this.potResetHits = 0;
+    this.transitionHintAt = 0; this.transitionHintReason = null; this.reappearHinted = false;
   }
   observeHero(fp, present, now = performance.now()) {
     if (!present) {
       this.heroMissing++;
-      if (this.heroMissing >= 6 && now - this.lastHeroSeenAt >= 160) this.reappearArmed = true;
+      const hinted = this.hasFreshTransitionHint(now);
+      if (hinted && this.heroMissing >= 2 && now - this.lastHeroSeenAt >= 80) {
+        this.reappearArmed = true;
+        this.reappearHinted = true;
+      } else if (this.heroMissing >= 6 && now - this.lastHeroSeenAt >= 160) {
+        // Long detector gaps can still arm a possible transition, but without a
+        // board/pot hint the same cards are treated as a dropout, not a new hand.
+        this.reappearArmed = true;
+        this.reappearHinted = false;
+      }
       return { newHand: false, reason: null };
     }
     if (fp === null || fp === undefined || (Array.isArray(fp) && !fp.length) || fp === '') {
@@ -81,41 +125,76 @@ export class HandMachine {
     const wasMissing = this.heroMissing > 0;
     this.heroMissing = 0; this.lastHeroSeenAt = now;
     if (this.adoptNextHero) {
-      this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.adoptNextHero = false;
+      this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.reappearHinted = false; this.adoptNextHero = false;
       return { newHand: false, reason: 'hero-adopted-after-board-reset', distance: null };
     }
     if (this.lastFp === null) {
-      this.lastFp = fp; this.reappearArmed = false; this.newHand('first-cards', now); return { newHand: true, reason: 'first-cards' };
+      this.lastFp = fp; this.reappearArmed = false; this.reappearHinted = false; this.newHand('first-cards', now); return { newHand: true, reason: 'first-cards' };
     }
 
     const distance = heroIdentityDistance(this.lastFp, fp);
+    if (this.reappearArmed) {
+      // Without an independent board/pot transition hint, a long same-card
+      // dropout is still the same hand. This preserves robustness against brief
+      // capture/animation losses while allowing a real redeal to rotate quickly.
+      if (!this.reappearHinted && distance < 0.13) {
+        this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.reappearHinted = false;
+        return { newHand: false, reason: 'hero-same-reappeared', distance };
+      }
+
+      if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
+      else { this.pendingFp = fp; this.pendingHits = 1; }
+      const needed = identityConfirmationHits(fp, this.reappearHinted);
+      if (this.pendingHits >= needed && now - this.state.startedAt > 120) {
+        const reason = this.reappearHinted ? 'hero-redealt' : 'hero-glyph-change';
+        this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.reappearHinted = false;
+        this.newHand(reason, now);
+        return { newHand: true, reason, distance };
+      }
+      return { newHand: false, reason: this.reappearHinted ? 'hero-redeal-confirming' : null, distance };
+    }
+
     if (distance < 0.13) {
-      this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false;
+      this.pendingFp = null; this.pendingHits = 0;
       return { newHand: false, reason: wasMissing ? 'hero-same-reappeared' : null, distance };
     }
 
-    // A textual rank disagreement while the cards never disappeared is detector
-    // uncertainty, not evidence of a new hand. This specifically protects 78↔J8,
-    // 73↔K3 and T6↔TT style replay confusions.
-    if (semanticSlots(fp) && !this.reappearArmed) {
+    if (semanticSlots(fp)) {
       this.pendingFp = null; this.pendingHits = 0;
       return { newHand: false, reason: 'semantic-change-without-transition', distance };
     }
 
     if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
     else { this.pendingFp = fp; this.pendingHits = 1; }
-    if (this.pendingHits >= identityConfirmationHits(fp, this.reappearArmed) && now - this.state.startedAt > 120) {
-      this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.newHand('hero-glyph-change', now);
+    if (this.pendingHits >= identityConfirmationHits(fp, false) && now - this.state.startedAt > 120) {
+      this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.reappearHinted = false; this.newHand('hero-glyph-change', now);
       return { newHand: true, reason: 'hero-glyph-change', distance };
     }
     return { newHand: false, reason: null, distance };
   }
   observeBoardCount(count, now = performance.now()) {
     if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
-    if (count > 0) { this.lastBoardCountVisual = count; this.boardZeroHits = 0; return { newHand: false, reason: null }; }
+    if (count > 0) {
+      this.lastBoardCountVisual = Math.max(this.lastBoardCountVisual, count);
+      this.boardZeroHits = 0;
+      this.boardZeroSince = 0;
+      return { newHand: false, reason: null };
+    }
     if (this.lastBoardCountVisual <= 0) return { newHand: false, reason: null };
+
+    // The first credible disappearance of a previously visible board is already
+    // useful as a transition hint. It does not rotate the hand by itself.
+    if (!this.boardZeroSince) {
+      this.boardZeroSince = now;
+      this.markTransitionHint('board-cleared', now);
+    }
     this.boardZeroHits++;
-    if (this.boardZeroHits < 2 || now - this.state.startedAt <= 150) return { newHand: false, reason: null };
+    const boardGoneLongEnough = this.boardZeroHits >= 8 && now - this.boardZeroSince >= 700;
+    const heroGoneLongEnough = this.heroMissing >= 8 && now - this.lastHeroSeenAt >= 320;
+    if (!boardGoneLongEnough || !heroGoneLongEnough || now - this.state.startedAt <= 250) {
+      return { newHand: false, reason: null };
+    }
+
     this.newHand('board-reset', now); this.lastFp = null; this.pendingFp = null; this.pendingHits = 0; this.adoptNextHero = true;
     return { newHand: true, reason: 'board-reset' };
   }
@@ -126,6 +205,7 @@ export class HandMachine {
     const n = Math.round(v), old = this.state.pot;
     const materialDrop = n <= old * 0.65 && old - n >= Math.max(100, old * 0.25);
     if (!materialDrop) { this.potResetPending = null; this.potResetHits = 0; return { newHand: false, reason: null }; }
+    this.markTransitionHint('pot-drop', now);
     const close = this.potResetPending !== null && Math.abs(this.potResetPending - n) <= Math.max(2, n * 0.01);
     if (close) this.potResetHits++; else { this.potResetPending = n; this.potResetHits = 1; }
     if (this.potResetHits < 2 || now - this.state.startedAt <= 150) return { newHand: false, reason: null };
@@ -147,16 +227,27 @@ export class HandMachine {
   }
   setBoardOccupancy(count, handId) {
     if (handId !== this.handId || ![0, 3, 4, 5].includes(count)) return false;
-    this.state.street = count === 0 ? 'preflop' : count === 3 ? 'flop' : count === 4 ? 'turn' : 'river';
-    if (count === 0) this.state.board = [];
-    if (count > 0 && this.state.board.length > count) this.state.board = this.state.board.slice(0, count);
+    if (count === 0) {
+      if (!this.state.board.length) this.state.street = 'preflop';
+      return true;
+    }
+    const currentCount = this.state.board.length;
+    const stableCount = Math.max(currentCount, count);
+    this.state.street = stableCount === 3 ? 'flop' : stableCount === 4 ? 'turn' : stableCount >= 5 ? 'river' : this.state.street;
     return true;
   }
   setBoard(cards, handId) {
     if (handId !== this.handId) return false;
     if (!Array.isArray(cards) || ![0, 3, 4, 5].includes(cards.length)) return false;
-    this.state.board = cards;
-    this.state.street = cards.length === 0 ? 'preflop' : cards.length === 3 ? 'flop' : cards.length === 4 ? 'turn' : 'river';
+    if (cards.length === 0) {
+      if (!this.state.board.length) this.state.street = 'preflop';
+      return true;
+    }
+    const current = Array.isArray(this.state.board) ? this.state.board : [];
+    if (current.length && cards.length < current.length) return false;
+    this.state.board = current.length ? mergeStickyBoard(current, cards) : cards.map((c) => ({ ...c }));
+    const count = this.state.board.length;
+    this.state.street = count === 3 ? 'flop' : count === 4 ? 'turn' : count === 5 ? 'river' : this.state.street;
     return true;
   }
   setPot(v, handId) { if (handId !== this.handId || !Number.isFinite(v) || v <= 1) return false; this.state.pot = Math.round(v); return true; }
