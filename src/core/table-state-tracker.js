@@ -1,4 +1,5 @@
 const EPS = 0.5;
+const ACTIONS = new Set(['fold','check','call','bet','raise','allin']);
 
 const POSITIONS = {
   2: ['BTN/SB', 'BB'],
@@ -27,6 +28,8 @@ function normalizeSeats(seats = []) {
       dealer: Boolean(s.dealer),
       folded: typeof s.folded === 'boolean' ? s.folded : null,
       hero: Boolean(s.hero),
+      visibleAction: ACTIONS.has(s.visibleAction) ? s.visibleAction : null,
+      visibleActionAmount: finite(s.visibleActionAmount),
       confidence: s.confidence,
     }))
     .sort(byIndex);
@@ -47,6 +50,19 @@ function mapSeats(seats) { return new Map(seats.map((s) => [seatKey(s), s])); }
 function maxCommitted(seats) {
   const vals = seats.map((s) => finite(s.committed)).filter((v) => v !== null);
   return vals.length ? Math.max(...vals) : null;
+}
+
+function eventFromVisibleAction(curr, street, confidence) {
+  if (!ACTIONS.has(curr.visibleAction)) return null;
+  return {
+    street,
+    actorName: curr.actorName,
+    seatLabel: curr.position || `Seat ${curr.seatIndex + 1}`,
+    action: curr.visibleAction,
+    amount: finite(curr.visibleActionAmount) ?? (['bet','raise','call','allin'].includes(curr.visibleAction) ? finite(curr.committed) : null),
+    source: 'table-action-text',
+    confidence: Math.min(0.96, confidence),
+  };
 }
 
 export class TableStateTracker {
@@ -87,14 +103,14 @@ export class TableStateTracker {
       this.previous = next;
       this.latest = next;
       this.readyForDiff = true;
-      return { accepted: true, events: [], state: next, baseline: true };
+      return { accepted: true, events: visibleEvents(next), state: next, baseline: true };
     }
 
     if (!this.readyForDiff || !this.previous) {
       this.previous = next;
       this.latest = next;
       this.readyForDiff = true;
-      return { accepted: true, events: [], state: next, baseline: true };
+      return { accepted: true, events: visibleEvents(next), state: next, baseline: true };
     }
 
     const events = inferEvents(this.previous, next);
@@ -102,6 +118,17 @@ export class TableStateTracker {
     this.latest = next;
     return { accepted: true, events, state: next, baseline: false };
   }
+}
+
+function visibleEvents(snapshot) {
+  const events = [];
+  for (const curr of snapshot?.seats || []) {
+    const confidence = curr.confidence || 0;
+    if (confidence < 0.62) continue;
+    const explicit = eventFromVisibleAction(curr, snapshot.street, confidence);
+    if (explicit) events.push(explicit);
+  }
+  return events;
 }
 
 export function inferEvents(previous, next) {
@@ -116,6 +143,12 @@ export function inferEvents(previous, next) {
     if (!prev) continue;
     const confidence = Math.min(prev.confidence || 0, curr.confidence || 0);
     if (confidence < 0.62) continue;
+
+    const explicit = eventFromVisibleAction(curr, next.street, curr.confidence || confidence);
+    if (explicit) {
+      events.push(explicit);
+      continue;
+    }
 
     if (curr.folded === true && prev.folded !== true) {
       events.push({
