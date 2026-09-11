@@ -16,15 +16,18 @@ const diagnostics = {
   lastMs: 0,
   hero: '—',
   board: '—',
-  suitConsensus: '—',
+  heroSuitConsensus: '—',
+  boardSuitConsensus: '—',
   lastError: null,
 };
 if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnostics;
 
 const ocr = new OcrService();
 const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
-const suitConsensus = new SuitConsensus({ windowMs: 360 });
+const heroSuitConsensus = new SuitConsensus({ windowMs: 320, slots: 2 });
+const boardSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 5 });
 let consensusHandId = 0;
+let boardConsensusHandId = 0;
 let busy = false;
 let lastReadAt = 0;
 let felt = null;
@@ -60,7 +63,7 @@ function cardSource(cards) {
   return 'local';
 }
 
-function installHeroConsensus(machine) {
+function installCardConsensus(machine) {
   if (!machine || machine.__prcHeroConsensusInstalled) return;
   const rawSetHero = machine.setHero.bind(machine);
   machine.setHero = (cards, handId) => {
@@ -69,12 +72,12 @@ function installHeroConsensus(machine) {
     if (consensusHandId !== handId) {
       consensusHandId = handId;
       consensus.resetHand(handId);
-      suitConsensus.resetHand(handId);
+      heroSuitConsensus.resetHand(handId);
     }
     const observed = consensus.observe(cards, { handId, source: cardSource(cards), now });
     if (!observed.accepted) return false;
-    const suitObserved = suitConsensus.observe(cards, { handId, now });
-    diagnostics.suitConsensus = `${suitObserved.confirmedCount}/2`;
+    const suitObserved = heroSuitConsensus.observe(cards, { handId, now });
+    diagnostics.heroSuitConsensus = `${suitObserved.confirmedCount}/2`;
     const merged = observed.cards.map((c, i) => ({
       ...c,
       suit: suitObserved.cards[i]?.suit || null,
@@ -88,8 +91,15 @@ function installHeroConsensus(machine) {
   const rawSetBoard = machine.setBoard.bind(machine);
   machine.setBoard = (cards, handId) => {
     if (handId !== machine.handId || !Array.isArray(cards)) return false;
+    const now = performance.now();
+    if (boardConsensusHandId !== handId) {
+      boardConsensusHandId = handId;
+      boardSuitConsensus.resetHand(handId);
+    }
+    const stable = boardSuitConsensus.observe(cards, { handId, now });
+    diagnostics.boardSuitConsensus = `${stable.confirmedCount}/${cards.length}`;
     const old = machine.state.board || [];
-    const merged = cards.map((c, i) => {
+    const merged = stable.cards.map((c, i) => {
       const prev = old[i];
       if (!c || !prev || String(c.rank || '').toUpperCase() !== String(prev.rank || '').toUpperCase()) return c;
       return {
@@ -104,7 +114,7 @@ function installHeroConsensus(machine) {
   machine.__prcHeroConsensusInstalled = true;
 }
 
-installHeroConsensus(activeHandMachine);
+installCardConsensus(activeHandMachine);
 
 function classifyLocalCard(crop) {
   const rank = classifyRankPixels(crop.data, crop.w, crop.h);
