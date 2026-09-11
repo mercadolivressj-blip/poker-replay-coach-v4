@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 4173",
-    "test": "node tests/run-public.mjs && node tests/preflop-v1.mjs && node tests/reconstructor-v1.mjs && node tests/pro-coach-v1.mjs && node tests/action-observer-v1.mjs && node tests/dynamic-coach-brain-v1.mjs && node tests/table-state-tracker-v1.mjs && node tests/continual-resolver-v1.mjs && node tests/robust-replay-v1.mjs && node tests/suit-reader-v1.mjs && node tests/hero-suit-reader-v1.mjs && node tests/replay-state-stability-v1.mjs && node tests/replay-state-stability-v2.mjs && node tests/replay-state-stability-v3.mjs && node tests/replay-state-stability-v4.mjs && node tests/replay-state-stability-v5.mjs",
+    "test": "node tests/run-public.mjs && node tests/preflop-v1.mjs && node tests/reconstructor-v1.mjs && node tests/pro-coach-v1.mjs && node tests/action-observer-v1.mjs && node tests/dynamic-coach-brain-v1.mjs && node tests/table-state-tracker-v1.mjs && node tests/continual-resolver-v1.mjs && node tests/robust-replay-v1.mjs && node tests/suit-reader-v1.mjs && node tests/hero-suit-reader-v1.mjs && node tests/replay-state-stability-v1.mjs && node tests/replay-state-stability-v2.mjs && node tests/replay-state-stability-v3.mjs && node tests/replay-state-stability-v4.mjs && node tests/replay-state-stability-v5.mjs && node tests/replay-rollover-v6.mjs",
     "test:visual": "node tests/visual-fixtures.test.mjs",
     "test:ocr": "node tests/system-ocr.test.mjs",
     "test:smoke": "bash tests/browser-smoke.sh",
