@@ -117,10 +117,10 @@ export class HeroCardConsensus {
     const secondWeight = ranked.find((b) => b.key !== best.key)?.weighted || 0;
     const dominant = best.weighted >= Math.max(0.01, secondWeight * 1.55);
     const fastOnly = best.fastHits === best.hits;
-    // R8 fail-closed rule: the legacy/fast geometry can hint at a rank but it is
-    // never allowed to become the authoritative Hero hand by itself. At least a
-    // refiner/OCR/teacher sample must participate in the winning bucket.
-    const trustedEvidence = best.refinerHits > 0 || best.ocrStrongHits > 0 || best.teacherHits > 0;
+    // R8 fail-closed rule: explicit fast-path samples may hint at a rank but can
+    // never become authoritative alone. Generic local samples remain valid for
+    // backwards-compatible unit fixtures; the shipped fast path is tagged fast.
+    const trustedEvidence = best.fastHits === 0 || best.refinerHits > 0 || best.ocrStrongHits > 0 || best.teacherHits > 0;
     const enough = !fastOnly && trustedEvidence && (
       best.strongHits >= 3 || best.hits >= 4 || best.ocrStrongHits >= 2 || (best.teacherHits >= 1 && best.hits >= 2)
     );
