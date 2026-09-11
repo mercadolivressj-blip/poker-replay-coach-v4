@@ -104,16 +104,12 @@ export class HeroCardConsensus {
     let best = ranked[0];
     if (!best) return { accepted: false, reason: 'no-candidate' };
 
-    // The dedicated Hero refiner uses the geometry that actually contains the
-    // whole physical card. During a hand rollover the legacy fast crop can emit
-    // transient rank noise. Three strong refiner frames are therefore allowed to
-    // resolve the new hand without being vetoed by contradictory fast samples.
     const trustedRefiner = ranked
       .filter((b) => b.refinerStrongHits >= 3)
       .sort((a, b) => b.refinerStrongHits - a.refinerStrongHits || b.weighted - a.weighted)[0];
     if (trustedRefiner) {
       best = trustedRefiner;
-      this.committed = { key: best.key, cards: cloneCards(best.best.cards) };
+      this.committed = { key: best.key, cards: cloneCards(best.best.cards), authority: 'refiner' };
       this.committedAt = now;
       return { accepted: true, changed: true, reason: 'refiner-consensus', cards: cloneCards(this.committed.cards), key: best.key };
     }
@@ -121,16 +117,17 @@ export class HeroCardConsensus {
     const secondWeight = ranked.find((b) => b.key !== best.key)?.weighted || 0;
     const dominant = best.weighted >= Math.max(0.01, secondWeight * 1.55);
     const fastOnly = best.fastHits === best.hits;
-    // Explicit fast-path samples need four agreeing reads. Generic local/legacy
-    // samples keep the historical three-strong-read behavior, OCR can confirm
-    // after three strong reads, and teacher evidence keeps its existing shortcut.
-    const enough = fastOnly
-      ? best.hits >= 4
-      : best.strongHits >= 3 || best.hits >= 4 || best.ocrStrongHits >= 3 || (best.teacherHits >= 1 && best.hits >= 2);
+    // R8 fail-closed rule: the legacy/fast geometry can hint at a rank but it is
+    // never allowed to become the authoritative Hero hand by itself. At least a
+    // refiner/OCR/teacher sample must participate in the winning bucket.
+    const trustedEvidence = best.refinerHits > 0 || best.ocrStrongHits > 0 || best.teacherHits > 0;
+    const enough = !fastOnly && trustedEvidence && (
+      best.strongHits >= 3 || best.hits >= 4 || best.ocrStrongHits >= 2 || (best.teacherHits >= 1 && best.hits >= 2)
+    );
     if (!dominant || !enough) {
       return {
         accepted: false,
-        reason: 'collecting',
+        reason: fastOnly ? 'awaiting-refiner' : 'collecting',
         candidate: best.key,
         hits: best.hits,
         strongHits: best.strongHits,
@@ -138,13 +135,13 @@ export class HeroCardConsensus {
       };
     }
 
-    this.committed = { key: best.key, cards: cloneCards(best.best.cards) };
+    this.committed = { key: best.key, cards: cloneCards(best.best.cards), authority: 'mixed' };
     this.committedAt = now;
     return { accepted: true, changed: true, reason: 'consensus', cards: cloneCards(this.committed.cards), key: best.key };
   }
 
   snapshot() {
-    return { handId: this.handId, committed: this.committed ? { key: this.committed.key, cards: cloneCards(this.committed.cards) } : null, sampleCount: this.samples.length };
+    return { handId: this.handId, committed: this.committed ? { key: this.committed.key, cards: cloneCards(this.committed.cards), authority: this.committed.authority || null } : null, sampleCount: this.samples.length };
   }
 }
 
