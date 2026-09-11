@@ -48,6 +48,15 @@ export const RANK_ACCEPTANCE = Object.freeze({
   'A': { maxDistance: 0.42, minMargin: 0.0 },
 });
 
+// Empirical replay confusions seen in real PokerStars captures. Ambiguous pairs abstain
+// so the OCR fallback can arbitrate instead of publishing a fast false positive.
+const CONFUSION_MARGIN = Object.freeze({
+  'K': Object.freeze({ '7': 0.16 }),
+  '7': Object.freeze({ 'K': 0.22 }),
+  'T': Object.freeze({ '6': 0.10 }),
+  '6': Object.freeze({ 'T': 0.075 }),
+});
+
 export function classifyRankMask(mask, opts = {}) {
   if (!mask) return { rank: null, confidence: 0, distance: 1, margin: 0, second: null };
   const scores = [];
@@ -63,7 +72,9 @@ export function classifyRankMask(mask, opts = {}) {
   const margin = Math.max(0, second.d - best.d);
   const calibrated = RANK_ACCEPTANCE[best.rank] ?? { maxDistance: 0.35, minMargin: 0.055 };
   const maxDistance = opts.maxDistance ?? calibrated.maxDistance;
-  const minMargin = opts.minMargin ?? calibrated.minMargin;
+  const baseMinMargin = opts.minMargin ?? calibrated.minMargin;
+  const confusionMin = CONFUSION_MARGIN[best.rank]?.[second.rank] || 0;
+  const minMargin = Math.max(baseMinMargin, confusionMin);
   const accepted = best.d <= maxDistance && margin >= minMargin;
   const distanceQuality = Math.max(0, 1 - best.d / Math.max(0.001, maxDistance));
   const marginQuality = minMargin <= 0 ? Math.min(1, margin / 0.08) : Math.min(1, margin / minMargin);
@@ -77,7 +88,7 @@ export function classifyRankMask(mask, opts = {}) {
     distance: best.d,
     margin,
     second: second.rank,
-    gate: { maxDistance, minMargin },
+    gate: { maxDistance, minMargin, baseMinMargin, confusionMin },
   };
 }
 
