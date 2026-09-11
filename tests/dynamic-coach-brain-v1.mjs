@@ -18,20 +18,34 @@ const state = {
   actions: [{ type: 'fold' }, { type: 'call', amount: 1500 }],
 };
 const events = [
-  { street: 'flop', actorName: 'Vilao', action: 'bet', amount: 500, confidence: 0.9 },
-  { street: 'turn', actorName: 'Vilao', action: 'bet', amount: 1100, confidence: 0.9 },
-  { street: 'river', actorName: 'Vilao', action: 'bet', amount: 1500, confidence: 0.9 },
+  { street: 'flop', actorName: 'Vilao', seatLabel: 'BTN', action: 'bet', amount: 500, confidence: 0.9, source: 'table-diff' },
+  { street: 'turn', actorName: 'Vilao', seatLabel: 'BTN', action: 'bet', amount: 1100, confidence: 0.9, source: 'table-diff' },
+  { street: 'river', actorName: 'Vilao', seatLabel: 'BTN', action: 'bet', amount: 1500, confidence: 0.9, source: 'table-diff' },
 ];
+const tableState = {
+  confidence: .91,
+  dealerSeat: 2,
+  heroSeat: 3,
+  heroPosition: 'SB',
+  seats: [
+    { seatIndex: 2, actorName: 'Vilao', stack: 6400, committed: 1500, dealer: true, folded: false, hero: false, position: 'BTN', confidence: .92 },
+    { seatIndex: 3, actorName: 'Hero', stack: 5200, committed: 0, dealer: false, folded: false, hero: true, position: 'SB', confidence: .96 },
+  ],
+};
 
-const fp1 = reasoningFingerprint({ handId: 11, state, events, actorName: 'Vilao' });
-const fp2 = reasoningFingerprint({ handId: 11, state, events: [...events, { street: 'river', actorName: 'Outro', action: 'fold' }], actorName: 'Vilao' });
+const fp1 = reasoningFingerprint({ handId: 11, state, events, actorName: 'Vilao', tableState });
+const fp2 = reasoningFingerprint({ handId: 11, state, events: [...events, { street: 'river', actorName: 'Outro', action: 'fold' }], actorName: 'Vilao', tableState });
 assert.notEqual(fp1, fp2, 'new observed action must invalidate prior reasoning');
+const fp3 = reasoningFingerprint({ handId: 11, state, events, actorName: 'Vilao', tableState: { ...tableState, seats: tableState.seats.map((s) => s.hero ? { ...s, stack: 3200 } : s) } });
+assert.notEqual(fp1, fp3, 'observed stack change must invalidate prior reasoning');
 
-const payload = buildReasoningPayload({ handId: 11, state, events, actorName: 'Vilao', potBefore: 1500, baseline: { decision: 'PAGAR', confidence: 60 } });
+const payload = buildReasoningPayload({ handId: 11, state, events, actorName: 'Vilao', potBefore: 1500, baseline: { decision: 'PAGAR', confidence: 60 }, tableState });
 assert.equal(payload.mode, 'replay');
 assert.equal(payload.heroToAct, true);
 assert.equal(payload.fingerprint, fp1);
 assert.equal(payload.events.length, 3);
+assert.equal(payload.table.heroPosition, 'SB');
+assert.equal(payload.table.effectiveStack, 5200);
 
 assert.equal(dynamicDecisionIsUsable({ handId: 11, fingerprint: fp1, decision: 'call' }, payload), true);
 assert.equal(dynamicDecisionIsUsable({ handId: 11, fingerprint: fp1, decision: 'raise' }, payload), false, 'unavailable model action must be rejected');
@@ -43,6 +57,10 @@ const safe = sanitizePayload({ ...payload, actions: [...payload.actions, { type:
 assert(!safe.error);
 assert.equal(safe.value.actions.some((a) => a.type === 'teleport'), false);
 assert.equal('injected' in safe.value, false);
+assert.equal(safe.value.table.heroPosition, 'SB');
+assert.equal(safe.value.table.effectiveStack, 5200);
+assert.equal(safe.value.events[0].seatLabel, 'BTN');
+assert.equal(safe.value.events[0].source, 'table-diff');
 assert.equal(allowedDecision('call', safe.value.actions), true);
 assert.equal(allowedDecision('raise', safe.value.actions), false);
 assert.equal(allowedDecision('insufficient', safe.value.actions), true);
@@ -59,6 +77,8 @@ assert.match(apiSource, /ONLY for replay\/simulation\/post-game study/i);
 assert.match(apiSource, /Reason independently/i);
 assert.match(apiSource, /maximum justified confidence/i);
 assert.match(apiSource, /verification pass/i);
+assert.match(apiSource, /effective stack when observed/i);
+assert.match(apiSource, /Null means unknown/i);
 assert.match(apiSource, /Do not provide private chain-of-thought/i);
 assert.match(apiSource, /The final decision MUST be one of the physically available action types/i);
 assert.match(apiSource, /reasoning:\s*\{\s*effort\s*\}/);
