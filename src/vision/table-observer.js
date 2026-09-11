@@ -9,6 +9,7 @@ export class TableObserver {
     this.lastError = null;
     this.last = null;
     try { this.accessToken = sessionStorage.getItem('prc.vision-token') || ''; } catch { this.accessToken = ''; }
+    if (typeof window !== 'undefined') window.__prcTableObserver = this;
   }
 
   setAccessToken(token) {
