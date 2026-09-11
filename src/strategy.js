@@ -1,26 +1,8 @@
+import { recommendPreflop } from './preflop.js';
+
 const ranks = '23456789TJQKA';
 const rv = (r) => ranks.indexOf(String(r || '').toUpperCase()) + 2;
-const fmt = (n) => Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(n);
 
-function preflopScore(cards) {
-  if (cards.length < 2) return null;
-  const a = rv(cards[0].rank), b = rv(cards[1].rank);
-  if (a < 2 || b < 2) return null;
-  const hi = Math.max(a, b), lo = Math.min(a, b);
-  let s = ({ 14: 10, 13: 8, 12: 7, 11: 6 }[hi] ?? hi / 2);
-  if (hi === lo) s = Math.max(5, s * 2);
-  const suited = cards[0].suit && cards[0].suit === cards[1].suit;
-  if (suited) s += 2;
-  const gap = hi - lo - 1;
-  if (hi !== lo) {
-    if (gap === 1) s -= 1;
-    else if (gap === 2) s -= 2;
-    else if (gap === 3) s -= 4;
-    else if (gap >= 4) s -= 5;
-    if (gap <= 1 && hi < 12) s += 1;
-  }
-  return Math.round(s * 2) / 2;
-}
 function rankCounts(cards) { const m = new Map(); for (const c of cards) if (rv(c.rank) >= 2) m.set(c.rank, (m.get(c.rank) || 0) + 1); return m; }
 function suitCounts(cards) { const m = new Map(); for (const c of cards) if (c.suit) m.set(c.suit, (m.get(c.suit) || 0) + 1); return m; }
 function straightHighFromValues(values) {
@@ -79,17 +61,7 @@ export function recommend(state) {
   const missing = []; if (state.hero.length < 2) missing.push('cartas'); if (state.actions.length < 2) missing.push('ações'); if (state.street !== 'preflop' && state.board.length < 3) missing.push('board');
   if (missing.length) return { decision: null, reason: `Falta ${missing.join(', ')}.`, confidence: 0, details: [] };
   const actions = state.actions, call = find(actions, 'call')?.amount ?? null, facingBet = has(actions, 'call') && !has(actions, 'check'), pot = state.pot, potOdds = call && pot ? call / (pot + call) : null;
-  if (state.street === 'preflop') {
-    const s = preflopScore(state.hero); if (s === null) return { decision: null, reason: 'Força pré-flop ainda não confiável.', confidence: 0, details: [] };
-    const pair = state.hero[0].rank === state.hero[1].rank, hi = Math.max(rv(state.hero[0].rank), rv(state.hero[1].rank));
-    const details = [`Força pré-flop heurística: ${fmt(s)}/20.`, 'Sem posição/linha completa, confiança deliberadamente limitada.']; if (potOdds !== null) details.push(`Preço do call: ~${Math.round(potOdds * 100)}% do pote final.`);
-    if ((s >= 9 || (pair && hi >= 10)) && has(actions, 'raise')) return out('AUMENTAR', 'Mão forte o bastante para tomar a iniciativa.', 78, details);
-    if (s >= 7 && has(actions, 'call') && call === null) return { decision: null, reason: 'Lendo o valor do call…', confidence: 0, details };
-    if (s >= 7 && has(actions, 'call')) return out('PAGAR', 'Mão jogável; continuar é razoável sem contexto posicional completo.', 66, details);
-    if (has(actions, 'check')) return out('PASSAR', 'Sem custo adicional: veja o próximo street.', 72, details);
-    if (has(actions, 'fold')) return out('DESISTIR', 'Mão fraca para investir sem vantagem contextual clara.', 72, details);
-    return { decision: null, reason: 'Nenhuma ação compatível foi lida.', confidence: 0, details };
-  }
+  if (state.street === 'preflop') return recommendPreflop(state);
   const made = analyzeMadeHand(state.hero, state.board), draws = analyzeDraws(state.hero, state.board), texture = boardTexture(state.board);
   const details = [`Mão: ${made.name}.`, `Board: ${texture}.`]; if (draws.flushDraw) details.push('Flush draw confirmado pelos naipes do Hero + mesa.'); if (draws.straightDraw) details.push(`Straight draw ${draws.straightDrawType}.`); if (potOdds !== null) details.push(`Pot odds do call: ~${Math.round(potOdds * 100)}%.`);
   if (facingBet && made.tier < 4 && (call === null || pot === null)) return { decision: null, reason: call === null ? 'Lendo o valor do call…' : 'Lendo o pote…', confidence: 0, details };
