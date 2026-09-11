@@ -26,10 +26,30 @@ function heroIdentityDistance(a, b) {
 }
 
 function identityConfirmationHits(fp) {
-  // Semantic ranks can be transiently misclassified (e.g. 7↔K, 6↔T) while the
+  // Semantic ranks can be transiently misclassified (e.g. 7↔K/J, 6↔T) while the
   // physical card is unchanged. Require a longer stable run before using rank text
   // alone to declare a new hand. Visual fingerprints keep the original fast gate.
   return semanticSlots(fp) ? 5 : 2;
+}
+
+function mergeStickyHero(current, incoming) {
+  return current.map((old, i) => {
+    const next = incoming[i] || {};
+    const oldSuit = old?.suit || null;
+    const nextSuit = next?.suit || null;
+    const sameOrMissingSuit = !oldSuit || !nextSuit || oldSuit === nextSuit;
+    return {
+      ...old,
+      ...next,
+      rank: old.rank,
+      suit: oldSuit || nextSuit || null,
+      confidence: Math.max(Number(old?.confidence) || 0, Number(next?.confidence) || 0),
+      suitConfidence: sameOrMissingSuit
+        ? Math.max(Number(old?.suitConfidence) || 0, Number(next?.suitConfidence) || 0)
+        : Number(old?.suitConfidence) || 0,
+      source: old?.source || next?.source || null,
+    };
+  });
 }
 
 export class HandMachine {
@@ -48,11 +68,19 @@ export class HandMachine {
     this.boardZeroHits = 0; this.lastBoardCountVisual = 0; this.potResetPending = null; this.potResetHits = 0;
   }
   observeHero(fp, present, now = performance.now()) {
-    if (!present) { this.heroMissing++; if (this.heroMissing >= 3) this.reappearArmed = true; return { newHand: false, reason: null }; }
+    if (!present) {
+      this.heroMissing++;
+      // A few missed frames are normal in fast replay. Arm reappearance only after a
+      // longer run, and never clear the already-confirmed Hero cards just because the
+      // detector blinked.
+      if (this.heroMissing >= 6 && now - this.lastHeroSeenAt >= 160) this.reappearArmed = true;
+      return { newHand: false, reason: null };
+    }
     if (fp === null || fp === undefined || (Array.isArray(fp) && !fp.length) || fp === '') {
       this.heroMissing = 0; this.lastHeroSeenAt = now; return { newHand: false, reason: 'hero-identity-unknown' };
     }
-    const wasMissing = this.heroMissing > 0; this.heroMissing = 0; this.lastHeroSeenAt = now;
+    const wasMissing = this.heroMissing > 0;
+    this.heroMissing = 0; this.lastHeroSeenAt = now;
     if (this.adoptNextHero) {
       this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.adoptNextHero = false;
       return { newHand: false, reason: 'hero-adopted-after-board-reset', distance: null };
@@ -60,12 +88,14 @@ export class HandMachine {
     if (this.lastFp === null) {
       this.lastFp = fp; this.reappearArmed = false; this.newHand('first-cards', now); return { newHand: true, reason: 'first-cards' };
     }
-    if (this.reappearArmed && now - this.state.startedAt > 120) {
-      this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.newHand('hero-reappeared', now);
-      return { newHand: true, reason: 'hero-reappeared' };
-    }
+
     const distance = heroIdentityDistance(this.lastFp, fp);
-    if (distance < 0.13) { this.pendingFp = null; this.pendingHits = 0; if (wasMissing) this.reappearArmed = false; return { newHand: false, reason: null, distance }; }
+    if (distance < 0.13) {
+      // Same physical cards after a detector gap are still the same hand.
+      this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false;
+      return { newHand: false, reason: wasMissing ? 'hero-same-reappeared' : null, distance };
+    }
+
     if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
     else { this.pendingFp = fp; this.pendingHits = 1; }
     if (this.pendingHits >= identityConfirmationHits(fp) && now - this.state.startedAt > 120) {
@@ -100,7 +130,14 @@ export class HandMachine {
   setHero(cards, handId) {
     if (handId !== this.handId) return false;
     if (!Array.isArray(cards) || cards.length !== 2 || cards.some((c) => !c?.rank)) return false;
-    this.state.hero = cards; return true;
+    const current = this.state.hero;
+    if (Array.isArray(current) && current.length === 2 && current.every((c) => c?.rank)) {
+      const sameRanks = cards.every((c, i) => String(c.rank).toUpperCase() === String(current[i].rank).toUpperCase());
+      if (!sameRanks) return false;
+      this.state.hero = mergeStickyHero(current, cards);
+      return true;
+    }
+    this.state.hero = cards.map((c) => ({ ...c })); return true;
   }
   setBoardOccupancy(count, handId) {
     if (handId !== this.handId || ![0, 3, 4, 5].includes(count)) return false;
