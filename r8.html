@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Poker Replay Coach V4 R8</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="logo">♠</span><strong>Poker Replay Coach</strong><span class="badge">V4 STANDALONE · R8</span></div>
+      <div class="status-row"><span id="modeBadge" class="pill ok">REPLAY</span><span id="fpsBadge" class="pill">0 FPS</span><span id="latencyBadge" class="pill">— ms</span></div>
+    </header>
+
+    <main class="workspace">
+      <section class="stage-card">
+        <div class="toolbar">
+          <button id="shareBtn" class="primary">Compartilhar replay</button>
+          <label class="file-btn">Abrir arquivo<input id="fileInput" type="file" accept="video/*,image/*" hidden /></label>
+          <button id="stopBtn">Parar</button>
+          <button id="diagBtn" class="ghost">Diagnóstico</button>
+        </div>
+        <div id="stage" class="stage empty">
+          <video id="video" autoplay muted playsinline></video>
+          <img id="image" alt="replay" />
+          <canvas id="overlay"></canvas>
+          <div id="emptyState" class="empty-state">
+            <div class="empty-icon">▶</div>
+            <h2>Abra ou compartilhe um replay</h2>
+            <p>R8 isolada: fast-path não confirma; refiner dedicado + rollover visual fail-closed.</p>
+          </div>
+        </div>
+      </section>
+
+      <aside class="coach-card">
+        <div class="coach-head">
+          <div><span class="eyebrow">COACH</span><h1 id="coachTitle">Aguardando replay</h1></div>
+          <span id="turnChip" class="turn-chip">FORA DA VEZ</span>
+        </div>
+        <div class="hero-grid">
+          <div class="metric"><span>SUAS CARTAS</span><strong id="heroCards">—</strong></div>
+          <div class="metric"><span>BOARD</span><strong id="boardCards">—</strong></div>
+          <div class="metric"><span>POTE</span><strong id="potValue">—</strong></div>
+          <div class="metric"><span>STREET</span><strong id="streetValue">—</strong></div>
+        </div>
+        <div class="decision-box">
+          <span class="eyebrow">RECOMENDAÇÃO</span>
+          <div id="decisionText" class="decision">Esperando estado confiável.</div>
+          <div id="decisionReason" class="reason">R8 só decide depois de Hero e board necessários estarem confirmados pelo caminho confiável.</div>
+          <div id="decisionDetails" class="decision-details"></div>
+        </div>
+        <div class="actions" id="actions"></div>
+        <div class="confidence-row"><span>Confiança</span><strong id="confidence">—</strong></div>
+      </aside>
+    </main>
+
+    <section id="diagnostics" class="diagnostics hidden">
+      <div class="diag-grid">
+        <div><span>handId</span><b id="dHand">0</b></div>
+        <div><span>hero fingerprint</span><b id="dHeroFp">—</b></div>
+        <div><span>board slots</span><b id="dBoardSlots">0</b></div>
+        <div><span>action rects</span><b id="dActions">0</b></div>
+        <div><span>pot raw</span><b id="dPot">—</b></div>
+        <div><span>teacher</span><b id="dTeacher">idle</b></div>
+        <div><span>turn latency</span><b id="dLatency">—</b></div>
+        <div><span>frame seq</span><b id="dFrame">0</b></div>
+        <div><span>felt geometry</span><b id="dGeometry">—</b></div>
+        <div><span>lanes ms</span><b id="dLanes">—</b></div>
+        <div><span>templates</span><b id="dTemplates">{}</b></div>
+      </div>
+      <div class="vision-auth">
+        <input id="visionToken" type="password" autocomplete="off" placeholder="Token privado da Vision (opcional)" />
+        <button id="visionTokenBtn" type="button">Ativar Vision Teacher</button>
+        <span>R8 local: leitura de cartas isolada. Observer remoto continua fora deste preview.</span>
+      </div>
+      <pre id="diagLog"></pre>
+    </section>
+  </div>
+  <script type="module" src="./src/bootstrap-r8.js"></script>
+</body>
+</html>
