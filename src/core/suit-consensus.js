@@ -17,7 +17,7 @@ function candidateWeight(card) {
   const quality = Number.isFinite(conf) ? conf : 0;
   return Math.max(0.08, quality * 0.58 + Math.max(0, margin) * 0.9);
 }
-function candidateEvidence(card, { facePair = false, board = false } = {}) {
+function candidateEvidence(card, { facePair = false, board = false, hero = false } = {}) {
   const suit = normSuit(card?.suitCandidate);
   const confidence = Number(card?.suitCandidateConfidence);
   const margin = Number(card?.suitMargin);
@@ -25,6 +25,11 @@ function candidateEvidence(card, { facePair = false, board = false } = {}) {
   if (!suit || !Number.isFinite(confidence) || !Number.isFinite(margin) || !Number.isFinite(distance)) return null;
   if (facePair) {
     if (confidence < 0.34 || margin < 0.008 || distance > 0.64) return null;
+  } else if (hero) {
+    // Hero cards are static for many frames too. The dedicated suit crop can be
+    // ambiguous on a single frame (T♣ was the real-world failure), so accept a
+    // moderately weak candidate only when temporal consensus later confirms it.
+    if (confidence < 0.16 || margin < 0.004 || distance > 0.72) return null;
   } else if (board) {
     // Board cards are static for many frames. A single ambiguous frame is never
     // enough, but repeated agreement from the same rank is useful evidence.
@@ -59,6 +64,7 @@ export class SuitConsensus {
     }
     const incomingRanks = cards.map((c) => normRank(c?.rank));
     const sameFacePair = this.allowFacePairCandidates && cards.length === 2 && incomingRanks[0] && incomingRanks[0] === incomingRanks[1] && faceRank(incomingRanks[0]);
+    const heroTemporalCandidates = this.allowFacePairCandidates && this.slots === 2 && !sameFacePair;
 
     for (let i = 0; i < cards.length; i++) {
       const rank = incomingRanks[i];
@@ -73,8 +79,12 @@ export class SuitConsensus {
       let soft = false;
       let conf = Number(cards[i]?.suitConfidence) || 0;
       let w = weight(cards[i]);
-      if (!suit && (sameFacePair || this.allowCandidates)) {
-        const candidate = candidateEvidence(cards[i], { facePair: sameFacePair, board: this.allowCandidates && !sameFacePair });
+      if (!suit && (sameFacePair || this.allowCandidates || heroTemporalCandidates)) {
+        const candidate = candidateEvidence(cards[i], {
+          facePair: sameFacePair,
+          board: this.allowCandidates && !sameFacePair,
+          hero: heroTemporalCandidates,
+        });
         if (candidate) {
           suit = candidate.suit;
           soft = true;
@@ -100,17 +110,19 @@ export class SuitConsensus {
       const best = ranked[0];
       const second = ranked[1];
       if (!best) continue;
-      const dominant = !second || best.score >= second.score * (this.allowCandidates ? 1.42 : 1.55);
+      const temporalCandidates = this.allowCandidates || heroTemporalCandidates;
+      const dominant = !second || best.score >= second.score * (temporalCandidates ? 1.42 : 1.55);
       const isFace = faceRank(this.ranks[i]);
       const hardEnough = isFace
         ? best.hardHits >= 3 && best.strong >= 2
         : best.hardHits >= 2 && (best.strong >= 1 || best.score >= 1.25 || best.voted >= 1);
       const softAvg = best.softConfSum / Math.max(1, best.softHits);
-      const boardCandidateEnough = this.allowCandidates
+      const minSoftAvg = heroTemporalCandidates ? 0.16 : 0.08;
+      const candidateEnough = temporalCandidates
         && best.softHits >= this.candidateMinHits
-        && softAvg >= 0.08
-        && best.score >= this.candidateMinHits * 0.078;
-      if (dominant && (hardEnough || boardCandidateEnough)) this.confirmed[i] = best.suit;
+        && softAvg >= minSoftAvg
+        && best.score >= this.candidateMinHits * (heroTemporalCandidates ? 0.105 : 0.078);
+      if (dominant && (hardEnough || candidateEnough)) this.confirmed[i] = best.suit;
     }
 
     if (sameFacePair) {
