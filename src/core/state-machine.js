@@ -25,7 +25,7 @@ function heroIdentityDistance(a, b) {
 }
 
 function identityConfirmationHits(fp, reappearArmed = false) {
-  if (semanticSlots(fp)) return reappearArmed ? 3 : Number.POSITIVE_INFINITY;
+  if (semanticSlots(fp)) return reappearArmed ? 2 : Number.POSITIVE_INFINITY;
   return 2;
 }
 
@@ -98,7 +98,11 @@ export class HandMachine {
   observeHero(fp, present, now = performance.now()) {
     if (!present) {
       this.heroMissing++;
-      if (this.heroMissing >= 6 && now - this.lastHeroSeenAt >= 160) this.reappearArmed = true;
+      // In PokerStars replay the hole cards disappear briefly between deals.
+      // Six half-rate observations was too conservative and often missed fast
+      // hand transitions completely. Four misses + 120 ms is still well above a
+      // single animation/occlusion frame, but reliably arms the next deal.
+      if (this.heroMissing >= 4 && now - this.lastHeroSeenAt >= 120) this.reappearArmed = true;
       return { newHand: false, reason: null };
     }
     if (fp === null || fp === undefined || (Array.isArray(fp) && !fp.length) || fp === '') {
@@ -114,20 +118,34 @@ export class HandMachine {
       this.lastFp = fp; this.reappearArmed = false; this.newHand('first-cards', now); return { newHand: true, reason: 'first-cards' };
     }
 
+    // A sustained disappearance followed by two matching observations is a
+    // stronger hand-boundary signal than rank comparison. It must work even if
+    // the next deal happens to have the same ranks as the previous hand.
+    if (this.reappearArmed) {
+      if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
+      else { this.pendingFp = fp; this.pendingHits = 1; }
+      if (this.pendingHits >= identityConfirmationHits(fp, true) && now - this.state.startedAt > 120) {
+        this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false;
+        this.newHand('hero-redealt', now);
+        return { newHand: true, reason: 'hero-redealt', distance: heroIdentityDistance(this.lastFp, fp) };
+      }
+      return { newHand: false, reason: 'hero-redeal-confirming', distance: heroIdentityDistance(this.lastFp, fp) };
+    }
+
     const distance = heroIdentityDistance(this.lastFp, fp);
     if (distance < 0.13) {
-      this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false;
+      this.pendingFp = null; this.pendingHits = 0;
       return { newHand: false, reason: wasMissing ? 'hero-same-reappeared' : null, distance };
     }
 
-    if (semanticSlots(fp) && !this.reappearArmed) {
+    if (semanticSlots(fp)) {
       this.pendingFp = null; this.pendingHits = 0;
       return { newHand: false, reason: 'semantic-change-without-transition', distance };
     }
 
     if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
     else { this.pendingFp = fp; this.pendingHits = 1; }
-    if (this.pendingHits >= identityConfirmationHits(fp, this.reappearArmed) && now - this.state.startedAt > 120) {
+    if (this.pendingHits >= identityConfirmationHits(fp, false) && now - this.state.startedAt > 120) {
       this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.newHand('hero-glyph-change', now);
       return { newHand: true, reason: 'hero-glyph-change', distance };
     }
@@ -143,10 +161,6 @@ export class HandMachine {
     }
     if (this.lastBoardCountVisual <= 0) return { newHand: false, reason: null };
 
-    // Two missed board frames are common while animations/chips overlap the cards.
-    // Never roll the hand on that alone: require a sustained board disappearance
-    // AND sustained Hero disappearance. Pot reset / Hero reappearance remain the
-    // primary new-hand signals, so this path is only a conservative fallback.
     this.boardZeroHits++;
     if (!this.boardZeroSince) this.boardZeroSince = now;
     const boardGoneLongEnough = this.boardZeroHits >= 8 && now - this.boardZeroSince >= 700;
