@@ -36,7 +36,7 @@ import handler from '../api/vision.js';
   for(let h=1;h<=80;h++){
     const f=fp(h); let opened=false;
     if(h===1){opened=m.observeHero(f,true,now).newHand;now+=80}
-    else if(h%4===0){for(let k=0;k<3;k++){m.observeHero(null,false,now);now+=80}opened=m.observeHero(f,true,now).newHand;now+=80}
+    else if(h%4===0){for(let k=0;k<3;k++){m.observeHero(null,false,now);now+=80}m.observeHero(f,true,now);now+=80;opened=m.observeHero(f,true,now).newHand;now+=80}
     else if(h%4===1){m.setBoard([{rank:'3'},{rank:'9'},{rank:'T'}],m.handId);m.observeBoardCount(3,now);now+=80;m.observeBoardCount(0,now);now+=80;opened=m.observeBoardCount(0,now).newHand;now+=80;m.observeHero(f,true,now);now+=80}
     else {m.observeHero(f,true,now);now+=80;opened=m.observeHero(f,true,now).newHand;now+=80}
     assert(opened,`hand ${h}`); assert.equal(m.handId,h); m.setHero([{rank:'A'},{rank:'9'}],h); m.setPot(100+h*10,h); m.setActions([{type:'fold'},{type:'call',amount:20}],h); now+=220;
