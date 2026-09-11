@@ -1,13 +1,13 @@
 import { activeHandMachine } from '../core/state-machine.js';
 import { detectFelt, layoutFromFelt, stabilizeFelt } from '../core/geometry.js';
-import { cropCanvas } from '../core/image.js';
+import { cropCanvas, vectorDistance } from '../core/image.js';
 import { classifyRankPixels } from '../core/rank-classifier.js';
 import { classifySuitPixels } from '../core/suit-classifier.js';
 import { HeroCardConsensus } from '../core/hero-card-consensus.js';
 import { BoardCardConsensus } from '../core/board-card-consensus.js';
 import { SuitConsensus } from '../core/suit-consensus.js';
 import { OcrService } from '../core/ocr.js';
-import { cardPresenceScore, boardCountFromScores, rankCrop } from '../detectors/cards.js';
+import { cardPresenceScore, boardCountFromScores, rankCrop, slotFingerprint } from '../detectors/cards.js';
 
 const SUIT_SYMBOL = Object.freeze({ clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' });
 const diagnostics = {
@@ -15,23 +15,24 @@ const diagnostics = {
   heroCommits: 0,
   boardCommits: 0,
   rolloverResets: 0,
+  visualRedeals: 0,
   lastMs: 0,
   hero: '—',
   board: '—',
   heroSuitConsensus: '—',
   boardRankConsensus: '—',
   boardSuitConsensus: '—',
-  heroRankGeometry: 'legacy-rank',
+  heroRankGeometry: 'dedicated-r8',
   heroSuitGeometry: 'dedicated-suit',
   lastError: null,
 };
 if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnostics;
 
 const ocr = new OcrService();
-const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
-const heroSuitConsensus = new SuitConsensus({ windowMs: 420, slots: 2, allowFacePairCandidates: true, candidateMinHits: 3 });
-const boardRankConsensus = new BoardCardConsensus({ windowMs: 420, slots: 5, minHits: 3 });
-const boardSuitConsensus = new SuitConsensus({ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 });
+const consensus = new HeroCardConsensus({ windowMs: 560, strongConfidence: 0.76 });
+const heroSuitConsensus = new SuitConsensus({ windowMs: 520, slots: 2, allowFacePairCandidates: true, allowCandidates: true, candidateMinHits: 3 });
+const boardRankConsensus = new BoardCardConsensus({ windowMs: 460, slots: 5, minHits: 3 });
+const boardSuitConsensus = new SuitConsensus({ windowMs: 620, slots: 5, allowCandidates: true, candidateMinHits: 4 });
 let consensusHandId = 0;
 let boardConsensusHandId = 0;
 let heroBurstUntil = 0;
@@ -40,6 +41,11 @@ let lastReadAt = 0;
 let felt = null;
 let layout = null;
 let lastGeomAt = 0;
+let visualHeroFp = null;
+let visualPendingFp = null;
+let visualPendingHits = 0;
+let visualGapArmed = false;
+let visualQuarantined = false;
 const capture = document.createElement('canvas');
 const scratchHeroRank = [document.createElement('canvas'), document.createElement('canvas')];
 const scratchHeroSuit = [document.createElement('canvas'), document.createElement('canvas')];
@@ -65,6 +71,17 @@ function captureFrame(source) {
   return { canvas: capture, w: capture.width, h: capture.height };
 }
 
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function dedicatedHeroRankSlots(f) {
+  return [0, 1].map((i) => {
+    const x = f.x + (0.405 + i * 0.09) * f.w;
+    const y = f.y + 0.875 * f.h;
+    const w = 0.09 * f.w;
+    const h = 0.17 * f.h;
+    return { x: clamp(x, 0, 0.995), y: clamp(y, 0, 0.995), w: clamp(w, 0.008, 1 - x), h: clamp(h, 0.008, 1 - y) };
+  });
+}
+
 function cardSource(cards) {
   const sources = cards.map((c) => c?.source || '');
   if (sources.includes('teacher')) return 'teacher';
@@ -72,6 +89,14 @@ function cardSource(cards) {
   if (sources.some((s) => ['card-refiner-local', 'hero-rank-refiner', 'hero-suit-refiner', 'hero-rank-confirmed'].includes(s))) return 'refiner';
   if (sources.includes('ocr-fallback')) return 'ocr';
   return 'fast';
+}
+
+function resetVisualDealState() {
+  visualHeroFp = null;
+  visualPendingFp = null;
+  visualPendingHits = 0;
+  visualGapArmed = false;
+  visualQuarantined = false;
 }
 
 function syncCardHand(machine, now = performance.now()) {
@@ -88,12 +113,64 @@ function syncCardHand(machine, now = performance.now()) {
   diagnostics.hero = '—';
   diagnostics.board = '—';
   diagnostics.rolloverResets++;
-  heroBurstUntil = now + 420;
+  heroBurstUntil = now + 520;
   lastReadAt = 0;
-  // Recompute slot geometry on every hand boundary. The table itself is stable,
-  // but PokerStars replay can subtly shift/scale the felt after animations.
   layout = null;
   lastGeomAt = 0;
+  resetVisualDealState();
+  return true;
+}
+
+function quarantineCards(machine) {
+  if (!machine?.state || visualQuarantined) return;
+  machine.state.hero = [];
+  machine.state.board = [];
+  machine.state.street = 'preflop';
+  machine.state.reason = 'visual-redeal-confirming-r8';
+  machine.state.provisionalDecision = null;
+  visualQuarantined = true;
+  const heroEl = document.getElementById('heroCards');
+  const boardEl = document.getElementById('boardCards');
+  if (heroEl) heroEl.textContent = '—';
+  if (boardEl) boardEl.textContent = '—';
+}
+
+function observeVisualDeal(machine, present, crops, now) {
+  if (!machine) return false;
+  if (!present) {
+    if (machine.state?.hero?.length === 2 || visualHeroFp) visualGapArmed = true;
+    return false;
+  }
+  const fp = slotFingerprint(crops);
+  if (!fp) return false;
+  if (!visualHeroFp) {
+    visualHeroFp = fp;
+    visualPendingFp = null;
+    visualPendingHits = 0;
+    return false;
+  }
+  const distance = vectorDistance(visualHeroFp, fp);
+  if (distance < 0.105) {
+    visualPendingFp = null;
+    visualPendingHits = 0;
+    visualGapArmed = false;
+    visualQuarantined = false;
+    return false;
+  }
+  if (visualGapArmed) quarantineCards(machine);
+  if (visualPendingFp && vectorDistance(visualPendingFp, fp) < 0.055) visualPendingHits++;
+  else { visualPendingFp = fp; visualPendingHits = 1; }
+  const needed = visualGapArmed ? 2 : 4;
+  if (visualPendingHits < needed || now - machine.state.startedAt <= 120) return false;
+
+  machine.newHand(visualGapArmed ? 'visual-redeal-r8' : 'visual-card-change-r8', now);
+  diagnostics.visualRedeals++;
+  syncCardHand(machine, now);
+  visualHeroFp = fp;
+  visualPendingFp = null;
+  visualPendingHits = 0;
+  visualGapArmed = false;
+  visualQuarantined = false;
   return true;
 }
 
@@ -169,8 +246,18 @@ function suitMeta(suit) {
   };
 }
 
+function safeRankRead(read) {
+  if (!read) return read;
+  const rank = read.rank || null;
+  const second = read.second || null;
+  const margin = Number(read.margin) || 0;
+  const t8 = (rank === 'T' && second === '8') || (rank === '8' && second === 'T');
+  if (t8 && margin < 0.16) return { ...read, rank: null, ambiguousR8: true };
+  return read;
+}
+
 function classifyLocalCard(crop) {
-  const rank = classifyRankPixels(crop.data, crop.w, crop.h);
+  const rank = safeRankRead(classifyRankPixels(crop.data, crop.w, crop.h));
   const suit = classifySuitPixels(crop.data, crop.w, crop.h, rank.rank || null);
   return {
     rank: rank.rank || null,
@@ -179,6 +266,8 @@ function classifyLocalCard(crop) {
     suitConfidence: suit.suit ? (suit.confidence || 0) : 0,
     source: 'card-refiner-local',
     rankCandidate: rank.candidate || null,
+    rankSecond: rank.second || null,
+    rankMargin: rank.margin || 0,
     ...suitMeta(suit),
   };
 }
@@ -186,11 +275,7 @@ function classifyLocalCard(crop) {
 function classifyHeroCard(rankSlotCrop, suitSlotCrop, index, machine) {
   const confirmed = machine?.state?.hero?.[index] || null;
   const confirmedRank = confirmed?.rank || null;
-
-  // The dedicated suit crop deliberately starts higher and is wider vertically.
-  // It is authoritative for the tiny suit glyph, NOT for rank recognition.
-  // Rank always comes from the legacy/stable Hero rank crop.
-  const rankRead = confirmedRank ? null : classifyRankPixels(rankSlotCrop.data, rankSlotCrop.w, rankSlotCrop.h);
+  const rankRead = confirmedRank ? null : safeRankRead(classifyRankPixels(rankSlotCrop.data, rankSlotCrop.w, rankSlotCrop.h));
   const rank = confirmedRank || rankRead?.rank || null;
   const suit = rank
     ? classifySuitPixels(suitSlotCrop.data, suitSlotCrop.w, suitSlotCrop.h, rank)
@@ -208,6 +293,8 @@ function classifyHeroCard(rankSlotCrop, suitSlotCrop, index, machine) {
       ? (suit.suit ? 'hero-suit-refiner' : (confirmed?.source || 'hero-rank-confirmed'))
       : 'hero-rank-refiner',
     rankCandidate: confirmedRank || rankRead?.candidate || rank,
+    rankSecond: rankRead?.second || null,
+    rankMargin: rankRead?.margin || 0,
     ...suitMeta(suit),
   };
 }
@@ -252,7 +339,7 @@ function syncVisibleCardLabels(machine) {
   if (!machine) return;
   const heroEl = document.getElementById('heroCards');
   const boardEl = document.getElementById('boardCards');
-  if (heroEl && machine.state.hero?.length === 2) heroEl.textContent = cardLabel(machine.state.hero, true);
+  if (heroEl) heroEl.textContent = machine.state.hero?.length === 2 ? cardLabel(machine.state.hero, true) : '—';
   if (boardEl) boardEl.textContent = machine.state.board?.length ? cardLabel(machine.state.board, true) : '—';
 }
 
@@ -265,31 +352,43 @@ async function readOnce() {
   if (now - lastReadAt < 58) return;
   lastReadAt = now;
   const frame = captureFrame(source); if (!frame) return;
-  busy = true; const t0 = performance.now(); const handId = machine.handId;
+  busy = true; const t0 = performance.now();
   try {
-    if (!layout || now - lastGeomAt > 450) {
+    if (!layout || now - lastGeomAt > 380) {
       const next = detectFelt(frame);
       if (next) { felt = stabilizeFelt(felt, next); layout = layoutFromFelt(felt); lastGeomAt = now; }
     }
-    if (!layout) return;
+    if (!layout || !felt) return;
 
-    const heroRankSlots = layout.heroSlots;
+    const heroRankSlots = dedicatedHeroRankSlots(felt);
     const heroSuitSlots = layout.heroSuitSlots || layout.heroSlots;
     const heroRankCrops = heroRankSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHeroRank[i]));
     const heroSuitCrops = heroSuitSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHeroSuit[i]));
-    const heroPresent = heroSuitCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.24);
+    const heroPresenceScores = heroRankCrops.map((c, i) => Math.max(
+      cardPresenceScore(c.data, c.w, c.h),
+      cardPresenceScore(heroSuitCrops[i].data, heroSuitCrops[i].w, heroSuitCrops[i].h),
+    ));
+    const heroPresent = heroPresenceScores.every((s) => s >= 0.17);
+    const redealt = observeVisualDeal(machine, heroPresent, heroRankCrops, now);
+    if (redealt) heroBurstUntil = performance.now() + 520;
+    let handId = machine.handId;
+
     if (heroPresent) {
       let cards = heroRankCrops.map((crop, i) => classifyHeroCard(crop, heroSuitCrops[i], i, machine));
       for (let i = 0; i < cards.length; i++) cards[i] = await completeHeroRank(cards[i], heroRankCrops[i], heroSuitCrops[i]);
-      if (machine.handId === handId && cards.every((c) => c.rank)) {
+      handId = machine.handId;
+      if (cards.every((c) => c.rank)) {
         if (machine.setHero(cards, handId)) diagnostics.heroCommits++;
         diagnostics.hero = cardLabel(cards, true);
       }
+    } else {
+      diagnostics.hero = '—';
     }
 
+    handId = machine.handId;
     const boardCrops = layout.boardSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchBoard[i]));
     const scores = boardCrops.map((c) => cardPresenceScore(c.data, c.w, c.h));
-    const count = boardCountFromScores(scores, 0.28);
+    const count = boardCountFromScores(scores, 0.25);
     if (count > 0) {
       let board = boardCrops.slice(0, count).map(classifyLocalCard);
       for (let i = 0; i < board.length; i++) board[i] = await completeRank(board[i], boardCrops[i], 'board-refiner');
@@ -319,7 +418,7 @@ function tick() {
     void readOnce();
     return;
   }
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 110 });
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 100 });
   else void readOnce();
 }
 
