@@ -57,7 +57,10 @@ export class BoardCardConsensus {
     for (let i = 0; i < cards.length; i++) {
       const c = this.confirmed[i];
       if (!c) continue;
-      out[i] = { ...cards[i], ...c.card, rank: c.rank };
+      // Rank consensus owns only the rank. Keep the latest live card metadata
+      // (especially suitCandidate/suitConfidence) so the downstream suit
+      // consensus can continue accumulating evidence after rank lock.
+      out[i] = { ...c.card, ...cards[i], rank: c.rank };
     }
     const confirmedCount = this.confirmed.slice(0, cards.length).filter(Boolean).length;
     return { ready: confirmedCount === cards.length, cards: out, confirmedCount, ranks: this.confirmed.slice(0, cards.length).map((c) => c?.rank || null) };
