@@ -6,7 +6,7 @@ import { OcrService } from '../core/ocr.js';
 import { BoardCardConsensus } from '../core/board-card-consensus.js';
 import { cardPresenceScore, boardCountFromScores, rankCrop } from '../detectors/cards.js';
 
-const diagnostics = { reads: 0, commits: 0, lastMs: 0, consensus: '0/5', lastError: null };
+const diagnostics = { reads: 0, commits: 0, manualRebinds: 0, manualZeroHits: 0, lastMs: 0, consensus: '0/5', lastError: null };
 if (typeof window !== 'undefined') window.__prcBoardRefinerR14 = diagnostics;
 
 const ocr = new OcrService();
@@ -19,6 +19,8 @@ let lastGeomAt = 0;
 let lastReadAt = 0;
 let consensusHandId = -1;
 let busy = false;
+let manualRebindToken = null;
+let manualZeroHits = 0;
 
 function source() {
   const video = document.getElementById('video');
@@ -47,6 +49,9 @@ function syncHand(machine) {
   felt = null;
   layout = null;
   lastGeomAt = 0;
+  manualRebindToken = null;
+  manualZeroHits = 0;
+  diagnostics.manualZeroHits = 0;
   diagnostics.consensus = '0/5';
 }
 
@@ -67,10 +72,12 @@ async function readOnce() {
   syncHand(machine);
   const now = performance.now();
   if (now - lastReadAt < 95) return;
-  // Main + suit scanner are the primary board path. This lane only wakes when
-  // the visible street says a board should exist but ranks are still incomplete.
+  const manual = Boolean(manualRebindToken && manualRebindToken.generation === machine.handId);
+  // Main + suit scanner remain the primary board path. During manual recalibration
+  // this lane is deliberately forced awake so a stale river can be rebound to the
+  // board physically visible right now, including a confirmed zero-card preflop.
   const expected = machine.state.street === 'flop' ? 3 : machine.state.street === 'turn' ? 4 : machine.state.street === 'river' ? 5 : 0;
-  if (expected && machine.state.board?.length === expected && machine.state.board.every((c) => c?.rank)) return;
+  if (!manual && expected && machine.state.board?.length === expected && machine.state.board.every((c) => c?.rank)) return;
 
   lastReadAt = now;
   const frame = frameOf(el);
@@ -92,6 +99,22 @@ async function readOnce() {
     const crops = layout.boardSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratch[i]));
     const scores = crops.map((c) => cardPresenceScore(c.data, c.w, c.h));
     const count = boardCountFromScores(scores, 0.27);
+
+    if (manual && count === 0) {
+      manualZeroHits++;
+      diagnostics.manualZeroHits = manualZeroHits;
+      if (manualZeroHits >= 3 && machine.setBoard([], handId, { rebindToken: manualRebindToken, now })) {
+        diagnostics.commits++;
+        diagnostics.manualRebinds++;
+        manualRebindToken = null;
+        manualZeroHits = 0;
+        diagnostics.manualZeroHits = 0;
+      }
+      return;
+    }
+
+    manualZeroHits = 0;
+    diagnostics.manualZeroHits = 0;
     if (![3, 4, 5].includes(count)) return;
 
     const cards = [];
@@ -101,7 +124,14 @@ async function readOnce() {
     const stable = consensus.observe(cards, { handId, now: performance.now() });
     diagnostics.consensus = `${stable.confirmedCount}/${count}`;
     if (!stable.ready) return;
-    if (machine.setBoard(stable.cards, handId)) diagnostics.commits++;
+    const options = manual ? { rebindToken: manualRebindToken, now: performance.now() } : {};
+    if (machine.setBoard(stable.cards, handId, options)) {
+      diagnostics.commits++;
+      if (manual) {
+        diagnostics.manualRebinds++;
+        manualRebindToken = null;
+      }
+    }
     diagnostics.reads++;
     diagnostics.lastError = null;
   } catch (e) {
@@ -114,8 +144,27 @@ async function readOnce() {
 
 function tick() {
   syncHand(activeHandMachine);
+  if (manualRebindToken) {
+    void readOnce();
+    return;
+  }
   if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 160 });
   else void readOnce();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('prc:recalibrate', (event) => {
+    const token = event?.detail?.token || null;
+    if (!token || token.generation !== activeHandMachine?.handId) return;
+    manualRebindToken = token;
+    manualZeroHits = 0;
+    diagnostics.manualZeroHits = 0;
+    consensus.resetHand(activeHandMachine.handId);
+    felt = null;
+    layout = null;
+    lastGeomAt = 0;
+    lastReadAt = 0;
+  });
 }
 
 setInterval(tick, 70);
