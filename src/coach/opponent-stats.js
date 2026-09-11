@@ -73,6 +73,9 @@ export class OpponentStatsStore {
       reliability,
       style,
       bluffPriorAdjustment: Math.round(rawAdjust * reliability),
+      // Compatibility aliases consumed by the dynamic coach API sanitizer.
+      vpipProxy: vpip,
+      aggression: aggressionFactor,
       note: p.hands < 8 ? 'Amostra pequena: tendência ainda não deve dominar a decisão.' : 'Tendência baseada apenas nas mãos observadas neste replay/sessão.',
     };
   }
