@@ -31,7 +31,7 @@ const ocr = new OcrService();
 const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
 const heroSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 2, allowFacePairCandidates: true });
 const boardRankConsensus = new BoardCardConsensus({ windowMs: 420, slots: 5, minHits: 3 });
-const boardSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 5 });
+const boardSuitConsensus = new SuitConsensus({ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 });
 let consensusHandId = 0;
 let boardConsensusHandId = 0;
 let heroBurstUntil = 0;
@@ -232,10 +232,10 @@ async function completeHeroRank(card, rankSlotCrop, suitSlotCrop) {
   return {
     ...card,
     rank: read.value,
-    suit: suit.suit || card.suit || null,
-    suitConfidence: suit.suit ? suit.confidence || 0 : Number(card.suitConfidence) || 0,
+    suit: suit.suit || null,
+    suitConfidence: suit.suit ? (suit.confidence || 0) : 0,
     ...suitMeta(suit),
-    confidence: Math.max(Number(card.confidence) || 0, Math.max(0.45, (read.confidence || 0) / 100)),
+    confidence: Math.max(card.confidence || 0, Math.max(0.45, (read.confidence || 0) / 100)),
     source: 'ocr-refiner',
   };
 }
@@ -273,9 +273,9 @@ async function readOnce() {
     const heroSuitSlots = layout.heroSuitSlots || layout.heroSlots;
     const heroRankCrops = heroRankSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHeroRank[i]));
     const heroSuitCrops = heroSuitSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHeroSuit[i]));
-    const heroPresent = heroRankCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.24);
+    const heroPresent = heroSuitCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.24);
     if (heroPresent) {
-      let cards = heroRankCrops.map((rankSlotCrop, i) => classifyHeroCard(rankSlotCrop, heroSuitCrops[i], i, machine));
+      let cards = heroRankCrops.map((crop, i) => classifyHeroCard(crop, heroSuitCrops[i], i, machine));
       for (let i = 0; i < cards.length; i++) cards[i] = await completeHeroRank(cards[i], heroRankCrops[i], heroSuitCrops[i]);
       if (machine.handId === handId && cards.every((c) => c.rank)) {
         if (machine.setHero(cards, handId)) diagnostics.heroCommits++;
