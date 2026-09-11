@@ -36,6 +36,29 @@ function sanitizeCard(c) {
   return { rank: String(c.rank).toUpperCase(), suit, confidence: finiteOrNull(c.confidence) };
 }
 
+function sanitizeTable(table) {
+  if (!table || typeof table !== 'object') return null;
+  const seats = Array.isArray(table.seats) ? table.seats.slice(0, 10).map((s) => ({
+    seatIndex: Number.isInteger(s?.seatIndex) ? s.seatIndex : null,
+    actorName: text(s?.actorName, 64),
+    stack: finiteOrNull(s?.stack),
+    committed: finiteOrNull(s?.committed),
+    dealer: Boolean(s?.dealer),
+    folded: typeof s?.folded === 'boolean' ? s.folded : null,
+    hero: Boolean(s?.hero),
+    position: text(s?.position, 24),
+    confidence: finiteOrNull(s?.confidence),
+  })).filter((s) => s.seatIndex !== null) : [];
+  return {
+    confidence: finiteOrNull(table.confidence),
+    dealerSeat: Number.isInteger(table.dealerSeat) ? table.dealerSeat : null,
+    heroSeat: Number.isInteger(table.heroSeat) ? table.heroSeat : null,
+    heroPosition: text(table.heroPosition, 24),
+    effectiveStack: finiteOrNull(table.effectiveStack),
+    seats,
+  };
+}
+
 function sanitizePayload(body) {
   const p = body || {};
   if (p.mode !== 'replay') return { error: 'replay mode required' };
@@ -52,9 +75,11 @@ function sanitizePayload(body) {
     ? p.events.filter((e) => ACTIONS.includes(e?.action) && STREETS.includes(e?.street)).slice(-28).map((e) => ({
         street: e.street,
         actorName: text(e.actorName, 64),
+        seatLabel: text(e.seatLabel, 32),
         action: e.action,
         amount: finiteOrNull(e.amount),
         confidence: finiteOrNull(e.confidence),
+        source: text(e.source, 32),
       }))
     : [];
 
@@ -92,6 +117,7 @@ function sanitizePayload(body) {
       events,
       actorName: text(p.actorName, 64),
       potBefore: finiteOrNull(p.potBefore),
+      table: sanitizeTable(p.table),
       opponentStats,
       baseline,
     },
@@ -177,6 +203,13 @@ function objectiveDataQuality(state) {
   const hands = Number(state.opponentStats?.hands) || 0;
   score += 5 * Math.min(1, hands / 12);
 
+  if (state.table) {
+    const tableConf = clamp(Number(state.table.confidence) || 0, 0, 1);
+    if (state.table.heroPosition) score += 4 * tableConf;
+    if (Number.isFinite(state.table.effectiveStack)) score += 4 * tableConf;
+    if ((state.table.seats || []).length >= 2) score += 2 * tableConf;
+  }
+
   return Math.round(clamp(score, 0, 100));
 }
 
@@ -208,10 +241,11 @@ function reasoningInstructions() {
     'Reason independently from the observed state. Do NOT follow the baseline recommendation automatically; it is a secondary calculator/guardrail and can be wrong.',
     'Think in ranges and competing hypotheses, not exact hidden opponent cards. Hidden cards are never known. Never call a bluff confirmed.',
     'Use only observed or explicitly supplied facts. Do not invent position, stack size, prior actions, population reads, tournament stage, rake, player identity, or sizing history.',
-    'Compare every action that is physically available. Consider hand strength, range interaction, board texture, blockers, pot odds, line coherence, sizing, missed/completed draws, and opponent tendencies only when supported by sample size.',
+    'When table data is present, treat position, visible stacks, committed chips and dealer/button as observed evidence only at their supplied confidence. Null means unknown; never fill it in.',
+    'Compare every action that is physically available. Consider hand strength, range interaction, board texture, blockers, pot odds, effective stack when observed, line coherence, sizing, missed/completed draws, and opponent tendencies only when supported by sample size.',
     'Seek maximum justified confidence, not a high confidence number. Stress-test the preferred action against the strongest plausible alternative before committing.',
     'When information is missing, lower confidence and name the uncertainty. Choose insufficient only when a responsible decision cannot be made from the observed state.',
-    'For preflop, avoid static hand-strength-only logic: distinguish unopened/raised/3-bet contexts only if the reconstructed action timeline actually supports them. If context is missing, say so.',
+    'For preflop, avoid static hand-strength-only logic: use position/effective stack only when observed, and distinguish unopened/raised/3-bet contexts only if the reconstructed action timeline supports them.',
     'For postflop, distinguish value, bluff-catcher, draw/semi-bluff, thin value, and pure bluff candidates from the actual line. River raises should not be treated as bluffy without strong evidence.',
     'Do not provide private chain-of-thought. Return concise decision rationale and observable key factors only.',
     'The final decision MUST be one of the physically available action types, unless decision=insufficient.',
