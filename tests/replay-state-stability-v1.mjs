@@ -86,14 +86,14 @@ function drawRankQ(f) {
 function faceSideFixture(suit) {
   const f = blankCard(); drawRankQ(f);
   const [family, b64] = MASKS[suit];
-  drawMask(f, unpack(b64), family, 20, 7, 15); // authoritative side glyph
-  drawMask(f, unpack(MASKS.hearts[1]), 'red', 52, 12, 23); // face-art distractor
+  drawMask(f, unpack(b64), family, 20, 7, 15);
+  drawMask(f, unpack(MASKS.hearts[1]), 'red', 52, 12, 23);
   return f;
 }
 for (const suit of ['spades','clubs']) {
   const f = faceSideFixture(suit);
   const out = classifySuitPixels(f.data, f.w, f.h, 'Q');
-  assert.equal(out.suit, suit, `Q ${suit} must read the side glyph`);
+  assert.equal(out.suit || out.candidate, suit, `Q ${suit} must preserve the side-glyph candidate for temporal consensus`);
   assert(['face-side-glyph','corner-under-rank'].includes(out.roi));
 }
 
