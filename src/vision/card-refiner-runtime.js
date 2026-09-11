@@ -18,6 +18,7 @@ const diagnostics = {
   board: '—',
   heroSuitConsensus: '—',
   boardSuitConsensus: '—',
+  heroSuitGeometry: 'dedicated',
   lastError: null,
 };
 if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnostics;
@@ -132,6 +133,25 @@ function classifyLocalCard(crop) {
   };
 }
 
+function classifyHeroCard(crop, index, machine) {
+  const confirmed = machine?.state?.hero?.[index] || null;
+  const confirmedRank = confirmed?.rank || null;
+  if (!confirmedRank) return classifyLocalCard(crop);
+  const suit = classifySuitPixels(crop.data, crop.w, crop.h, confirmedRank);
+  return {
+    ...confirmed,
+    rank: confirmedRank,
+    suit: suit.suit || confirmed?.suit || null,
+    confidence: Math.max(Number(confirmed?.confidence) || 0, 0.76),
+    suitConfidence: suit.suit ? suit.confidence || 0 : Number(confirmed?.suitConfidence) || 0,
+    source: suit.suit ? 'hero-suit-refiner' : (confirmed?.source || 'hero-rank-confirmed'),
+    rankCandidate: confirmedRank,
+    suitCandidate: suit.candidate || null,
+    suitRoi: suit.roi || null,
+    voteCount: suit.voteCount || 0,
+  };
+}
+
 async function completeRank(card, crop, lane) {
   if (card.rank) return card;
   const read = await ocr.readRank(rankCrop(crop.canvas), lane);
@@ -178,10 +198,11 @@ async function readOnce() {
     }
     if (!layout) return;
 
-    const heroCrops = layout.heroSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHero[i]));
-    const heroPresent = heroCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.28);
+    const heroSuitSlots = layout.heroSuitSlots || layout.heroSlots;
+    const heroCrops = heroSuitSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHero[i]));
+    const heroPresent = heroCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.24);
     if (heroPresent) {
-      let cards = heroCrops.map(classifyLocalCard);
+      let cards = heroCrops.map((crop, i) => classifyHeroCard(crop, i, machine));
       for (let i = 0; i < cards.length; i++) cards[i] = await completeRank(cards[i], heroCrops[i], 'hero-refiner');
       if (machine.handId === handId && cards.every((c) => c.rank)) {
         if (machine.setHero(cards, handId)) diagnostics.heroCommits++;
