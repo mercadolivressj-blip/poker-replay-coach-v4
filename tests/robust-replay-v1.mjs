@@ -12,10 +12,11 @@ assert.equal(c.observe(k3, { handId: 1, now: 0 }).accepted, false, 'one strong b
 assert.equal(c.observe(k3, { handId: 1, now: 65 }).accepted, false, 'two strong bad frames must not commit');
 assert.equal(c.observe(seven3, { handId: 1, now: 130 }).accepted, false, 'new candidate needs temporal evidence');
 assert.equal(c.observe(seven3, { handId: 1, now: 195 }).accepted, false);
-const committed73 = c.observe(seven3, { handId: 1, now: 260 });
+assert.equal(c.observe(seven3, { handId: 1, now: 260 }).accepted, false, 'three good frames must still beat the conflicting history decisively');
+const committed73 = c.observe(seven3, { handId: 1, now: 325 });
 assert.equal(committed73.accepted, true);
 assert.equal(committed73.key, '73');
-assert.equal(c.observe(k3, { handId: 1, now: 325 }).reason, 'sticky-mismatch', 'committed Hero hand must not mutate inside hand');
+assert.equal(c.observe(k3, { handId: 1, now: 390 }).reason, 'sticky-mismatch', 'committed Hero hand must not mutate inside hand');
 assert.equal(c.snapshot().committed.key, '73');
 
 c.resetHand(2);
@@ -23,7 +24,9 @@ const t6 = [{ rank: 'T', confidence: .92 }, { rank: '6', confidence: .91 }];
 const tt = [{ rank: 'T', confidence: .97 }, { rank: 'T', confidence: .97 }];
 assert.equal(c.observe(t6, { handId: 2, now: 0 }).accepted, false);
 assert.equal(c.observe(t6, { handId: 2, now: 65 }).accepted, false);
-assert.equal(c.observe(t6, { handId: 2, now: 130 }).key, 'T6');
+const committedT6 = c.observe(t6, { handId: 2, now: 130 });
+assert.equal(committedT6.accepted, true);
+assert.equal(committedT6.key, 'T6');
 assert.equal(c.observe(tt, { handId: 2, now: 195 }).reason, 'sticky-mismatch');
 assert.equal(c.snapshot().committed.key, 'T6');
 
@@ -42,5 +45,9 @@ assert.match(guardSource, /not configured\|auth required/);
 const resolverRuntime = fs.readFileSync(new URL('../src/solver/resolver-runtime.js', import.meta.url), 'utf8');
 assert.match(resolverRuntime, /RESOLVER PRONTO/);
 assert.match(resolverRuntime, /brain\.style\.display = 'none'/);
+const rankSource = fs.readFileSync(new URL('../src/core/rank-classifier.js', import.meta.url), 'utf8');
+assert.match(rankSource, /CONFUSION_MARGIN/);
+assert.match(rankSource, /'K': Object\.freeze\(\{ '7':/);
+assert.match(rankSource, /'T': Object\.freeze\(\{ '6':/);
 
 console.log('ROBUST REPLAY V1 regressions passed');
