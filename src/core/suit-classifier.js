@@ -16,10 +16,10 @@ const CORNER_PROFILE = Object.freeze({
   name: 'corner-under-rank', x0: 0.00, x1: 0.36, y0: 0.29, y1: 0.82, bonus: 0.16,
 });
 const FACE_SIDE_PROFILE = Object.freeze({
-  // PokerStars face cards place the tiny suit glyph immediately to the right of
-  // the rank, not only below it. This ROI is intentionally narrow so the large
-  // illustrated face cannot win the component vote.
-  name: 'face-side-glyph', x0: 0.20, x1: 0.58, y0: 0.08, y1: 0.50, bonus: 0.24,
+  // PokerStars face cards can place the tiny suit glyph immediately to the right
+  // of the rank. Keep this deliberately narrow so the illustrated face/watermark
+  // farther right cannot become a suit candidate.
+  name: 'face-side-glyph', x0: 0.16, x1: 0.43, y0: 0.08, y1: 0.45, bonus: 0.24,
 });
 const FACE_ROI_PROFILES = Object.freeze([FACE_SIDE_PROFILE, CORNER_PROFILE]);
 const NUMERIC_ROI_PROFILES = Object.freeze([
