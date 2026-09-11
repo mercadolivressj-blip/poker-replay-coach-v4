@@ -1,0 +1,179 @@
+import { activeHandMachine } from '../core/state-machine.js';
+import { detectFelt, layoutFromFelt, stabilizeFelt } from '../core/geometry.js';
+import { cropCanvas } from '../core/image.js';
+import { classifyRankPixels } from '../core/rank-classifier.js';
+import { classifySuitPixels } from '../core/suit-classifier.js';
+import { HeroCardConsensus } from '../core/hero-card-consensus.js';
+import { OcrService } from '../core/ocr.js';
+import { cardPresenceScore, boardCountFromScores, rankCrop } from '../detectors/cards.js';
+
+const diagnostics = {
+  reads: 0,
+  heroCommits: 0,
+  boardCommits: 0,
+  lastMs: 0,
+  hero: '—',
+  board: '—',
+  lastError: null,
+};
+if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnostics;
+
+const ocr = new OcrService();
+const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
+let consensusHandId = 0;
+let busy = false;
+let lastReadAt = 0;
+let felt = null;
+let layout = null;
+let lastGeomAt = 0;
+const capture = document.createElement('canvas');
+const scratchHero = [document.createElement('canvas'), document.createElement('canvas')];
+const scratchBoard = Array.from({ length: 5 }, () => document.createElement('canvas'));
+
+function visibleSource() {
+  const video = document.getElementById('video');
+  if (video && video.style.display !== 'none' && video.readyState >= 2 && video.videoWidth > 0) return video;
+  const image = document.getElementById('image');
+  if (image && image.style.display !== 'none' && image.complete && image.naturalWidth > 0) return image;
+  return null;
+}
+
+function captureFrame(source) {
+  const sw = source.videoWidth || source.naturalWidth || source.width || 0;
+  const sh = source.videoHeight || source.naturalHeight || source.height || 0;
+  if (!sw || !sh) return null;
+  const scale = Math.min(1, 1000 / sw);
+  capture.width = Math.max(320, Math.round(sw * scale));
+  capture.height = Math.max(180, Math.round(sh * scale));
+  const ctx = capture.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, capture.width, capture.height);
+  return { canvas: capture, w: capture.width, h: capture.height };
+}
+
+function cardSource(cards) {
+  if (cards.some((c) => c?.source === 'teacher')) return 'teacher';
+  if (cards.some((c) => c?.source === 'ocr-refiner' || c?.source === 'ocr-fallback')) return 'ocr';
+  return 'local';
+}
+
+function installHeroConsensus(machine) {
+  if (!machine || machine.__prcHeroConsensusInstalled) return;
+  const rawSetHero = machine.setHero.bind(machine);
+  machine.setHero = (cards, handId) => {
+    if (handId !== machine.handId) return false;
+    if (consensusHandId !== handId) {
+      consensusHandId = handId;
+      consensus.resetHand(handId);
+    }
+    const observed = consensus.observe(cards, { handId, source: cardSource(cards), now: performance.now() });
+    if (!observed.accepted) return false;
+    return rawSetHero(observed.cards, handId);
+  };
+
+  const rawSetBoard = machine.setBoard.bind(machine);
+  machine.setBoard = (cards, handId) => {
+    if (handId !== machine.handId || !Array.isArray(cards)) return false;
+    const old = machine.state.board || [];
+    const merged = cards.map((c, i) => {
+      const prev = old[i];
+      if (!c || !prev || String(c.rank || '').toUpperCase() !== String(prev.rank || '').toUpperCase()) return c;
+      return {
+        ...c,
+        suit: c.suit || prev.suit || null,
+        suitConfidence: Math.max(Number(c.suitConfidence) || 0, Number(prev.suitConfidence) || 0),
+        confidence: Math.max(Number(c.confidence) || 0, Number(prev.confidence) || 0),
+      };
+    });
+    return rawSetBoard(merged, handId);
+  };
+  machine.__prcHeroConsensusInstalled = true;
+}
+
+installHeroConsensus(activeHandMachine);
+
+function classifyLocalCard(crop) {
+  const rank = classifyRankPixels(crop.data, crop.w, crop.h);
+  const suit = classifySuitPixels(crop.data, crop.w, crop.h);
+  return {
+    rank: rank.rank || null,
+    suit: suit.suit || null,
+    confidence: rank.confidence || 0,
+    suitConfidence: suit.confidence || 0,
+    source: 'card-refiner-local',
+    rankCandidate: rank.candidate || null,
+    suitCandidate: suit.candidate || null,
+  };
+}
+
+async function completeRank(card, crop, lane) {
+  if (card.rank) return card;
+  const read = await ocr.readRank(rankCrop(crop.canvas), lane);
+  if (!read?.value) return card;
+  return {
+    ...card,
+    rank: read.value,
+    confidence: Math.max(card.confidence || 0, Math.max(0.45, (read.confidence || 0) / 100)),
+    source: 'ocr-refiner',
+  };
+}
+
+function cardLabel(cards) {
+  return (cards || []).map((c) => `${c?.rank || '?'}${c?.suit ? c.suit[0] : '?'}`).join(' ');
+}
+
+async function readOnce() {
+  const machine = activeHandMachine;
+  const source = visibleSource();
+  if (!machine || !source || busy) return;
+  const now = performance.now();
+  if (now - lastReadAt < 70) return;
+  lastReadAt = now;
+  const frame = captureFrame(source); if (!frame) return;
+  busy = true; const t0 = performance.now(); const handId = machine.handId;
+  try {
+    if (!layout || now - lastGeomAt > 450) {
+      const next = detectFelt(frame);
+      if (next) { felt = stabilizeFelt(felt, next); layout = layoutFromFelt(felt); lastGeomAt = now; }
+    }
+    if (!layout) return;
+
+    const heroCrops = layout.heroSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHero[i]));
+    const heroPresent = heroCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.28);
+    if (heroPresent) {
+      let cards = heroCrops.map(classifyLocalCard);
+      for (let i = 0; i < cards.length; i++) cards[i] = await completeRank(cards[i], heroCrops[i], 'hero-refiner');
+      if (machine.handId === handId && cards.every((c) => c.rank)) {
+        if (machine.setHero(cards, handId)) diagnostics.heroCommits++;
+        diagnostics.hero = cardLabel(cards);
+      }
+    }
+
+    const boardCrops = layout.boardSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchBoard[i]));
+    const scores = boardCrops.map((c) => cardPresenceScore(c.data, c.w, c.h));
+    const count = boardCountFromScores(scores, 0.28);
+    if (count > 0) {
+      let board = boardCrops.slice(0, count).map(classifyLocalCard);
+      for (let i = 0; i < board.length; i++) board[i] = await completeRank(board[i], boardCrops[i], 'board-refiner');
+      if (machine.handId === handId && board.length === count && board.every((c) => c.rank)) {
+        if (machine.setBoard(board, handId)) diagnostics.boardCommits++;
+        diagnostics.board = cardLabel(board);
+      }
+    } else diagnostics.board = '—';
+
+    diagnostics.reads++;
+    diagnostics.lastError = null;
+  } catch (e) {
+    diagnostics.lastError = e?.message || 'card-refiner-failed';
+  } finally {
+    diagnostics.lastMs = performance.now() - t0;
+    busy = false;
+  }
+}
+
+function tick() {
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 160 });
+  else void readOnce();
+}
+
+setInterval(tick, 55);
+setTimeout(tick, 120);
