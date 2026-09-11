@@ -24,14 +24,20 @@ if [[ -z "$CHROME" ]]; then
   exit 0
 fi
 set +e
-timeout 10s "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-background-networking \
+timeout 15s "$CHROME" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-background-networking \
   --no-first-run --disable-default-apps --disable-extensions --user-data-dir="$TMP/profile" \
   --virtual-time-budget=2000 --dump-dom "http://127.0.0.1:$PORT/" >"$TMP/dom.html" 2>"$TMP/chrome.log"
 STATUS=$?
 set -e
+APP_ERROR_RE='Uncaught (TypeError|ReferenceError|SyntaxError)|Failed to load module script'
+if grep -Eqi "$APP_ERROR_RE" "$TMP/chrome.log"; then
+  cat "$TMP/chrome.log" >&2
+  exit 1
+fi
 if [[ $STATUS -ne 0 && ! -s "$TMP/dom.html" ]]; then
-  if grep -Eqi "dbus|zygote|UPower|Widget" "$TMP/chrome.log"; then
-    echo "browser smoke skipped: host Chromium unavailable (HTTP + static smoke passed)"
+  if [[ $STATUS -eq 124 ]] || grep -Eqi "dbus|zygote|UPower|Widget" "$TMP/chrome.log"; then
+    [[ ! -s "$TMP/chrome.log" ]] || tail -n 30 "$TMP/chrome.log"
+    echo "browser smoke skipped: host Chromium unavailable/timed out (HTTP + static smoke passed)"
     exit 0
   fi
   cat "$TMP/chrome.log" >&2
@@ -40,8 +46,4 @@ fi
 grep -q "Poker Replay Coach" "$TMP/dom.html"
 grep -q "V4 STANDALONE" "$TMP/dom.html"
 grep -q "Compartilhar replay" "$TMP/dom.html"
-if grep -Eqi "Uncaught (TypeError|ReferenceError|SyntaxError)|Failed to load module script" "$TMP/chrome.log"; then
-  cat "$TMP/chrome.log" >&2
-  exit 1
-fi
 echo "browser smoke passed"

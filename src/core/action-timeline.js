@@ -1,6 +1,8 @@
 const ACTIONS = new Set(['fold','check','call','bet','raise','allin']);
 const STREETS = new Set(['preflop','flop','turn','river']);
 
+export let activeActionTimeline = null;
+
 function actorKey(actorName, seatLabel) {
   return String(actorName || seatLabel || 'unknown').trim().toLowerCase();
 }
@@ -11,7 +13,7 @@ function eventKey(e) {
 }
 
 export class ActionTimeline {
-  constructor() { this.resetSession(); }
+  constructor() { activeActionTimeline = this; this.resetSession(); }
   resetSession() { this.handId = 0; this.events = []; this.keys = new Set(); }
   resetHand(handId) { this.handId = handId; this.events = []; this.keys.clear(); }
   append(event) {

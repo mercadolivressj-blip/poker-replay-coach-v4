@@ -28,7 +28,7 @@
           <div id="emptyState" class="empty-state">
             <div class="empty-icon">▶</div>
             <h2>Abra ou compartilhe um replay</h2>
-            <p>A leitura roda localmente e a IA só valida em background. Nada espera a IA na sua vez.</p>
+            <p>Leitura local rápida + resolver contínuo. O auditor remoto é opcional e nunca bloqueia sua decisão.</p>
           </div>
         </div>
       </section>
@@ -47,7 +47,7 @@
         <div class="decision-box">
           <span class="eyebrow">RECOMENDAÇÃO</span>
           <div id="decisionText" class="decision">Esperando estado confiável.</div>
-          <div id="decisionReason" class="reason">Ações são detectadas diretamente pelos botões, sem depender do chat do Dealer.</div>
+          <div id="decisionReason" class="reason">O resolver local pensa continuamente enquanto o replay avança.</div>
           <div id="decisionDetails" class="decision-details"></div>
         </div>
         <div class="actions" id="actions"></div>
@@ -72,12 +72,11 @@
       <div class="vision-auth">
         <input id="visionToken" type="password" autocomplete="off" placeholder="Token privado da Vision (opcional)" />
         <button id="visionTokenBtn" type="button">Ativar Vision Teacher</button>
-        <span>Use VISION_ACCESS_TOKEN no servidor para impedir abuso da sua API.</span>
+        <span>O resolver local funciona sem depender do auditor remoto.</span>
       </div>
       <pre id="diagLog"></pre>
     </section>
   </div>
-  <script type="module" src="./src/main.js"></script>
-  <script type="module" src="./src/coach/coach-runtime.js"></script>
+  <script type="module" src="./src/bootstrap.js"></script>
 </body>
 </html>
