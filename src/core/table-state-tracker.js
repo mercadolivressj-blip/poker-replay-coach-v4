@@ -1,6 +1,8 @@
 const EPS = 0.5;
 const ACTIONS = new Set(['fold','check','call','bet','raise','allin']);
 
+export let activeTableStateTracker = null;
+
 const POSITIONS = {
   2: ['BTN/SB', 'BB'],
   3: ['BTN', 'SB', 'BB'],
@@ -66,7 +68,7 @@ function eventFromVisibleAction(curr, street, confidence) {
 }
 
 export class TableStateTracker {
-  constructor() { this.resetSession(); }
+  constructor() { activeTableStateTracker = this; this.resetSession(); }
 
   resetSession() {
     this.handId = 0;
