@@ -112,7 +112,7 @@ export class ReasoningBrain {
     this.controller = controller;
     this.busy = true;
     this.activeFingerprint = payload.fingerprint;
-    const timeout = setTimeout(() => controller.abort(), 6800);
+    const timeout = setTimeout(() => controller.abort(), 11800);
     try {
       const r = await fetch('/api/coach', {
         method: 'POST',
