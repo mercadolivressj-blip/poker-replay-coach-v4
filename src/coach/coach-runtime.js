@@ -8,6 +8,7 @@ import { buildProCoachReport } from './pro-coach.js';
 import { ReasoningBrain, buildReasoningPayload } from './reasoning-brain.js';
 
 const AGGRO = new Set(['bet', 'raise', 'allin']);
+const ACTION_LABEL = Object.freeze({ fold: 'fold', check: 'check', call: 'call', bet: 'bet', raise: 'raise', allin: 'all-in' });
 const timeline = new ActionTimeline();
 const observer = new ActionObserver();
 const tableObserver = new TableObserver();
@@ -150,13 +151,15 @@ function maybeObserveTable(machine) {
   if (!source || tableIdlePending || !tableObserver.shouldRead(machine.handId)) return;
   const handId = machine.handId;
   const street = machine.state.street;
+  const boardKey = (machine.state.board || []).map((c) => c?.rank || '?').join('');
+  const potKey = Number.isFinite(machine.state.pot) ? Math.round(machine.state.pot) : '-';
   tableIdlePending = true;
   const run = () => {
     tableIdlePending = false;
     if (!activeHandMachine || activeHandMachine.handId !== handId) return;
     const frozen = snapshotSource(source, 1050);
     if (!frozen) return;
-    const fingerprint = `${street}:${Math.round((source.currentTime || 0) * 2)}`;
+    const fingerprint = `${street}:${boardKey}:${potKey}:${Math.round((source.currentTime || 0) * 3)}`;
     tableObserver.read(frozen, handId, street, { fingerprint }).then((out) => {
       if (!out || !activeHandMachine || activeHandMachine.handId !== handId) return;
       const result = tableTracker.ingest(out);
@@ -165,19 +168,20 @@ function maybeObserveTable(machine) {
       renderCoach(activeHandMachine);
     });
   };
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 650 });
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 350 });
   else setTimeout(run, 0);
 }
 
 function latestVillainContext(state) {
   const sameStreet = timeline.events.filter((e) => e.street === state.street);
   const latestAggro = [...sameStreet].reverse().find((e) => AGGRO.has(e.action)) || null;
-  const actorName = latestAggro?.actorName || null;
+  const latestAction = [...sameStreet].reverse().find((e) => e.actorName) || null;
+  const actorName = latestAggro?.actorName || latestAction?.actorName || null;
   let potBefore = null;
   const call = state.actions?.find((a) => a.type === 'call')?.amount;
   if (latestAggro?.action === 'bet' && Number.isFinite(call) && Number.isFinite(state.pot) && state.pot > call)
     potBefore = state.pot - call;
-  return { actorName, latestAggro, potBefore };
+  return { actorName, latestAggro, latestAction, potBefore };
 }
 
 function ensureProUi() {
@@ -187,7 +191,7 @@ function ensureProUi() {
       const box = document.createElement('div');
       box.id = 'proOpponentBox';
       box.className = 'pro-opponent-box';
-      box.innerHTML = '<span class="eyebrow">LEITURA DO RIVAL</span><strong id="proOpponentTitle">Aguardando ações</strong><div id="proOpponentMeta">Range oculto · inferência somente pelo replay</div><small id="proOpponentReasons"></small>';
+      box.innerHTML = '<span class="eyebrow">LEITURA DA MESA</span><strong id="proOpponentTitle">Reconstruindo ações</strong><div id="proOpponentMeta">Range oculto · estado visual do replay</div><small id="proOpponentReasons"></small>';
       actions.insertAdjacentElement('afterend', box);
     }
   }
@@ -265,6 +269,19 @@ function maybeReason(machine, payload) {
   });
 }
 
+function recentVisualHistory() {
+  return timeline.events
+    .filter((e) => e.source === 'table-diff' || e.source === 'table-action-text')
+    .slice(-3);
+}
+
+function eventLabel(e) {
+  const who = e.actorName || e.seatLabel || 'Rival';
+  const action = ACTION_LABEL[e.action] || e.action || '?';
+  const amount = Number.isFinite(e.amount) ? ` ${Math.round(e.amount)}` : '';
+  return `${who}: ${action}${amount}`;
+}
+
 function renderOpponent(report, actorName) {
   const opp = report.opponent;
   const box = $('proOpponentBox');
@@ -272,17 +289,32 @@ function renderOpponent(report, actorName) {
   const meta = $('proOpponentMeta');
   const reasons = $('proOpponentReasons');
   if (!box || !title || !meta || !reasons) return;
-  const live = actorName && opp?.confidence >= 45;
-  box.classList.toggle('live', !!live);
-  const heroPosition = tableTracker.latest?.heroPosition;
+  const visual = recentVisualHistory();
+  const table = tableTracker.latest;
+  const visualReady = Boolean(table?.seats?.length);
+  const live = Boolean(actorName && opp?.confidence >= 45) || visual.length > 0;
+  box.classList.toggle('live', live);
+  const heroPosition = table?.heroPosition;
+
   if (!actorName) {
-    title.textContent = observer.accessToken ? 'Aguardando linha do rival' : 'Ative a Vision para ler o histórico';
-    meta.textContent = `Cartas do rival sempre ocultas · ${heroPosition ? `Hero ${heroPosition}` : 'posição em leitura'}`;
-    reasons.textContent = observer.lastError || tableObserver.lastError ? `Observer: ${observer.lastError || tableObserver.lastError}` : 'O Coach nunca presume a mão exata do adversário.';
+    if (visual.length) title.textContent = `Mesa visual ativa · ${visual.length} ações recentes`;
+    else if (tableObserver.busy) title.textContent = 'Mesa visual · lendo stacks e fichas…';
+    else if (visualReady) title.textContent = 'Mesa visual ativa · reconstruindo ações';
+    else if (tableObserver.lastError) title.textContent = `Mesa visual · ${tableObserver.lastError}`;
+    else title.textContent = 'Inicializando leitura visual da mesa';
+
+    meta.textContent = visual.length
+      ? visual.map(eventLabel).join(' · ')
+      : `Cartas rivais ocultas · ${heroPosition ? `Hero ${heroPosition}` : 'posição em leitura'}`;
+    reasons.textContent = tableObserver.lastError
+      ? `Observer visual: ${tableObserver.lastError}`
+      : 'Ações são reconstruídas por texto visível, fichas comprometidas e variação de stack; eventos incertos são descartados.';
   } else {
-    title.textContent = opp?.label || 'INCONCLUSIVO';
+    title.textContent = opp?.label || 'RANGE EM CONSTRUÇÃO';
     meta.textContent = `${actorName} · confiança ${opp?.confidence || 0}% · ${report.rangeMix?.label || 'range em construção'}${heroPosition ? ` · Hero ${heroPosition}` : ''}`;
-    reasons.textContent = (opp?.reasons || []).slice(-2).join(' · ') || 'Acumulando ações da mão.';
+    const history = visual.length ? `Mesa: ${visual.map(eventLabel).join(' · ')}` : '';
+    const oppReasons = (opp?.reasons || []).slice(-2).join(' · ');
+    reasons.textContent = [history, oppReasons || 'Acumulando ações visuais da mão.'].filter(Boolean).join(' · ');
   }
 }
 
@@ -364,8 +396,8 @@ function tick() {
   if (!machine) return;
   rotateHand(machine);
   if (machine.handId > 0) {
-    maybeObserve(machine);
     maybeObserveTable(machine);
+    maybeObserve(machine);
   }
   renderCoach(machine);
 }
