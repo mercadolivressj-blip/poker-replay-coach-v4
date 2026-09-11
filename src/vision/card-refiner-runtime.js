@@ -21,7 +21,8 @@ const diagnostics = {
   heroSuitConsensus: '—',
   boardRankConsensus: '—',
   boardSuitConsensus: '—',
-  heroSuitGeometry: 'dedicated',
+  heroRankGeometry: 'legacy-rank',
+  heroSuitGeometry: 'dedicated-suit',
   lastError: null,
 };
 if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnostics;
@@ -40,7 +41,8 @@ let felt = null;
 let layout = null;
 let lastGeomAt = 0;
 const capture = document.createElement('canvas');
-const scratchHero = [document.createElement('canvas'), document.createElement('canvas')];
+const scratchHeroRank = [document.createElement('canvas'), document.createElement('canvas')];
+const scratchHeroSuit = [document.createElement('canvas'), document.createElement('canvas')];
 const scratchBoard = Array.from({ length: 5 }, () => document.createElement('canvas'));
 
 function visibleSource() {
@@ -67,7 +69,7 @@ function cardSource(cards) {
   const sources = cards.map((c) => c?.source || '');
   if (sources.includes('teacher')) return 'teacher';
   if (sources.includes('ocr-refiner')) return 'refiner-ocr';
-  if (sources.some((s) => ['card-refiner-local', 'hero-suit-refiner', 'hero-rank-confirmed'].includes(s))) return 'refiner';
+  if (sources.some((s) => ['card-refiner-local', 'hero-rank-refiner', 'hero-suit-refiner', 'hero-rank-confirmed'].includes(s))) return 'refiner';
   if (sources.includes('ocr-fallback')) return 'ocr';
   return 'fast';
 }
@@ -98,10 +100,18 @@ function installCardConsensus(machine) {
     diagnostics.heroSuitConsensus = `${suitObserved.confirmedCount}/2`;
     const merged = observed.cards.map((c, i) => ({
       ...c,
-      suit: suitObserved.cards[i]?.suit || null,
-      suitConfidence: suitObserved.cards[i]?.suit ? Math.max(Number(cards[i]?.suitConfidence) || 0, Number(c?.suitConfidence) || 0) : 0,
-      suitSource: suitObserved.cards[i]?.suitSource || null,
-      voteCount: Number(cards[i]?.voteCount) || 0,
+      suit: suitObserved.cards[i]?.suit || c?.suit || null,
+      suitConfidence: suitObserved.cards[i]?.suit
+        ? Math.max(Number(cards[i]?.suitConfidence) || 0, Number(c?.suitConfidence) || 0)
+        : Number(c?.suitConfidence) || 0,
+      suitSource: suitObserved.cards[i]?.suitSource || c?.suitSource || null,
+      suitCandidate: cards[i]?.suitCandidate || c?.suitCandidate || null,
+      suitCandidateConfidence: Math.max(Number(cards[i]?.suitCandidateConfidence) || 0, Number(c?.suitCandidateConfidence) || 0),
+      suitMargin: Math.max(Number(cards[i]?.suitMargin) || 0, Number(c?.suitMargin) || 0),
+      suitDistance: Number.isFinite(cards[i]?.suitDistance) ? cards[i].suitDistance : c?.suitDistance,
+      suitFamily: cards[i]?.suitFamily || c?.suitFamily || null,
+      suitRoi: cards[i]?.suitRoi || c?.suitRoi || null,
+      voteCount: Math.max(Number(cards[i]?.voteCount) || 0, Number(c?.voteCount) || 0),
     }));
     return rawSetHero(merged, handId);
   };
@@ -169,19 +179,31 @@ function classifyLocalCard(crop) {
   };
 }
 
-function classifyHeroCard(crop, index, machine) {
+function classifyHeroCard(rankSlotCrop, suitSlotCrop, index, machine) {
   const confirmed = machine?.state?.hero?.[index] || null;
   const confirmedRank = confirmed?.rank || null;
-  if (!confirmedRank) return classifyLocalCard(crop);
-  const suit = classifySuitPixels(crop.data, crop.w, crop.h, confirmedRank);
+
+  // The dedicated suit crop deliberately starts higher and is wider vertically.
+  // It is authoritative for the tiny suit glyph, NOT for rank recognition.
+  // Rank always comes from the legacy/stable Hero rank crop.
+  const rankRead = confirmedRank ? null : classifyRankPixels(rankSlotCrop.data, rankSlotCrop.w, rankSlotCrop.h);
+  const rank = confirmedRank || rankRead?.rank || null;
+  const suit = rank
+    ? classifySuitPixels(suitSlotCrop.data, suitSlotCrop.w, suitSlotCrop.h, rank)
+    : { suit: null, candidate: null, confidence: 0, margin: 0, distance: 1, family: null, roi: null, voteCount: 0 };
+
   return {
-    ...confirmed,
-    rank: confirmedRank,
+    ...(confirmed || {}),
+    rank,
     suit: suit.suit || confirmed?.suit || null,
-    confidence: Math.max(Number(confirmed?.confidence) || 0, 0.76),
+    confidence: confirmedRank
+      ? Math.max(Number(confirmed?.confidence) || 0, 0.76)
+      : Number(rankRead?.confidence) || 0,
     suitConfidence: suit.suit ? suit.confidence || 0 : Number(confirmed?.suitConfidence) || 0,
-    source: suit.suit ? 'hero-suit-refiner' : (confirmed?.source || 'hero-rank-confirmed'),
-    rankCandidate: confirmedRank,
+    source: confirmedRank
+      ? (suit.suit ? 'hero-suit-refiner' : (confirmed?.source || 'hero-rank-confirmed'))
+      : 'hero-rank-refiner',
+    rankCandidate: confirmedRank || rankRead?.candidate || rank,
     ...suitMeta(suit),
   };
 }
@@ -198,6 +220,22 @@ async function completeRank(card, crop, lane) {
     suitConfidence: suit.suit ? (suit.confidence || 0) : 0,
     ...suitMeta(suit),
     confidence: Math.max(card.confidence || 0, Math.max(0.45, (read.confidence || 0) / 100)),
+    source: 'ocr-refiner',
+  };
+}
+
+async function completeHeroRank(card, rankSlotCrop, suitSlotCrop) {
+  if (card.rank) return card;
+  const read = await ocr.readRank(rankCrop(rankSlotCrop.canvas), 'hero-refiner');
+  if (!read?.value) return card;
+  const suit = classifySuitPixels(suitSlotCrop.data, suitSlotCrop.w, suitSlotCrop.h, read.value);
+  return {
+    ...card,
+    rank: read.value,
+    suit: suit.suit || card.suit || null,
+    suitConfidence: suit.suit ? suit.confidence || 0 : Number(card.suitConfidence) || 0,
+    ...suitMeta(suit),
+    confidence: Math.max(Number(card.confidence) || 0, Math.max(0.45, (read.confidence || 0) / 100)),
     source: 'ocr-refiner',
   };
 }
@@ -231,12 +269,14 @@ async function readOnce() {
     }
     if (!layout) return;
 
+    const heroRankSlots = layout.heroSlots;
     const heroSuitSlots = layout.heroSuitSlots || layout.heroSlots;
-    const heroCrops = heroSuitSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHero[i]));
-    const heroPresent = heroCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.24);
+    const heroRankCrops = heroRankSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHeroRank[i]));
+    const heroSuitCrops = heroSuitSlots.map((slot, i) => cropCanvas(frame.canvas, slot, 112, scratchHeroSuit[i]));
+    const heroPresent = heroRankCrops.every((c) => cardPresenceScore(c.data, c.w, c.h) >= 0.24);
     if (heroPresent) {
-      let cards = heroCrops.map((crop, i) => classifyHeroCard(crop, i, machine));
-      for (let i = 0; i < cards.length; i++) cards[i] = await completeRank(cards[i], heroCrops[i], 'hero-refiner');
+      let cards = heroRankCrops.map((rankSlotCrop, i) => classifyHeroCard(rankSlotCrop, heroSuitCrops[i], i, machine));
+      for (let i = 0; i < cards.length; i++) cards[i] = await completeHeroRank(cards[i], heroRankCrops[i], heroSuitCrops[i]);
       if (machine.handId === handId && cards.every((c) => c.rank)) {
         if (machine.setHero(cards, handId)) diagnostics.heroCommits++;
         diagnostics.hero = cardLabel(cards, true);
