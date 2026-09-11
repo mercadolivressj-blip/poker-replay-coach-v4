@@ -121,18 +121,20 @@ export function buildOpponentRange({ hero = [], board = [], events = [], actorNa
     }
   }
 
+  let working = normalizeAndTrim(range, Math.max(maxCombos * 2, 520));
   const actorKey = String(actorName || '').trim().toLowerCase();
   const relevant = (events || []).filter((e) => !actorKey || String(e.actorName || '').trim().toLowerCase() === actorKey);
   for (const e of relevant) {
     const b = streetBoard(board, e.street);
-    for (const combo of range) {
+    for (const combo of working) {
       const like = e.street === 'preflop' ? preflopLikelihood(combo.cards, e.action) : postflopLikelihood(combo.cards, b, e.action);
       const evidence = clamp(Number(e.confidence) || 0.65, 0.35, 1);
       combo.weight *= Math.pow(Math.max(0.015, like), evidence);
     }
+    working = normalizeAndTrim(working, Math.max(maxCombos * 2, 520));
   }
 
-  const out = normalizeAndTrim(range, maxCombos);
+  const out = normalizeAndTrim(working, maxCombos);
   let strong = 0, draw = 0, air = 0;
   const currentBoard = streetBoard(board, board.length >= 5 ? 'river' : board.length === 4 ? 'turn' : board.length >= 3 ? 'flop' : 'preflop');
   if (currentBoard.length >= 3) {
