@@ -1,5 +1,5 @@
-const ACTIONS = new Set(['fold','check','call','bet','raise','allin','show']);
-const STREETS = new Set(['preflop','flop','turn','river','showdown']);
+const ACTIONS = new Set(['fold','check','call','bet','raise','allin']);
+const STREETS = new Set(['preflop','flop','turn','river']);
 
 function actorKey(actorName, seatLabel) {
   return String(actorName || seatLabel || 'unknown').trim().toLowerCase();
@@ -12,8 +12,8 @@ function eventKey(e) {
 
 export class ActionTimeline {
   constructor() { this.resetSession(); }
-  resetSession() { this.handId = 0; this.events = []; this.keys = new Set(); this.revealedHands = new Map(); }
-  resetHand(handId) { this.handId = handId; this.events = []; this.keys.clear(); this.revealedHands.clear(); }
+  resetSession() { this.handId = 0; this.events = []; this.keys = new Set(); }
+  resetHand(handId) { this.handId = handId; this.events = []; this.keys.clear(); }
   append(event) {
     if (!event || event.handId !== this.handId) return false;
     if (!STREETS.has(event.street) || !ACTIONS.has(event.action)) return false;
@@ -33,15 +33,9 @@ export class ActionTimeline {
     });
     return true;
   }
-  reveal({ handId, actorName = null, seatLabel = null, cards = [], confidence = 0 }) {
-    if (handId !== this.handId || !Array.isArray(cards) || cards.length !== 2 || cards.some((c) => !c?.rank)) return false;
-    const key = actorKey(actorName, seatLabel); if (key === 'unknown') return false;
-    this.revealedHands.set(key, { actorName, seatLabel, cards, confidence });
-    return true;
-  }
   eventsFor(actorName, seatLabel = null) {
     const key = actorKey(actorName, seatLabel);
     return this.events.filter((e) => actorKey(e.actorName, e.seatLabel) === key);
   }
-  snapshot() { return { handId: this.handId, events: [...this.events], revealedHands: [...this.revealedHands.values()] }; }
+  snapshot() { return { handId: this.handId, events: [...this.events] }; }
 }
