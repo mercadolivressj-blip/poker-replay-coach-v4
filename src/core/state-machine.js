@@ -25,6 +25,13 @@ function heroIdentityDistance(a, b) {
   return pairVectorDistance(a, b);
 }
 
+function identityConfirmationHits(fp) {
+  // Semantic ranks can be transiently misclassified (e.g. 7↔K, 6↔T) while the
+  // physical card is unchanged. Require a longer stable run before using rank text
+  // alone to declare a new hand. Visual fingerprints keep the original fast gate.
+  return semanticSlots(fp) ? 5 : 2;
+}
+
 export class HandMachine {
   constructor() { this.resetSession(); activeHandMachine = this; }
   resetSession() {
@@ -61,7 +68,7 @@ export class HandMachine {
     if (distance < 0.13) { this.pendingFp = null; this.pendingHits = 0; if (wasMissing) this.reappearArmed = false; return { newHand: false, reason: null, distance }; }
     if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
     else { this.pendingFp = fp; this.pendingHits = 1; }
-    if (this.pendingHits >= 2 && now - this.state.startedAt > 120) {
+    if (this.pendingHits >= identityConfirmationHits(fp) && now - this.state.startedAt > 120) {
       this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.newHand('hero-glyph-change', now);
       return { newHand: true, reason: 'hero-glyph-change', distance };
     }
