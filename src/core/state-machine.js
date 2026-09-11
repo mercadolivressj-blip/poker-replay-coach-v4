@@ -25,11 +25,13 @@ function heroIdentityDistance(a, b) {
   return pairVectorDistance(a, b);
 }
 
-function identityConfirmationHits(fp) {
+function identityConfirmationHits(fp, reappearArmed = false) {
   // Semantic ranks can be transiently misclassified (e.g. 7↔K/J, 6↔T) while the
-  // physical card is unchanged. Require a longer stable run before using rank text
-  // alone to declare a new hand. Visual fingerprints keep the original fast gate.
-  return semanticSlots(fp) ? 5 : 2;
+  // physical card is unchanged. After a real disappearance, three stable semantic
+  // reads are enough for a new hand; without disappearance, semantic text alone is
+  // never allowed to rotate the hand lifecycle.
+  if (semanticSlots(fp)) return reappearArmed ? 3 : Number.POSITIVE_INFINITY;
+  return 2;
 }
 
 function mergeStickyHero(current, incoming) {
@@ -70,9 +72,6 @@ export class HandMachine {
   observeHero(fp, present, now = performance.now()) {
     if (!present) {
       this.heroMissing++;
-      // A few missed frames are normal in fast replay. Arm reappearance only after a
-      // longer run, and never clear the already-confirmed Hero cards just because the
-      // detector blinked.
       if (this.heroMissing >= 6 && now - this.lastHeroSeenAt >= 160) this.reappearArmed = true;
       return { newHand: false, reason: null };
     }
@@ -91,14 +90,21 @@ export class HandMachine {
 
     const distance = heroIdentityDistance(this.lastFp, fp);
     if (distance < 0.13) {
-      // Same physical cards after a detector gap are still the same hand.
       this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false;
       return { newHand: false, reason: wasMissing ? 'hero-same-reappeared' : null, distance };
     }
 
+    // A textual rank disagreement while the cards never disappeared is detector
+    // uncertainty, not evidence of a new hand. This specifically protects 78↔J8,
+    // 73↔K3 and T6↔TT style replay confusions.
+    if (semanticSlots(fp) && !this.reappearArmed) {
+      this.pendingFp = null; this.pendingHits = 0;
+      return { newHand: false, reason: 'semantic-change-without-transition', distance };
+    }
+
     if (this.pendingFp && heroIdentityDistance(this.pendingFp, fp) < 0.065) this.pendingHits++;
     else { this.pendingFp = fp; this.pendingHits = 1; }
-    if (this.pendingHits >= identityConfirmationHits(fp) && now - this.state.startedAt > 120) {
+    if (this.pendingHits >= identityConfirmationHits(fp, this.reappearArmed) && now - this.state.startedAt > 120) {
       this.lastFp = fp; this.pendingFp = null; this.pendingHits = 0; this.reappearArmed = false; this.newHand('hero-glyph-change', now);
       return { newHand: true, reason: 'hero-glyph-change', distance };
     }
