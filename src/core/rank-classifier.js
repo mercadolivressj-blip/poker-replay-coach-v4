@@ -56,7 +56,8 @@ export const RANK_ACCEPTANCE = Object.freeze({
 // so the OCR fallback can arbitrate instead of publishing a fast false positive.
 const CONFUSION_MARGIN = Object.freeze({
   'K': Object.freeze({ '7': 0.16 }),
-  '7': Object.freeze({ 'K': 0.22 }),
+  '7': Object.freeze({ 'K': 0.22, 'J': 0.20 }),
+  'J': Object.freeze({ '7': 0.14 }),
   'T': Object.freeze({ '6': 0.10 }),
   '6': Object.freeze({ 'T': 0.075 }),
 });
