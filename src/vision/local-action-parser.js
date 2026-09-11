@@ -18,14 +18,36 @@ function parseAmount(text) {
   return Number.isFinite(n) ? n : null;
 }
 
+function splitActorAndAction(rawLine) {
+  let body = String(rawLine || '').trim();
+  if (!body) return null;
+
+  // PokerStars system chat commonly prefixes explicit actions with "Dealer:".
+  // Strip only the system prefix; the remaining text must still contain an explicit action verb.
+  body = body.replace(/^(?:Dealer|Sistema|System)\s*:\s*/i, '').trim();
+  if (!body) return null;
+
+  const colon = body.match(/^([^:]{1,40})\s*:\s*(.+)$/);
+  if (colon) {
+    const actorName = colon[1].trim();
+    const text = colon[2].trim();
+    return actorName && ACTION_WORDS.test(normalize(text)) ? { actorName, text } : null;
+  }
+
+  const actionMatch = ACTION_WORDS.exec(body);
+  if (!actionMatch || actionMatch.index <= 0) return null;
+  const actorName = body.slice(0, actionMatch.index).replace(/[\s,:;\-–—]+$/g, '').trim();
+  const text = body.slice(actionMatch.index).trim();
+  if (!actorName || actorName.length > 40) return null;
+  return { actorName, text };
+}
+
 export function parseDealerActionLine(line) {
-  const raw = String(line || '').trim();
-  const m = raw.match(/^([^:]{1,40}):\s*(.+)$/);
-  if (!m) return null;
-  const actorName = m[1].trim();
-  const text = m[2].trim();
+  const parts = splitActorAndAction(line);
+  if (!parts) return null;
+  const { actorName, text } = parts;
   const n = normalize(text);
-  if (!actorName || /^(dealer|sistema|system)$/i.test(actorName) || !ACTION_WORDS.test(n)) return null;
+  if (!ACTION_WORDS.test(n)) return null;
 
   let action = null;
   if (/\b(desiste|folds?)\b/.test(n)) action = 'fold';
@@ -40,4 +62,4 @@ export function parseDealerActionLine(line) {
   return { actorName, action, amount };
 }
 
-export { parseAmount };
+export { parseAmount, splitActorAndAction };
