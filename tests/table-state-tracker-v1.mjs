@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import { assignPositions, inferEvents, TableStateTracker } from '../src/core/table-state-tracker.js';
 
 const seats = [
-  { seatIndex: 0, actorName: 'A', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, confidence: .95 },
-  { seatIndex: 1, actorName: 'B', stack: 1000, committed: 0, dealer: true, folded: false, hero: false, confidence: .95 },
-  { seatIndex: 2, actorName: 'Hero', stack: 1000, committed: 0, dealer: false, folded: false, hero: true, confidence: .95 },
-  { seatIndex: 3, actorName: 'D', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, confidence: .95 },
-  { seatIndex: 4, actorName: 'E', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, confidence: .95 },
-  { seatIndex: 5, actorName: 'F', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, confidence: .95 },
+  { seatIndex: 0, actorName: 'A', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 1, actorName: 'B', stack: 1000, committed: 0, dealer: true, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 2, actorName: 'Hero', stack: 1000, committed: 0, dealer: false, folded: false, hero: true, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 3, actorName: 'D', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 4, actorName: 'E', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 5, actorName: 'F', stack: 1000, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
 ];
 const positioned = assignPositions(seats);
 assert.equal(positioned.find((s) => s.actorName === 'B').position, 'BTN');
@@ -42,6 +42,12 @@ assert.equal(raiseEvents.length, 1);
 assert.equal(raiseEvents[0].action, 'raise');
 assert.equal(raiseEvents[0].amount, 600);
 
+const explicitCheck = seats.map((s) => s.actorName === 'A' ? { ...s, visibleAction: 'check' } : s);
+const checkEvents = inferEvents(prev, { handId: 8, street: 'flop', seats: assignPositions(explicitCheck) });
+assert.equal(checkEvents.length, 1);
+assert.equal(checkEvents[0].action, 'check');
+assert.equal(checkEvents[0].source, 'table-action-text');
+
 const inconsistentStack = callNextSeats.map((s) => s.actorName === 'E' ? { ...s, stack: 999, committed: 500 } : s);
 assert.equal(inferEvents(
   { handId: 8, street: 'flop', seats: assignPositions(callNextSeats) },
@@ -56,11 +62,17 @@ tracker.resetHand(8);
 const first = tracker.ingest({ handId: 8, street: 'preflop', confidence: .9, seats: seats.map((s) => ({ ...s, committed: s.actorName === 'Hero' ? 50 : s.actorName === 'D' ? 100 : 0 })) });
 assert.equal(first.events.length, 0, 'first street snapshot is baseline; blinds are not actions');
 const streetChange = tracker.ingest({ handId: 8, street: 'flop', confidence: .9, seats });
-assert.equal(streetChange.events.length, 0, 'first snapshot of each street is baseline');
+assert.equal(streetChange.events.length, 0, 'first snapshot of a street without explicit action is baseline');
+const explicitOnBaseline = new TableStateTracker();
+explicitOnBaseline.resetHand(9);
+const baselineCheck = explicitOnBaseline.ingest({ handId: 9, street: 'flop', confidence: .9, seats: explicitCheck });
+assert.equal(baselineCheck.events[0]?.action, 'check', 'explicit visible action is evidence even on first snapshot');
 
 const endpoint = fs.readFileSync(new URL('../api/table-state.js', import.meta.url), 'utf8');
 assert.match(endpoint, /replay mode required/i);
 assert.match(endpoint, /Do NOT infer hidden cards/i);
+assert.match(endpoint, /visibleAction MUST be null unless explicit action text/i);
+assert.match(endpoint, /Never fabricate a player, action or numeric value/i);
 assert.match(endpoint, /Precision is more important than coverage/i);
 
 console.log('TABLE STATE TRACKER V1 regressions passed');
