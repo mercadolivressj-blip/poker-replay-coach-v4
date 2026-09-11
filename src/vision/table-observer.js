@@ -5,7 +5,7 @@ export class TableObserver {
     this.generation = 0;
     this.controller = null;
     this.lastReadAt = 0;
-    this.minIntervalMs = 1350;
+    this.minIntervalMs = 850;
     this.lastError = null;
     this.last = null;
     try { this.accessToken = sessionStorage.getItem('prc.vision-token') || ''; } catch { this.accessToken = ''; }
@@ -56,7 +56,7 @@ export class TableObserver {
     this.controller = controller;
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const image = canvas.toDataURL('image/jpeg', 0.72);
+      const image = canvas.toDataURL('image/jpeg', 0.70);
       const r = await fetch('/api/table-state', {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(this.accessToken ? { 'x-coach-token': this.accessToken } : {}) },
