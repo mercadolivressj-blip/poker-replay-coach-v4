@@ -81,12 +81,14 @@ export class HeroCardConsensus {
         refinerHits: 0,
         refinerStrongHits: 0,
         ocrStrongHits: 0,
+        fastHits: 0,
         best: sample,
       };
       bucket.hits++;
       bucket.weighted += Math.max(0.15, sample.confidence) * sourceWeight(sample.source);
       if (sample.confidence >= this.strongConfidence) bucket.strongHits++;
       if (sample.source === 'teacher') bucket.teacherHits++;
+      if (sample.source === 'fast') bucket.fastHits++;
       if (sample.source === 'refiner' || sample.source === 'refiner-ocr') {
         bucket.refinerHits++;
         if (sample.confidence >= this.strongConfidence) bucket.refinerStrongHits++;
@@ -118,9 +120,13 @@ export class HeroCardConsensus {
 
     const secondWeight = ranked.find((b) => b.key !== best.key)?.weighted || 0;
     const dominant = best.weighted >= Math.max(0.01, secondWeight * 1.55);
-    // Fast-only reads need four agreeing samples. OCR can still confirm after
-    // three strong reads, while teacher evidence keeps its existing fast path.
-    const enough = best.hits >= 4 || best.ocrStrongHits >= 3 || (best.teacherHits >= 1 && best.hits >= 2);
+    const fastOnly = best.fastHits === best.hits;
+    // Explicit fast-path samples need four agreeing reads. Generic local/legacy
+    // samples keep the historical three-strong-read behavior, OCR can confirm
+    // after three strong reads, and teacher evidence keeps its existing shortcut.
+    const enough = fastOnly
+      ? best.hits >= 4
+      : best.strongHits >= 3 || best.hits >= 4 || best.ocrStrongHits >= 3 || (best.teacherHits >= 1 && best.hits >= 2);
     if (!dominant || !enough) {
       return {
         accepted: false,
