@@ -85,7 +85,7 @@ export default async function handler(req, res) {
     'visibleActionAmount is the explicit amount associated with visible action text when readable; otherwise null.',
     'committed is crucial even when no action label exists: read only the chips/bet physically sitting in front of that seat for the CURRENT street so a temporal tracker can infer call/bet/raise from changes between snapshots.',
     'Do NOT infer hidden cards, strategy, earlier action history, missing stacks, or a fold merely because cards are not visible. folded=true only when the seat is visibly marked inactive/folded.',
-    'If any value is unclear, use null and lower confidence. Never fabricate a player, action, stack, committed amount, or dealer marker. Precision is more important than coverage.',
+    'Never fabricate a player, action or numeric value. If any value is unclear, use null and lower confidence. Never fabricate a stack, committed amount or dealer marker. Precision is more important than coverage.',
     'dealer=true only when a dealer/button marker is visibly associated with that physical seat. hero=true only when the bottom Hero seat is clearly visible as Hero.',
   ].join('\n');
 
