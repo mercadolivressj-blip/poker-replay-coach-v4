@@ -13,3 +13,4 @@ jobs:
       - run: npm install
       - run: npm test
       - run: node tests/runtime-contract.test.mjs
+      - run: bash tests/browser-smoke.sh
