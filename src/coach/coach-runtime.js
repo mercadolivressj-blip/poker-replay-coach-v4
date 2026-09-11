@@ -1,6 +1,8 @@
 import { activeHandMachine } from '../core/state-machine.js';
 import { ActionTimeline } from '../core/action-timeline.js';
+import { TableStateTracker } from '../core/table-state-tracker.js';
 import { ActionObserver } from '../vision/action-observer.js';
+import { TableObserver } from '../vision/table-observer.js';
 import { OpponentStatsStore } from './opponent-stats.js';
 import { buildProCoachReport } from './pro-coach.js';
 import { ReasoningBrain, buildReasoningPayload } from './reasoning-brain.js';
@@ -8,10 +10,13 @@ import { ReasoningBrain, buildReasoningPayload } from './reasoning-brain.js';
 const AGGRO = new Set(['bet', 'raise', 'allin']);
 const timeline = new ActionTimeline();
 const observer = new ActionObserver();
+const tableObserver = new TableObserver();
+const tableTracker = new TableStateTracker();
 const brain = new ReasoningBrain();
 const stats = new OpponentStatsStore();
 let lastHandId = 0;
 let idlePending = false;
+let tableIdlePending = false;
 let lastToken = observer.accessToken || '';
 let lastUiKey = '';
 
@@ -54,6 +59,7 @@ function syncToken() {
   if (token === lastToken) return;
   lastToken = token;
   observer.setAccessToken(token);
+  tableObserver.setAccessToken(token);
   brain.setAccessToken(token);
 }
 
@@ -63,12 +69,16 @@ function rotateHand(machine) {
   lastHandId = machine.handId;
   if (machine.handId <= 0) {
     timeline.resetSession();
+    tableTracker.resetSession();
     stats.resetSession();
     observer.resetSession();
+    tableObserver.resetSession();
     brain.resetSession();
   } else {
     timeline.resetHand(machine.handId);
+    tableTracker.resetHand(machine.handId);
     observer.resetHand();
+    tableObserver.resetHand();
     brain.resetHand();
   }
   lastUiKey = '';
@@ -95,6 +105,26 @@ function appendObservedEvents(out, handId) {
   return added;
 }
 
+function appendTableEvents(events, handId) {
+  if (!Number.isInteger(handId) || handId !== activeHandMachine?.handId) return 0;
+  let added = 0;
+  for (const e of events || []) {
+    if ((e.confidence || 0) < 0.6) continue;
+    if (timeline.append({
+      handId,
+      street: e.street,
+      actorName: e.actorName,
+      seatLabel: e.seatLabel,
+      action: e.action,
+      amount: Number.isFinite(e.amount) ? e.amount : null,
+      source: e.source || 'table-diff',
+      confidence: e.confidence,
+      observedAt: performance.now(),
+    })) added++;
+  }
+  return added;
+}
+
 function maybeObserve(machine) {
   const source = visibleSource();
   if (!source || idlePending || !observer.shouldRead(machine.handId, machine.state.street)) return;
@@ -112,6 +142,30 @@ function maybeObserve(machine) {
     });
   };
   if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 450 });
+  else setTimeout(run, 0);
+}
+
+function maybeObserveTable(machine) {
+  const source = visibleSource();
+  if (!source || tableIdlePending || !tableObserver.shouldRead(machine.handId)) return;
+  const handId = machine.handId;
+  const street = machine.state.street;
+  tableIdlePending = true;
+  const run = () => {
+    tableIdlePending = false;
+    if (!activeHandMachine || activeHandMachine.handId !== handId) return;
+    const frozen = snapshotSource(source, 1050);
+    if (!frozen) return;
+    const fingerprint = `${street}:${Math.round((source.currentTime || 0) * 2)}`;
+    tableObserver.read(frozen, handId, street, { fingerprint }).then((out) => {
+      if (!out || !activeHandMachine || activeHandMachine.handId !== handId) return;
+      const result = tableTracker.ingest(out);
+      if (!result.accepted) return;
+      appendTableEvents(result.events, handId);
+      renderCoach(activeHandMachine);
+    });
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 650 });
   else setTimeout(run, 0);
 }
 
@@ -197,6 +251,7 @@ function reasoningContext(machine, report, actorName, potBefore, playerStats) {
     potBefore,
     opponentStats: playerStats,
     baseline: baselineForReasoning(report),
+    tableState: tableTracker.latest,
   });
 }
 
@@ -219,13 +274,14 @@ function renderOpponent(report, actorName) {
   if (!box || !title || !meta || !reasons) return;
   const live = actorName && opp?.confidence >= 45;
   box.classList.toggle('live', !!live);
+  const heroPosition = tableTracker.latest?.heroPosition;
   if (!actorName) {
     title.textContent = observer.accessToken ? 'Aguardando linha do rival' : 'Ative a Vision para ler o histórico';
-    meta.textContent = 'Cartas do rival sempre ocultas · range por ações';
-    reasons.textContent = observer.lastError ? `Observer: ${observer.lastError}` : 'O Coach nunca presume a mão exata do adversário.';
+    meta.textContent = `Cartas do rival sempre ocultas · ${heroPosition ? `Hero ${heroPosition}` : 'posição em leitura'}`;
+    reasons.textContent = observer.lastError || tableObserver.lastError ? `Observer: ${observer.lastError || tableObserver.lastError}` : 'O Coach nunca presume a mão exata do adversário.';
   } else {
     title.textContent = opp?.label || 'INCONCLUSIVO';
-    meta.textContent = `${actorName} · confiança ${opp?.confidence || 0}% · ${report.rangeMix?.label || 'range em construção'}`;
+    meta.textContent = `${actorName} · confiança ${opp?.confidence || 0}% · ${report.rangeMix?.label || 'range em construção'}${heroPosition ? ` · Hero ${heroPosition}` : ''}`;
     reasons.textContent = (opp?.reasons || []).slice(-2).join(' · ') || 'Acumulando ações da mão.';
   }
 }
@@ -307,7 +363,10 @@ function tick() {
   const machine = activeHandMachine;
   if (!machine) return;
   rotateHand(machine);
-  if (machine.handId > 0) maybeObserve(machine);
+  if (machine.handId > 0) {
+    maybeObserve(machine);
+    maybeObserveTable(machine);
+  }
   renderCoach(machine);
 }
 
