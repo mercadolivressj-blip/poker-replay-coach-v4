@@ -48,7 +48,7 @@ export class BoardCardConsensus {
       const ranked = [...buckets.values()].sort((a, b) => b.weighted - a.weighted || b.hits - a.hits);
       const best = ranked[0], second = ranked[1];
       if (!best) continue;
-      const dominant = !second || best.weighted >= second.weighted * 1.55;
+      const dominant = !second || best.weighted >= second.weighted * 1.35;
       const enough = best.hits >= this.minHits && (best.strong >= 1 || best.weighted >= this.minHits * 0.62);
       if (dominant && enough) this.confirmed[i] = { rank: best.rank, card: clone(best.best.card) };
     }
