@@ -8,9 +8,12 @@ let loading = null;
 let busy = false;
 let lastReadAt = 0;
 let lastHandId = 0;
+const recentLines = new Map();
 
-export const localActionDiagnostics = { reads: 0, appended: 0, lastMs: 0, lastText: '', lastError: null };
+export const localActionDiagnostics = { reads: 0, appended: 0, suppressed: 0, lastMs: 0, lastText: '', lastError: null };
 if (typeof window !== 'undefined') window.__prcLocalActionDiagnostics = localActionDiagnostics;
+
+function lineKey(line) { return String(line || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
 
 function visibleSource() {
   const video = document.getElementById('video');
@@ -71,6 +74,19 @@ async function ensureWorker() {
   }
 }
 
+function isFreshLine(line, now) {
+  const key = lineKey(line);
+  if (!key) return false;
+  const prior = recentLines.get(key);
+  recentLines.set(key, now);
+  for (const [k, seenAt] of recentLines) if (now - seenAt > 6000) recentLines.delete(k);
+  if (Number.isFinite(prior) && now - prior < 2400) {
+    localActionDiagnostics.suppressed++;
+    return false;
+  }
+  return true;
+}
+
 async function readOnce() {
   const machine = activeHandMachine;
   const timeline = activeActionTimeline;
@@ -79,7 +95,11 @@ async function readOnce() {
   const now = performance.now();
   if (now - lastReadAt < 850) return;
   lastReadAt = now;
-  if (lastHandId !== machine.handId) { lastHandId = machine.handId; localActionDiagnostics.lastText = ''; }
+  if (lastHandId !== machine.handId) {
+    lastHandId = machine.handId;
+    recentLines.clear();
+    localActionDiagnostics.lastText = '';
+  }
 
   const canvas = cropChat(source);
   if (!canvas) return;
@@ -94,15 +114,16 @@ async function readOnce() {
     if (activeHandMachine?.handId !== handId || activeActionTimeline?.handId !== handId) return;
     const data = out?.data || {};
     const text = String(data.text || '').trim();
+    const observedAt = performance.now();
     localActionDiagnostics.reads++;
-    localActionDiagnostics.lastMs = performance.now() - t0;
+    localActionDiagnostics.lastMs = observedAt - t0;
     localActionDiagnostics.lastText = text.slice(-500);
     localActionDiagnostics.lastError = null;
     const baseConfidence = Math.max(0.58, Math.min(0.92, (Number(data.confidence) || 55) / 100));
 
     for (const line of text.split(/\r?\n/)) {
       const event = parseDealerActionLine(line);
-      if (!event) continue;
+      if (!event || !isFreshLine(line, observedAt)) continue;
       if (activeActionTimeline.append({
         handId,
         street,
@@ -112,7 +133,7 @@ async function readOnce() {
         amount: event.amount,
         source: 'local-dealer-chat',
         confidence: baseConfidence,
-        observedAt: performance.now(),
+        observedAt,
       })) localActionDiagnostics.appended++;
     }
   } catch (e) {
