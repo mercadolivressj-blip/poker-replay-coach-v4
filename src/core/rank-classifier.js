@@ -1,5 +1,6 @@
 import { extractRankMask, shiftedMaskDistance, unpackMask, RANK_MASK_W, RANK_MASK_H } from './rank-mask.js';
 import { SEEDED_RANK_TEMPLATES } from './rank-templates.js';
+import { CALIBRATION_RANK_TEMPLATES } from './rank-calibration.js';
 
 const RANKS = [...'23456789TJQKA'];
 let decoded = null;
@@ -24,10 +25,13 @@ function seedDb() {
   if (decoded) return decoded;
   decoded = {};
   for (const rank of RANKS) {
-    const masks = (SEEDED_RANK_TEMPLATES[rank] || [])
-      .map((s) => unpackMask(decodeBase64(s), RANK_MASK_W * RANK_MASK_H))
-      .filter((m) => inkCount(m) >= 120);
-    decoded[rank] = masks.length ? masks : (SEEDED_RANK_TEMPLATES[rank] || []).map((s) => unpackMask(decodeBase64(s)));
+    const sources = [
+      ...(SEEDED_RANK_TEMPLATES[rank] || []),
+      ...(CALIBRATION_RANK_TEMPLATES[rank] || []),
+    ];
+    const masks = sources.map((s) => unpackMask(decodeBase64(s), RANK_MASK_W * RANK_MASK_H));
+    const valid = masks.filter((m) => inkCount(m) >= 120);
+    decoded[rank] = valid.length ? valid : masks;
   }
   return decoded;
 }
