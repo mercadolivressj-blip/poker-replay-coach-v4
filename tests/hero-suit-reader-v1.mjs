@@ -72,8 +72,8 @@ assert.match(runtime, /function classifyHeroCard\(rankSlotCrop, suitSlotCrop/, '
 assert.match(runtime, /confirmedRank/, 'Hero suit refinement must preserve the already-confirmed rank');
 assert.match(runtime, /classifySuitPixels\(suitSlotCrop\.data, suitSlotCrop\.w, suitSlotCrop\.h, rank\)/, 'Hero refiner must classify suit using the rank while reading the dedicated suit crop');
 assert.match(runtime, /classifyRankPixels\(rankSlotCrop\.data, rankSlotCrop\.w, rankSlotCrop\.h\)/, 'Hero refiner must never read rank from the suit crop');
-assert.match(runtime, /function syncHeroHand/, 'Hero refiner must explicitly reset consensus on hand rollover');
-assert.match(runtime, /heroBurstUntil = now \+ 320/, 'new hand should trigger a bounded foreground Hero read burst');
+assert.match(runtime, /function syncCardHand/, 'card refiner must explicitly reset Hero and board consensus on hand rollover');
+assert.match(runtime, /heroBurstUntil = now \+ 420/, 'new hand should trigger a bounded foreground card read burst');
 assert.match(runtime, /return 'refiner'/, 'dedicated Hero refiner must have an explicit consensus source');
 assert.match(runtime, /const boardCrops = layout\.boardSlots/, 'board path must remain on the proven board geometry');
 
