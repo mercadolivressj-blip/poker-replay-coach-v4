@@ -12,6 +12,7 @@ const diagnostics = {
   commits: 0,
   relatches: 0,
   restores: 0,
+  handIdRebinds: 0,
   absentFrames: 0,
   candidateHits: 0,
   hero: '—',
@@ -71,16 +72,27 @@ function resetCandidate() {
   diagnostics.candidateHits = 0;
 }
 
+// R12 persistence rule: handId is bookkeeping, not visual truth. A confirmed Hero
+// hand must survive a spurious lifecycle rotation while the physical cards never
+// disappeared. Only a sustained physical gap arms a real redeal.
 function onHandId(machine) {
   if (!machine || machine.handId === seenHandId) return;
+  const previous = seenHandId;
   seenHandId = machine.handId;
-  latch = null;
-  latchFp = null;
-  boardDisplayLatch = [];
-  absentSince = 0;
-  absentFrames = 0;
-  gapArmed = false;
   resetCandidate();
+
+  if (latch && !gapArmed && absentFrames < 4) {
+    latch.handId = machine.handId;
+    diagnostics.handIdRebinds++;
+  }
+
+  // Never clear latch/latchFp here. The old R11 did that and caused the exact
+  // preflop -> flop blink: a lifecycle handId change erased a perfectly read hand.
+  if (previous < 0) {
+    absentSince = 0;
+    absentFrames = 0;
+    gapArmed = false;
+  }
 }
 
 function publish(machine) {
@@ -88,13 +100,19 @@ function publish(machine) {
   const heroEl = document.getElementById('heroCards');
   const boardEl = document.getElementById('boardCards');
 
-  if (latch?.cards?.length === 2 && latch.handId === machine.handId) {
-    const current = machine.state.hero || [];
-    const same = current.length === 2 && current.every((c, i) => String(c?.rank || '') === String(latch.cards[i]?.rank || ''));
-    if (!same || current.some((c, i) => !c?.suit && latch.cards[i]?.suit)) {
-      machine.state.hero = latch.cards.map((c) => ({ ...c }));
-      diagnostics.restores++;
+  if (latch?.cards?.length === 2) {
+    const sameGeneration = latch.handId === machine.handId;
+    if (sameGeneration) {
+      const current = machine.state.hero || [];
+      const same = current.length === 2 && current.every((c, i) => String(c?.rank || '') === String(latch.cards[i]?.rank || ''));
+      if (!same || current.some((c, i) => !c?.suit && latch.cards[i]?.suit)) {
+        machine.state.hero = latch.cards.map((c) => ({ ...c }));
+        diagnostics.restores++;
+      }
     }
+    // UI is independently latched. During a real between-hand gap we keep the last
+    // confirmed label until the replacement hand is confirmed, avoiding flicker;
+    // stale cards are NOT restored into machine.state when generations differ.
     if (heroEl) heroEl.textContent = label(latch.cards);
   }
 
@@ -141,17 +159,17 @@ function commit(machine, cards, fp, reason) {
   const visualChanged = latchFp && fp ? vectorDistance(latchFp, fp) >= 0.10 : false;
 
   if (latch && latch.handId === machine.handId && ranksChanged && (gapArmed || visualChanged)) {
-    machine.newHand(gapArmed ? 'hero-authority-redeal-r11' : 'hero-authority-visual-change-r11', performance.now());
+    machine.newHand(gapArmed ? 'hero-authority-redeal-r12' : 'hero-authority-visual-change-r12', performance.now());
     seenHandId = machine.handId;
     boardDisplayLatch = [];
     diagnostics.relatches++;
   }
 
   const handId = machine.handId;
-  latch = { handId, cards: cards.map((c) => ({ ...c, authority: 'r11' })), reason, confirmedAt: performance.now() };
+  latch = { handId, cards: cards.map((c) => ({ ...c, authority: 'r12' })), reason, confirmedAt: performance.now() };
   latchFp = fp;
   machine.state.hero = latch.cards.map((c) => ({ ...c }));
-  machine.state.reason = machine.state.reason === 'waiting' ? 'hero-authority-r11' : machine.state.reason;
+  machine.state.reason = machine.state.reason === 'waiting' ? 'hero-authority-r12' : machine.state.reason;
   diagnostics.commits++;
   diagnostics.hero = label(latch.cards);
   gapArmed = false;
@@ -183,10 +201,8 @@ async function readOnce() {
         lastGeomAt = now;
       }
     }
-    if (!layout || machine.handId !== startedHandId) return;
+    if (!layout) return;
 
-    // Restore the proven beginning-of-day Hero geometry. This deliberately does
-    // not use the R10 whole-screen card locator.
     const slots = layout.heroSuitSlots || layout.heroSlots;
     const crops = slots.map((slot, i) => cropCanvas(frame.canvas, slot, 160, scratchHero[i]));
     const scores = crops.map((c) => cardPresenceScore(c.data, c.w, c.h));
@@ -196,7 +212,7 @@ async function readOnce() {
       absentFrames++;
       diagnostics.absentFrames = absentFrames;
       if (!absentSince) absentSince = now;
-      if (absentFrames >= 4 && now - absentSince >= 140) gapArmed = true;
+      if (absentFrames >= 5 && now - absentSince >= 180) gapArmed = true;
       publish(machine);
       return;
     }
@@ -207,7 +223,14 @@ async function readOnce() {
     const fp = slotFingerprint(crops);
 
     const rankReads = await Promise.all(crops.map(rankForCrop));
-    if (machine.handId !== startedHandId || rankReads.some((r) => !r?.rank)) {
+    // A concurrent handId rotation must not erase the existing latch. Rebind only
+    // when there was no physical card gap; otherwise let the new cards relatch.
+    if (machine.handId !== startedHandId) {
+      onHandId(machine);
+      publish(machine);
+      return;
+    }
+    if (rankReads.some((r) => !r?.rank)) {
       publish(machine);
       return;
     }
@@ -224,7 +247,6 @@ async function readOnce() {
       };
     });
 
-    // If the latch already has these ranks, use every frame only to enrich suits.
     if (latch?.handId === machine.handId && latch.cards.every((c, i) => c.rank === cards[i].rank)) {
       let improved = false;
       const merged = latch.cards.map((old, i) => {
@@ -264,7 +286,7 @@ async function readOnce() {
     diagnostics.reads++;
     diagnostics.lastError = null;
   } catch (e) {
-    diagnostics.lastError = e?.message || 'hero-authority-r11-failed';
+    diagnostics.lastError = e?.message || 'hero-authority-r12-failed';
     publish(machine);
   } finally {
     busy = false;
