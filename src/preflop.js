@@ -45,15 +45,19 @@ export function preflopHandKey(cards) {
 export function classifyPreflopHand(cards) {
   const key = preflopHandKey(cards);
   if (!key) return null;
+  if (key.length === 2) {
+    const category = exactCategory(key);
+    return { key, category, label: LABELS[category], suitedKnown: !!cards[0]?.suit && !!cards[1]?.suit, suitRelevant: false };
+  }
   if (!key.endsWith('?')) {
     const category = exactCategory(key);
-    return { key, category, label: LABELS[category], suitedKnown: true };
+    return { key, category, label: LABELS[category], suitedKnown: true, suitRelevant: true };
   }
   const base = key.slice(0, 2);
   const suitedCategory = exactCategory(`${base}s`);
   const offsuitCategory = exactCategory(`${base}o`);
   const category = CATEGORY_ORDER[Math.min(CATEGORY_ORDER.indexOf(suitedCategory), CATEGORY_ORDER.indexOf(offsuitCategory))];
-  return { key, category, label: LABELS[category], suitedKnown: false, suitedCategory, offsuitCategory };
+  return { key, category, label: LABELS[category], suitedKnown: false, suitRelevant: true, suitedCategory, offsuitCategory };
 }
 
 const find = (actions, type) => actions.find((a) => a.type === type);
@@ -69,9 +73,14 @@ export function recommendPreflop(state) {
   const pot = Number.isFinite(state.pot) ? state.pot : null;
   const potOdds = call && pot ? call / (pot + call) : null;
   const freeOption = has(actions, 'check');
+  const suitDetail = !profile.suitRelevant
+    ? 'Par de mão; o naipe não altera a classe pré-flop.'
+    : profile.suitedKnown
+      ? 'Naipe confirmado.'
+      : 'Naipe ainda não confirmado; classificação conservadora.';
   const details = [
     `Mão pré-flop: ${profile.key} · ${profile.label}.`,
-    profile.suitedKnown ? 'Naipe confirmado.' : 'Naipe ainda não confirmado; classificação conservadora.',
+    suitDetail,
     'Sem posição, stack efetivo e linha completa: confiança limitada.',
   ];
   if (potOdds !== null) details.push(`Preço do call: ~${Math.round(potOdds * 100)}% do pote final.`);
