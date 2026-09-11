@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.vercel/
+.DS_Store
+*.log
+fixtures/real/
+fixtures/public/
+tests/.tmp-system-ocr/
+tests/tmp-*.mjs
+tests/redact-public.mjs
