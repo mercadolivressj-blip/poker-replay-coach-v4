@@ -32,10 +32,37 @@ assert.equal(committedT6.key, 'T6');
 assert.equal(c.observe(tt, { handId: 2, now: 195 }).reason, 'sticky-mismatch');
 assert.equal(c.snapshot().committed.key, 'T6');
 
-const machine = new HandMachine();
-assert.equal(machine.observeHero(['7','3'], true, 1000).newHand, true);
-for (const t of [1100, 1160, 1220, 1280]) assert.equal(machine.observeHero(['K','3'], true, t).newHand, false);
-assert.equal(machine.observeHero(['K','3'], true, 1340).newHand, true, 'five stable semantic frames may declare a real new hand');
+// Confirmed Hero cards are immutable inside one hand. A rank classifier blip such
+// as 78 -> J8 must be rejected, while suit enrichment on the same ranks is allowed.
+const sticky = new HandMachine();
+assert.equal(sticky.observeHero(['7','8'], true, 1000).newHand, true);
+assert.equal(sticky.setHero([{ rank: '7', suit: null, confidence: .9 }, { rank: '8', suit: null, confidence: .9 }], sticky.handId), true);
+assert.equal(sticky.setHero([{ rank: 'J', suit: 'spades', confidence: .99 }, { rank: '8', suit: 'hearts', confidence: .99 }], sticky.handId), false, 'rank mutation inside hand must be rejected');
+assert.deepEqual(sticky.state.hero.map((x) => x.rank), ['7','8']);
+assert.equal(sticky.setHero([{ rank: '7', suit: 'clubs', confidence: .95, suitConfidence: .92 }, { rank: '8', suit: 'diamonds', confidence: .95, suitConfidence: .92 }], sticky.handId), true);
+assert.deepEqual(sticky.state.hero.map((x) => `${x.rank}:${x.suit}`), ['7:clubs','8:diamonds']);
+
+// Continuous semantic disagreement is detector uncertainty, not a new hand.
+for (const t of [1060, 1120, 1180, 1240, 1300, 1360, 1420]) {
+  assert.equal(sticky.observeHero(['J','8'], true, t).newHand, false, 'J8 jitter must not rotate a continuously visible 78 hand');
+}
+assert.equal(sticky.handId, 1);
+assert.deepEqual(sticky.state.hero.map((x) => x.rank), ['7','8']);
+
+// Short/long detector gaps must not erase a hand if the same cards reappear.
+for (const t of [1500, 1540, 1580, 1620, 1660, 1700, 1740]) sticky.observeHero(null, false, t);
+const sameBack = sticky.observeHero(['7','8'], true, 1800);
+assert.equal(sameBack.newHand, false, 'same cards reappearing after detector dropout stay in the same hand');
+assert.equal(sticky.handId, 1);
+assert.deepEqual(sticky.state.hero.map((x) => x.rank), ['7','8']);
+
+// After a real disappearance, a different stable semantic pair may start the next hand.
+for (const t of [1900, 1940, 1980, 2020, 2060, 2100, 2140]) sticky.observeHero(null, false, t);
+assert.equal(sticky.observeHero(['J','8'], true, 2200).newHand, false);
+assert.equal(sticky.observeHero(['J','8'], true, 2260).newHand, false);
+assert.equal(sticky.observeHero(['J','8'], true, 2320).newHand, true, 'real disappearance plus three stable reads may rotate the hand');
+assert.equal(sticky.handId, 2);
+assert.equal(sticky.state.hero.length, 0, 'new hand starts blank until its cards are reconfirmed');
 
 assert.deepEqual(parseDealerActionLine('tattou81: paga 200'), { actorName: 'tattou81', action: 'call', amount: 200 });
 assert.deepEqual(parseDealerActionLine('Regnypontes: aumenta 200 para 600'), { actorName: 'Regnypontes', action: 'raise', amount: 600 });
@@ -64,9 +91,14 @@ const rankSource = fs.readFileSync(new URL('../src/core/rank-classifier.js', imp
 assert.match(rankSource, /CALIBRATION_RANK_TEMPLATES/);
 assert.match(rankSource, /CONFUSION_MARGIN/);
 assert.match(rankSource, /'K': Object\.freeze\(\{ '7':/);
+assert.match(rankSource, /'J': Object\.freeze\(\{ '7':/);
+assert.match(rankSource, /'7': Object\.freeze\(\{ 'K': 0\.22, 'J':/);
 assert.match(rankSource, /'T': Object\.freeze\(\{ '6':/);
+const stateSource = fs.readFileSync(new URL('../src/core/state-machine.js', import.meta.url), 'utf8');
+assert.match(stateSource, /semantic-change-without-transition/);
+assert.match(stateSource, /sameRanks/);
 const localActionRuntime = fs.readFileSync(new URL('../src/vision/local-action-runtime.js', import.meta.url), 'utf8');
 assert.match(localActionRuntime, /recentLines/);
 assert.match(localActionRuntime, /2400/);
 
-console.log('ROBUST REPLAY V1 regressions passed');
+console.log('ROBUST REPLAY V2 regressions passed');
