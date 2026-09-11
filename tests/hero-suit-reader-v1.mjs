@@ -66,13 +66,15 @@ assert.equal(accepted.key, '82');
 assert.equal(accepted.reason, 'refiner-consensus');
 
 const runtime = fs.readFileSync(new URL('../src/vision/card-refiner-runtime.js', import.meta.url), 'utf8');
+assert.match(runtime, /const heroRankSlots = layout\.heroSlots/, 'Hero rank must keep the proven legacy rank geometry');
 assert.match(runtime, /layout\.heroSuitSlots \|\| layout\.heroSlots/, 'Hero refiner must consume dedicated suit geometry');
-assert.match(runtime, /function classifyHeroCard/, 'Hero suit refinement must have its own classifier path');
+assert.match(runtime, /function classifyHeroCard\(rankSlotCrop, suitSlotCrop/, 'Hero rank and suit must use separate crop inputs');
 assert.match(runtime, /confirmedRank/, 'Hero suit refinement must preserve the already-confirmed rank');
-assert.match(runtime, /classifySuitPixels\(crop\.data, crop\.w, crop\.h, confirmedRank\)/, 'Hero refiner must classify suit using the confirmed rank');
+assert.match(runtime, /classifySuitPixels\(suitSlotCrop\.data, suitSlotCrop\.w, suitSlotCrop\.h, rank\)/, 'Hero refiner must classify suit using the rank while reading the dedicated suit crop');
+assert.match(runtime, /classifyRankPixels\(rankSlotCrop\.data, rankSlotCrop\.w, rankSlotCrop\.h\)/, 'Hero refiner must never read rank from the suit crop');
 assert.match(runtime, /function syncHeroHand/, 'Hero refiner must explicitly reset consensus on hand rollover');
 assert.match(runtime, /heroBurstUntil = now \+ 320/, 'new hand should trigger a bounded foreground Hero read burst');
 assert.match(runtime, /return 'refiner'/, 'dedicated Hero refiner must have an explicit consensus source');
-assert.match(runtime, /const boardCrops = layout\.boardSlots/, 'board path must remain unchanged');
+assert.match(runtime, /const boardCrops = layout\.boardSlots/, 'board path must remain on the proven board geometry');
 
 console.log('HERO SUIT READER V1 regressions passed');
