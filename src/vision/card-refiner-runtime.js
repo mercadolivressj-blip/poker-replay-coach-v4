@@ -4,6 +4,7 @@ import { cropCanvas } from '../core/image.js';
 import { classifyRankPixels } from '../core/rank-classifier.js';
 import { classifySuitPixels } from '../core/suit-classifier.js';
 import { HeroCardConsensus } from '../core/hero-card-consensus.js';
+import { BoardCardConsensus } from '../core/board-card-consensus.js';
 import { SuitConsensus } from '../core/suit-consensus.js';
 import { OcrService } from '../core/ocr.js';
 import { cardPresenceScore, boardCountFromScores, rankCrop } from '../detectors/cards.js';
@@ -18,6 +19,7 @@ const diagnostics = {
   hero: '—',
   board: '—',
   heroSuitConsensus: '—',
+  boardRankConsensus: '—',
   boardSuitConsensus: '—',
   heroSuitGeometry: 'dedicated',
   lastError: null,
@@ -27,6 +29,7 @@ if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnost
 const ocr = new OcrService();
 const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
 const heroSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 2, allowFacePairCandidates: true });
+const boardRankConsensus = new BoardCardConsensus({ windowMs: 420, slots: 5, minHits: 3 });
 const boardSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 5 });
 let consensusHandId = 0;
 let boardConsensusHandId = 0;
@@ -109,9 +112,18 @@ function installCardConsensus(machine) {
     const now = performance.now();
     if (boardConsensusHandId !== handId) {
       boardConsensusHandId = handId;
+      boardRankConsensus.resetHand(handId);
       boardSuitConsensus.resetHand(handId);
+      diagnostics.boardRankConsensus = '0/5';
+      diagnostics.boardSuitConsensus = '0/5';
     }
-    const stable = boardSuitConsensus.observe(cards, { handId, now });
+    if (!cards.length) return rawSetBoard(cards, handId);
+
+    const rankStable = boardRankConsensus.observe(cards, { handId, now });
+    diagnostics.boardRankConsensus = `${rankStable.confirmedCount}/${cards.length}`;
+    if (!rankStable.ready) return false;
+
+    const stable = boardSuitConsensus.observe(rankStable.cards, { handId, now });
     diagnostics.boardSuitConsensus = `${stable.confirmedCount}/${cards.length}`;
     const old = machine.state.board || [];
     const merged = stable.cards.map((c, i) => {
