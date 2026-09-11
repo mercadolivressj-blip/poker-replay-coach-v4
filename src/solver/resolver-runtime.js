@@ -1,6 +1,7 @@
 import { activeHandMachine } from '../core/state-machine.js';
 import { activeActionTimeline } from '../core/action-timeline.js';
 import { activeTableStateTracker } from '../core/table-state-tracker.js';
+import { decisionStateKey, publishDecision, clearDecision } from '../core/decision-store.js';
 import { ContinualResolver, resolverFingerprint } from './continual-resolver.js';
 
 const AGGRO = new Set(['bet', 'raise', 'allin']);
@@ -8,11 +9,18 @@ const LABEL = { fold: 'DESISTIR', check: 'PASSAR', call: 'PAGAR', bet: 'APOSTAR'
 const resolver = new ContinualResolver();
 let lastHandId = 0;
 let lastUiKey = '';
-let auditedFingerprint = null;
-let wasBrainReady = false;
+let lastPublished = null;
+let applyingPublished = false;
 
 function $(id) { return document.getElementById(id); }
-function cloneCard(c) { return c ? { rank: c.rank, suit: c.suit || null, confidence: Number.isFinite(c.confidence) ? c.confidence : null } : null; }
+function cloneCard(c) { return c ? { rank: c.rank, suit: c.suit || null, confidence: Number.isFinite(c.confidence) ? c.confidence : null, suitConfidence: Number.isFinite(c.suitConfidence) ? c.suitConfidence : null } : null; }
+function completeCard(c) { return !!c?.rank && !!c?.suit; }
+function cardsReady(state) {
+  if (!state || state.hero?.length !== 2 || !state.hero.every(completeCard)) return false;
+  if (state.street === 'preflop') return (state.board || []).length === 0;
+  const expected = state.street === 'flop' ? 3 : state.street === 'turn' ? 4 : state.street === 'river' ? 5 : 0;
+  return expected > 0 && state.board?.length === expected && state.board.every(completeCard);
+}
 
 function ensureResolverStatus() {
   const brain = $('brainStatus');
@@ -76,31 +84,38 @@ function contextSnapshot(machine) {
   return { handId: machine.handId, state, events, actorName, table };
 }
 
-function remoteAuditOwnsUi(fingerprint, statusBadge) {
-  const brain = $('brainStatus');
-  const ready = !!brain && brain.classList.contains('ready') && String(brain.textContent || '').startsWith('CÉREBRO');
-  if (ready && !wasBrainReady) auditedFingerprint = fingerprint;
-  wasBrainReady = ready;
-  if (ready && auditedFingerprint === fingerprint) {
-    if (statusBadge) statusBadge.textContent = 'AUDITOR ✓';
-    return true;
-  }
-  return false;
+function applyPublished() {
+  const machine = activeHandMachine;
+  if (!machine || !lastPublished || lastPublished.stateKey !== decisionStateKey(machine.handId, machine.state) || applyingPublished) return;
+  const decision = $('decisionText'), reason = $('decisionReason'), details = $('decisionDetails'), confidence = $('confidence');
+  if (!decision || !reason || !details || !confidence) return;
+  applyingPublished = true;
+  try {
+    if (decision.textContent !== lastPublished.decision) decision.textContent = lastPublished.decision;
+    if (reason.textContent !== lastPublished.reason) reason.textContent = lastPublished.reason;
+    if (details.textContent !== lastPublished.details) details.textContent = lastPublished.details;
+    const conf = lastPublished.confidence > 0 ? `${lastPublished.confidence}%` : '—';
+    if (confidence.textContent !== conf) confidence.textContent = conf;
+  } finally { applyingPublished = false; }
 }
 
-function renderLocal(result, cacheHit, statusBadge) {
-  if (!result || result.decision === 'insufficient') return;
-  const decision = $('decisionText');
-  const reason = $('decisionReason');
-  const details = $('decisionDetails');
-  const confidence = $('confidence');
-  if (!decision || !reason || !details || !confidence) return;
+function publishUi(entry) {
+  lastPublished = entry;
+  publishDecision(entry);
+  applyPublished();
+}
 
-  const uiKey = `${result.fingerprint}:${result.decision}:${result.confidence}:${cacheHit}`;
-  if (uiKey === lastUiKey) return;
-  lastUiKey = uiKey;
-  decision.textContent = LABEL[result.decision] || 'LEITURA INSUFICIENTE';
-  reason.textContent = result.reason;
+function publishInsufficient(machine, reason, statusBadge) {
+  const stateKey = decisionStateKey(machine.handId, machine.state);
+  publishUi({ stateKey, decision: 'LEITURA INSUFICIENTE', reason, details: 'O resolver não chuta informação ausente.', confidence: 0, source: 'resolver-local' });
+  if (statusBadge) { statusBadge.textContent = reason.includes('naipe') ? 'RESOLVER · LENDO NAIPE' : 'RESOLVER · DADOS INSUFICIENTES'; statusBadge.className = 'brain-status'; }
+}
+
+function renderLocal(result, cacheHit, statusBadge, machine) {
+  if (!result || result.decision === 'insufficient') {
+    publishInsufficient(machine, result?.reason || 'Dados insuficientes para o resolver local.', statusBadge);
+    return;
+  }
   const bits = [];
   if (Number.isFinite(result.equity)) bits.push(`Equity local ~${Math.round(result.equity * 100)}%`);
   if (result.rangeSummary?.comboCount) bits.push(`range ${result.rangeSummary.comboCount} combos`);
@@ -108,8 +123,19 @@ function renderLocal(result, cacheHit, statusBadge) {
   if (result.localChatCount) bits.push(`chat local ${result.localChatCount}`);
   bits.push(cacheHit ? 'pré-calculado antes da sua vez' : `micro-resolve ${Math.round((result.preparedMs || 0) + (result.ms || 0))}ms`);
   if (result.caveats?.length) bits.push(result.caveats[0]);
-  details.textContent = bits.join(' · ');
-  confidence.textContent = `${result.confidence}%`;
+  const uiKey = `${result.fingerprint}:${result.decision}:${result.confidence}:${bits.join('|')}`;
+  if (uiKey !== lastUiKey) {
+    lastUiKey = uiKey;
+    publishUi({
+      stateKey: decisionStateKey(machine.handId, machine.state),
+      decision: LABEL[result.decision] || 'LEITURA INSUFICIENTE',
+      reason: result.reason,
+      details: bits.join(' · '),
+      confidence: result.confidence,
+      source: 'resolver-local',
+      fingerprint: result.fingerprint,
+    });
+  } else applyPublished();
   if (statusBadge) {
     statusBadge.textContent = cacheHit ? `RESOLVER PRONTO · ${result.ms.toFixed(1)}ms` : `RESOLVER · ${Math.round((result.preparedMs || 0) + result.ms)}ms`;
     statusBadge.className = 'brain-status ready';
@@ -124,11 +150,28 @@ function tick() {
     lastHandId = machine.handId;
     resolver.resetHand();
     lastUiKey = '';
-    auditedFingerprint = null;
-    wasBrainReady = false;
+    lastPublished = null;
+    clearDecision();
   }
-  if (machine.handId <= 0 || machine.state.hero?.length !== 2 || !Number.isFinite(machine.state.pot)) {
+
+  if (machine.handId <= 0) {
     if (statusBadge) statusBadge.textContent = 'RESOLVER LOCAL';
+    return;
+  }
+  if (machine.state.hero?.length !== 2) {
+    if (machine.state.heroToAct) publishInsufficient(machine, 'Ainda estou confirmando suas cartas.', statusBadge);
+    else if (statusBadge) statusBadge.textContent = 'RESOLVER · LENDO CARTAS';
+    return;
+  }
+  const missingSuit = machine.state.hero.some((c) => !c?.suit) || (machine.state.board || []).some((c) => c?.rank && !c?.suit);
+  if (missingSuit || !cardsReady(machine.state)) {
+    if (machine.state.heroToAct) publishInsufficient(machine, 'Ainda estou confirmando o naipe das cartas.', statusBadge);
+    else if (statusBadge) statusBadge.textContent = 'RESOLVER · LENDO NAIPE';
+    return;
+  }
+  if (!Number.isFinite(machine.state.pot)) {
+    if (machine.state.heroToAct) publishInsufficient(machine, 'Ainda estou confirmando o pote.', statusBadge);
+    else if (statusBadge) statusBadge.textContent = 'RESOLVER · LENDO POTE';
     return;
   }
 
@@ -137,15 +180,22 @@ function tick() {
   resolver.schedule(context);
 
   if (!machine.state.heroToAct || !machine.state.actions?.length) {
+    lastPublished = null;
+    clearDecision();
     if (statusBadge) statusBadge.textContent = resolver.prepared?.fingerprint === fingerprint ? 'RESOLVER PRÉ-CALCULADO' : 'RESOLVER CALCULANDO';
     return;
   }
-  if (remoteAuditOwnsUi(fingerprint, statusBadge)) return;
 
   const cacheHit = resolver.prepared?.fingerprint === fingerprint;
   const result = resolver.resolve(context, machine.state.actions);
-  renderLocal(result, cacheHit, statusBadge);
+  renderLocal(result, cacheHit, statusBadge, machine);
 }
 
-setInterval(tick, 60);
+const observerTarget = document.querySelector('.coach-card') || document.body;
+if (observerTarget && typeof MutationObserver !== 'undefined') {
+  const observer = new MutationObserver(() => applyPublished());
+  observer.observe(observerTarget, { subtree: true, childList: true, characterData: true });
+}
+
+setInterval(tick, 45);
 setTimeout(tick, 0);
