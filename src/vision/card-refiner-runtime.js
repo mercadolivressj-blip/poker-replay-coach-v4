@@ -4,6 +4,7 @@ import { cropCanvas } from '../core/image.js';
 import { classifyRankPixels } from '../core/rank-classifier.js';
 import { classifySuitPixels } from '../core/suit-classifier.js';
 import { HeroCardConsensus } from '../core/hero-card-consensus.js';
+import { SuitConsensus } from '../core/suit-consensus.js';
 import { OcrService } from '../core/ocr.js';
 import { cardPresenceScore, boardCountFromScores, rankCrop } from '../detectors/cards.js';
 
@@ -15,12 +16,14 @@ const diagnostics = {
   lastMs: 0,
   hero: '—',
   board: '—',
+  suitConsensus: '—',
   lastError: null,
 };
 if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnostics;
 
 const ocr = new OcrService();
 const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
+const suitConsensus = new SuitConsensus({ windowMs: 360 });
 let consensusHandId = 0;
 let busy = false;
 let lastReadAt = 0;
@@ -62,13 +65,24 @@ function installHeroConsensus(machine) {
   const rawSetHero = machine.setHero.bind(machine);
   machine.setHero = (cards, handId) => {
     if (handId !== machine.handId) return false;
+    const now = performance.now();
     if (consensusHandId !== handId) {
       consensusHandId = handId;
       consensus.resetHand(handId);
+      suitConsensus.resetHand(handId);
     }
-    const observed = consensus.observe(cards, { handId, source: cardSource(cards), now: performance.now() });
+    const observed = consensus.observe(cards, { handId, source: cardSource(cards), now });
     if (!observed.accepted) return false;
-    return rawSetHero(observed.cards, handId);
+    const suitObserved = suitConsensus.observe(cards, { handId, now });
+    diagnostics.suitConsensus = `${suitObserved.confirmedCount}/2`;
+    const merged = observed.cards.map((c, i) => ({
+      ...c,
+      suit: suitObserved.cards[i]?.suit || null,
+      suitConfidence: suitObserved.cards[i]?.suit ? Math.max(Number(cards[i]?.suitConfidence) || 0, Number(c?.suitConfidence) || 0) : 0,
+      suitSource: suitObserved.cards[i]?.suitSource || null,
+      voteCount: Number(cards[i]?.voteCount) || 0,
+    }));
+    return rawSetHero(merged, handId);
   };
 
   const rawSetBoard = machine.setBoard.bind(machine);
@@ -104,6 +118,7 @@ function classifyLocalCard(crop) {
     rankCandidate: rank.candidate || null,
     suitCandidate: suit.candidate || null,
     suitRoi: suit.roi || null,
+    voteCount: suit.voteCount || 0,
   };
 }
 
@@ -136,7 +151,7 @@ async function readOnce() {
   const source = visibleSource();
   if (!machine || !source || busy) return;
   const now = performance.now();
-  if (now - lastReadAt < 70) return;
+  if (now - lastReadAt < 58) return;
   lastReadAt = now;
   const frame = captureFrame(source); if (!frame) return;
   busy = true; const t0 = performance.now(); const handId = machine.handId;
@@ -183,9 +198,9 @@ async function readOnce() {
 
 function tick() {
   syncVisibleCardLabels(activeHandMachine);
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 160 });
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 110 });
   else void readOnce();
 }
 
-setInterval(tick, 55);
-setTimeout(tick, 120);
+setInterval(tick, 45);
+setTimeout(tick, 90);
