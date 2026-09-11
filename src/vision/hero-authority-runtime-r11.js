@@ -110,9 +110,6 @@ function publish(machine) {
         diagnostics.restores++;
       }
     }
-    // UI is independently latched. During a real between-hand gap we keep the last
-    // confirmed label until the replacement hand is confirmed, avoiding flicker;
-    // stale cards are NOT restored into machine.state when generations differ.
     if (heroEl) heroEl.textContent = label(latch.cards);
   }
 
@@ -212,7 +209,7 @@ async function readOnce() {
       absentFrames++;
       diagnostics.absentFrames = absentFrames;
       if (!absentSince) absentSince = now;
-      if (absentFrames >= 5 && now - absentSince >= 180) gapArmed = true;
+      if (absentFrames >= 4 && now - absentSince >= 140) gapArmed = true;
       publish(machine);
       return;
     }
@@ -223,8 +220,6 @@ async function readOnce() {
     const fp = slotFingerprint(crops);
 
     const rankReads = await Promise.all(crops.map(rankForCrop));
-    // A concurrent handId rotation must not erase the existing latch. Rebind only
-    // when there was no physical card gap; otherwise let the new cards relatch.
     if (machine.handId !== startedHandId) {
       onHandId(machine);
       publish(machine);
