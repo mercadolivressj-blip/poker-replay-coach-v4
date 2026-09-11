@@ -23,7 +23,7 @@ function pairCandidate(card) {
   const margin = Number(card?.suitMargin);
   const distance = Number(card?.suitDistance);
   if (!suit || !Number.isFinite(confidence) || !Number.isFinite(margin) || !Number.isFinite(distance)) return null;
-  if (confidence < 0.36 || margin < 0.01 || distance > 0.62) return null;
+  if (confidence < 0.34 || margin < 0.008 || distance > 0.64) return null;
   return { suit, confidence, margin, distance };
 }
 
@@ -101,7 +101,7 @@ export class SuitConsensus {
 
     if (sameFacePair) {
       const softBest = (slot) => {
-        if (this.confirmed[slot]) return { suit: this.confirmed[slot], ready: true, hard: true };
+        if (this.confirmed[slot]) return { suit: this.confirmed[slot], ready: true, hard: true, hits: 99, avg: 1, dominant: true };
         const buckets = new Map();
         for (const s of this.samples[slot].filter((x) => x.soft)) {
           const b = buckets.get(s.suit) || { suit: s.suit, hits: 0, score: 0, confSum: 0 };
@@ -111,11 +111,20 @@ export class SuitConsensus {
         const best = ranked[0], second = ranked[1];
         if (!best) return null;
         const avg = best.confSum / Math.max(1, best.hits);
-        const dominant = !second || best.score >= second.score * 1.45;
-        return { suit: best.suit, ready: dominant && best.hits >= 4 && avg >= 0.42, hard: false };
+        const dominant = !second || best.score >= second.score * 1.42;
+        return { suit: best.suit, ready: dominant && best.hits >= 4 && avg >= 0.40, hard: false, hits: best.hits, avg, dominant };
       };
       const a = softBest(0), b = softBest(1);
-      if (a?.ready && b?.ready && a.suit !== b.suit) {
+
+      // If one physical card already has a hard-confirmed suit, the paired face
+      // card can resolve from three stable soft candidates as long as it is a
+      // different suit. This targets real QQ/KK/JJ/AA replays without ever
+      // manufacturing an impossible duplicate exact card.
+      if (this.confirmed[0] && !this.confirmed[1] && b?.dominant && b.hits >= 3 && b.avg >= 0.37 && b.suit !== this.confirmed[0]) {
+        this.confirmed[1] = b.suit;
+      } else if (this.confirmed[1] && !this.confirmed[0] && a?.dominant && a.hits >= 3 && a.avg >= 0.37 && a.suit !== this.confirmed[1]) {
+        this.confirmed[0] = a.suit;
+      } else if (a?.ready && b?.ready && a.suit !== b.suit) {
         if (!this.confirmed[0]) this.confirmed[0] = a.suit;
         if (!this.confirmed[1]) this.confirmed[1] = b.suit;
       }
