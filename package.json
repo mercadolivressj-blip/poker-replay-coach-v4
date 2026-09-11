@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "serve": "python3 -m http.server 4173",
-    "test": "node tests/run-public.mjs && node tests/preflop-v1.mjs && node tests/reconstructor-v1.mjs && node tests/pro-coach-v1.mjs",
+    "test": "node tests/run-public.mjs && node tests/preflop-v1.mjs && node tests/reconstructor-v1.mjs && node tests/pro-coach-v1.mjs && node tests/action-observer-v1.mjs",
     "test:visual": "node tests/visual-fixtures.test.mjs",
     "test:ocr": "node tests/system-ocr.test.mjs",
     "test:smoke": "bash tests/browser-smoke.sh",
