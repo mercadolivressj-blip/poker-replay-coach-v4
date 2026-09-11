@@ -14,6 +14,21 @@ let wasBrainReady = false;
 function $(id) { return document.getElementById(id); }
 function cloneCard(c) { return c ? { rank: c.rank, suit: c.suit || null, confidence: Number.isFinite(c.confidence) ? c.confidence : null } : null; }
 
+function ensureResolverStatus() {
+  const brain = $('brainStatus');
+  if (!brain) return null;
+  brain.style.display = 'none';
+  let badge = $('resolverStatus');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'resolverStatus';
+    badge.className = 'brain-status ready';
+    badge.textContent = 'RESOLVER LOCAL';
+    brain.insertAdjacentElement('afterend', badge);
+  }
+  return badge;
+}
+
 function snapshotTable(actorName) {
   const raw = activeTableStateTracker?.latest;
   if (!raw || raw.handId !== activeHandMachine?.handId) return null;
@@ -61,21 +76,24 @@ function contextSnapshot(machine) {
   return { handId: machine.handId, state, events, actorName, table };
 }
 
-function remoteAuditOwnsUi(fingerprint) {
-  const badge = $('brainStatus');
-  const ready = !!badge && badge.classList.contains('ready') && String(badge.textContent || '').startsWith('CÉREBRO');
+function remoteAuditOwnsUi(fingerprint, statusBadge) {
+  const brain = $('brainStatus');
+  const ready = !!brain && brain.classList.contains('ready') && String(brain.textContent || '').startsWith('CÉREBRO');
   if (ready && !wasBrainReady) auditedFingerprint = fingerprint;
   wasBrainReady = ready;
-  return ready && auditedFingerprint === fingerprint;
+  if (ready && auditedFingerprint === fingerprint) {
+    if (statusBadge) statusBadge.textContent = 'AUDITOR ✓';
+    return true;
+  }
+  return false;
 }
 
-function renderLocal(result, cacheHit) {
+function renderLocal(result, cacheHit, statusBadge) {
   if (!result || result.decision === 'insufficient') return;
   const decision = $('decisionText');
   const reason = $('decisionReason');
   const details = $('decisionDetails');
   const confidence = $('confidence');
-  const badge = $('brainStatus');
   if (!decision || !reason || !details || !confidence) return;
 
   const uiKey = `${result.fingerprint}:${result.decision}:${result.confidence}:${cacheHit}`;
@@ -90,13 +108,14 @@ function renderLocal(result, cacheHit) {
   if (result.caveats?.length) bits.push(result.caveats[0]);
   details.textContent = bits.join(' · ');
   confidence.textContent = `${result.confidence}%`;
-  if (badge) {
-    badge.textContent = cacheHit ? `RESOLVER PRONTO · ${result.ms.toFixed(1)}ms` : `RESOLVER · ${Math.round((result.preparedMs || 0) + result.ms)}ms`;
-    badge.className = 'brain-status ready';
+  if (statusBadge) {
+    statusBadge.textContent = cacheHit ? `RESOLVER PRONTO · ${result.ms.toFixed(1)}ms` : `RESOLVER · ${Math.round((result.preparedMs || 0) + result.ms)}ms`;
+    statusBadge.className = 'brain-status ready';
   }
 }
 
 function tick() {
+  const statusBadge = ensureResolverStatus();
   const machine = activeHandMachine;
   if (!machine) return;
   if (machine.handId !== lastHandId) {
@@ -106,17 +125,24 @@ function tick() {
     auditedFingerprint = null;
     wasBrainReady = false;
   }
-  if (machine.handId <= 0 || machine.state.hero?.length !== 2 || !Number.isFinite(machine.state.pot)) return;
+  if (machine.handId <= 0 || machine.state.hero?.length !== 2 || !Number.isFinite(machine.state.pot)) {
+    if (statusBadge) statusBadge.textContent = 'RESOLVER LOCAL';
+    return;
+  }
 
   const context = contextSnapshot(machine);
   const fingerprint = resolverFingerprint(context);
   resolver.schedule(context);
-  if (!machine.state.heroToAct || !machine.state.actions?.length) return;
-  if (remoteAuditOwnsUi(fingerprint)) return;
+
+  if (!machine.state.heroToAct || !machine.state.actions?.length) {
+    if (statusBadge) statusBadge.textContent = resolver.prepared?.fingerprint === fingerprint ? 'RESOLVER PRÉ-CALCULADO' : 'RESOLVER CALCULANDO';
+    return;
+  }
+  if (remoteAuditOwnsUi(fingerprint, statusBadge)) return;
 
   const cacheHit = resolver.prepared?.fingerprint === fingerprint;
   const result = resolver.resolve(context, machine.state.actions);
-  renderLocal(result, cacheHit);
+  renderLocal(result, cacheHit, statusBadge);
 }
 
 setInterval(tick, 60);
