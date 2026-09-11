@@ -1,0 +1,1 @@
+export class LatencyMeter{constructor(){this.turnStart=null;this.last=null}turn(){this.turnStart=performance.now()}decision(){if(this.turnStart!==null){this.last=Math.round(performance.now()-this.turnStart);this.turnStart=null}return this.last}}
