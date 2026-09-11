@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { HeroCardConsensus } from '../src/core/hero-card-consensus.js';
+import { HandMachine } from '../src/core/state-machine.js';
 import { parseDealerActionLine } from '../src/vision/local-action-parser.js';
 
 const c = new HeroCardConsensus();
@@ -29,6 +30,12 @@ assert.equal(committedT6.accepted, true);
 assert.equal(committedT6.key, 'T6');
 assert.equal(c.observe(tt, { handId: 2, now: 195 }).reason, 'sticky-mismatch');
 assert.equal(c.snapshot().committed.key, 'T6');
+
+// Semantic rank jitter alone must not rotate a hand after only a few bad frames.
+const machine = new HandMachine();
+assert.equal(machine.observeHero(['7','3'], true, 1000).newHand, true);
+for (const t of [1100, 1160, 1220, 1280]) assert.equal(machine.observeHero(['K','3'], true, t).newHand, false);
+assert.equal(machine.observeHero(['K','3'], true, 1340).newHand, true, 'five stable semantic frames may declare a real new hand');
 
 assert.deepEqual(parseDealerActionLine('tattou81: paga 200'), { actorName: 'tattou81', action: 'call', amount: 200 });
 assert.deepEqual(parseDealerActionLine('Regnypontes: aumenta 200 para 600'), { actorName: 'Regnypontes', action: 'raise', amount: 600 });
