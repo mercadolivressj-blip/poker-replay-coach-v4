@@ -7,6 +7,7 @@ import { HeroCardConsensus } from '../core/hero-card-consensus.js';
 import { OcrService } from '../core/ocr.js';
 import { cardPresenceScore, boardCountFromScores, rankCrop } from '../detectors/cards.js';
 
+const SUIT_SYMBOL = Object.freeze({ clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' });
 const diagnostics = {
   reads: 0,
   heroCommits: 0,
@@ -102,6 +103,7 @@ function classifyLocalCard(crop) {
     source: 'card-refiner-local',
     rankCandidate: rank.candidate || null,
     suitCandidate: suit.candidate || null,
+    suitRoi: suit.roi || null,
   };
 }
 
@@ -117,8 +119,16 @@ async function completeRank(card, crop, lane) {
   };
 }
 
-function cardLabel(cards) {
-  return (cards || []).map((c) => `${c?.rank || '?'}${c?.suit ? c.suit[0] : '?'}`).join(' ');
+function cardLabel(cards, showUnknownSuit = true) {
+  return (cards || []).map((c) => `${c?.rank || '?'}${c?.suit ? (SUIT_SYMBOL[c.suit] || '?') : (showUnknownSuit ? '?' : '')}`).join(' ');
+}
+
+function syncVisibleCardLabels(machine) {
+  if (!machine) return;
+  const heroEl = document.getElementById('heroCards');
+  const boardEl = document.getElementById('boardCards');
+  if (heroEl && machine.state.hero?.length === 2) heroEl.textContent = cardLabel(machine.state.hero, true);
+  if (boardEl) boardEl.textContent = machine.state.board?.length ? cardLabel(machine.state.board, true) : '—';
 }
 
 async function readOnce() {
@@ -144,7 +154,7 @@ async function readOnce() {
       for (let i = 0; i < cards.length; i++) cards[i] = await completeRank(cards[i], heroCrops[i], 'hero-refiner');
       if (machine.handId === handId && cards.every((c) => c.rank)) {
         if (machine.setHero(cards, handId)) diagnostics.heroCommits++;
-        diagnostics.hero = cardLabel(cards);
+        diagnostics.hero = cardLabel(cards, true);
       }
     }
 
@@ -156,10 +166,11 @@ async function readOnce() {
       for (let i = 0; i < board.length; i++) board[i] = await completeRank(board[i], boardCrops[i], 'board-refiner');
       if (machine.handId === handId && board.length === count && board.every((c) => c.rank)) {
         if (machine.setBoard(board, handId)) diagnostics.boardCommits++;
-        diagnostics.board = cardLabel(board);
+        diagnostics.board = cardLabel(board, true);
       }
     } else diagnostics.board = '—';
 
+    syncVisibleCardLabels(machine);
     diagnostics.reads++;
     diagnostics.lastError = null;
   } catch (e) {
@@ -171,6 +182,7 @@ async function readOnce() {
 }
 
 function tick() {
+  syncVisibleCardLabels(activeHandMachine);
   if (typeof requestIdleCallback === 'function') requestIdleCallback(() => void readOnce(), { timeout: 160 });
   else void readOnce();
 }
