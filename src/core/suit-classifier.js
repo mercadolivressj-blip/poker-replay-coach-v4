@@ -11,10 +11,17 @@ const TEMPLATE_B64 = Object.freeze({
   diamonds: 'AAAAAAAAAB8AAB8AAB8AwH8AwH8A4H8A4H8A4P8D+P8P+P8P+P8D+P8D4P8DwH8AwH8AwH8AwH8AAB8AAAcAAAcAAAAAAAAA',
 });
 
-// PokerStars compact cards repeat suit pips across the card face. Three cheap
-// windows give redundancy without OCR or network calls. The far-left rank glyph
-// is deliberately excluded from every profile.
-const ROI_PROFILES = Object.freeze([
+const FACE_RANKS = new Set(['A','J','Q','K']);
+
+// Every PokerStars face has a small authoritative suit glyph directly under the
+// rank in the left corner. For A/J/Q/K this is the ONLY region we trust: the
+// large right side may contain face art or a PokerStars watermark and must not
+// vote as a suit. Numeric cards may use repeated pips as redundant evidence.
+const CORNER_PROFILE = Object.freeze({
+  name: 'corner-under-rank', x0: 0.00, x1: 0.36, y0: 0.29, y1: 0.82, bonus: 0.16,
+});
+const NUMERIC_ROI_PROFILES = Object.freeze([
+  CORNER_PROFILE,
   { name: 'right-top',   x0: 0.45, x1: 0.99, y0: 0.00, y1: 0.50, bonus: 0.08 },
   { name: 'right-lower', x0: 0.42, x1: 0.99, y0: 0.24, y1: 0.84, bonus: 0.05 },
   { name: 'mid-top',     x0: 0.25, x1: 0.76, y0: 0.00, y1: 0.52, bonus: 0.00 },
@@ -117,14 +124,16 @@ function extractFromProfile(data, w, h, box, profile, outW, outH) {
   return normalizeComponent(comps[0], redInk, rw, outW, outH, profile);
 }
 
-function extractSuitCandidates(data, w, h, outW = SUIT_MASK_W, outH = SUIT_MASK_H) {
+function extractSuitCandidates(data, w, h, outW = SUIT_MASK_W, outH = SUIT_MASK_H, rank = null) {
   const box = cardFaceBox(data, w, h);
   if (!box) return [];
-  return ROI_PROFILES.map((profile) => extractFromProfile(data, w, h, box, profile, outW, outH)).filter(Boolean);
+  const r = rank ? String(rank).toUpperCase() : null;
+  const profiles = FACE_RANKS.has(r) ? [CORNER_PROFILE] : NUMERIC_ROI_PROFILES;
+  return profiles.map((profile) => extractFromProfile(data, w, h, box, profile, outW, outH)).filter(Boolean);
 }
 
-export function extractSuitMask(data, w, h, outW = SUIT_MASK_W, outH = SUIT_MASK_H) {
-  const candidates = extractSuitCandidates(data, w, h, outW, outH);
+export function extractSuitMask(data, w, h, outW = SUIT_MASK_W, outH = SUIT_MASK_H, rank = null) {
+  const candidates = extractSuitCandidates(data, w, h, outW, outH, rank);
   if (!candidates.length) return { mask: null, family: null, redRatio: 0, quality: 0, roi: null };
   candidates.sort((a, b) => b.quality - a.quality);
   return candidates[0];
@@ -143,8 +152,8 @@ export function classifySuitMask(mask, family = null) {
   return { suit: accepted ? best.suit : null, candidate: best.suit, confidence, distance: best.d, margin, family };
 }
 
-export function classifySuitPixels(data, w, h) {
-  const extracted = extractSuitCandidates(data, w, h);
+export function classifySuitPixels(data, w, h, rank = null) {
+  const extracted = extractSuitCandidates(data, w, h, SUIT_MASK_W, SUIT_MASK_H, rank);
   if (!extracted.length) return { suit: null, confidence: 0, distance: 1, margin: 0, family: null, mask: null, redRatio: 0, roi: null, voteCount: 0 };
   const results = extracted.map((candidate) => ({
     ...classifySuitMask(candidate.mask, candidate.family),
@@ -167,14 +176,15 @@ export function classifySuitPixels(data, w, h) {
   if (rankedVotes.length) {
     const winner = rankedVotes[0], runner = rankedVotes[1];
     const dominant = !runner || winner.score >= runner.score * 1.22;
-    const singleStrong = winner.count === 1 && winner.best.confidence >= 0.88 && winner.best.margin >= 0.045;
+    const face = FACE_RANKS.has(rank ? String(rank).toUpperCase() : null);
+    const singleStrong = winner.count === 1 && winner.best.confidence >= (face ? 0.84 : 0.88) && winner.best.margin >= (face ? 0.035 : 0.045);
     if (dominant && (winner.count >= 2 || singleStrong)) {
-      const confidence = Math.min(0.995, Math.max(winner.best.confidence, 0.80 + Math.min(0.15, (winner.count - 1) * 0.055)));
-      return { ...winner.best, suit: winner.suit, confidence, voteCount: winner.count, voteScore: winner.score };
+      const confidence = Math.min(0.995, Math.max(winner.best.confidence, face ? 0.84 : 0.80 + Math.min(0.15, (winner.count - 1) * 0.055)));
+      return { ...winner.best, suit: winner.suit, confidence, voteCount: winner.count, voteScore: winner.score, rankAware: !!rank };
     }
   }
 
   results.sort((a, b) => (b.confidence + b.quality * 0.08) - (a.confidence + a.quality * 0.08));
   const best = results[0];
-  return { ...best, suit: null, confidence: Math.min(best.confidence, 0.68), ambiguous: true, voteCount: rankedVotes[0]?.count || 0 };
+  return { ...best, suit: null, confidence: Math.min(best.confidence, 0.68), ambiguous: true, voteCount: rankedVotes[0]?.count || 0, rankAware: !!rank };
 }
