@@ -19,10 +19,11 @@ assert.equal(board.observe(bad, { handId: 11, now: 0 }).ready, false);
 assert.equal(board.observe(bad, { handId: 11, now: 50 }).ready, false);
 assert.equal(board.observe(good, { handId: 11, now: 100 }).ready, false);
 assert.equal(board.observe(good, { handId: 11, now: 150 }).ready, false);
-const stable = board.observe(good, { handId: 11, now: 200 });
+assert.equal(board.observe(good, { handId: 11, now: 200 }).ready, false, 'conflicting startup history requires one more clean frame');
+const stable = board.observe(good, { handId: 11, now: 250 });
 assert.equal(stable.ready, true);
 assert.deepEqual(stable.ranks, ['3','2','6']);
-assert.deepEqual(board.observe(bad, { handId: 11, now: 250 }).ranks, ['3','2','6'], 'confirmed flop cannot mutate after a later 3↔5 flicker');
+assert.deepEqual(board.observe(bad, { handId: 11, now: 300 }).ranks, ['3','2','6'], 'confirmed flop cannot mutate after a later 3↔5 flicker');
 
 const pair = new SuitConsensus({ windowMs: 500, slots: 2, allowFacePairCandidates: true });
 pair.resetHand(12);
