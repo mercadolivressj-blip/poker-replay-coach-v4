@@ -12,11 +12,6 @@ const TEMPLATE_B64 = Object.freeze({
 });
 
 const FACE_RANKS = new Set(['A','J','Q','K']);
-
-// Every PokerStars face has a small authoritative suit glyph directly under the
-// rank in the left corner. For A/J/Q/K this is the ONLY region we trust: the
-// large right side may contain face art or a PokerStars watermark and must not
-// vote as a suit. Numeric cards may use repeated pips as redundant evidence.
 const CORNER_PROFILE = Object.freeze({
   name: 'corner-under-rank', x0: 0.00, x1: 0.36, y0: 0.29, y1: 0.82, bonus: 0.16,
 });
@@ -62,6 +57,40 @@ function connected(mask, w, h) {
   return out;
 }
 
+function mergeComponents(comps) {
+  if (!comps.length) return null;
+  const pts = comps.flatMap((c) => c.pts);
+  let minX = Infinity, maxX = -1, minY = Infinity, maxY = -1;
+  for (const p of pts) {
+    const c = comps.find((x) => x.pts.includes(p));
+    if (!c) continue;
+  }
+  for (const c of comps) {
+    minX = Math.min(minX, c.minX); maxX = Math.max(maxX, c.maxX);
+    minY = Math.min(minY, c.minY); maxY = Math.max(maxY, c.maxY);
+  }
+  return { pts, area: pts.length, minX, maxX, minY, maxY, w: maxX - minX + 1, h: maxY - minY + 1 };
+}
+
+function cornerComponent(raw, rw, rh) {
+  const usable = raw.filter((c) => {
+    if (c.area < 2 || c.w < 2 || c.h < 1) return false;
+    if (c.minY <= Math.max(1, Math.floor(rh * 0.06))) return false; // rank tail/top-border fragment
+    if (c.w > rw * 0.82 || c.h > rh * 0.90) return false;
+    return true;
+  });
+  if (!usable.length) return null;
+  const main = usable.reduce((a, b) => (a.area >= b.area ? a : b));
+  const maxGap = Math.max(3, Math.round(rh * 0.18));
+  const selected = usable.filter((c) => {
+    if (c === main) return true;
+    const horizontalNear = c.maxX >= main.minX - 3 && c.minX <= main.maxX + 3;
+    const verticalGap = c.minY > main.maxY ? c.minY - main.maxY : main.minY > c.maxY ? main.minY - c.maxY : 0;
+    return horizontalNear && verticalGap <= maxGap;
+  });
+  return mergeComponents(selected);
+}
+
 function normalizeComponent(c, redInk, rw, outW, outH, profile) {
   const glyph = new Uint8Array(c.w * c.h); let redCount = 0;
   for (const p of c.pts) {
@@ -104,24 +133,32 @@ function extractFromProfile(data, w, h, box, profile, outW, outH) {
     if (red) redInk[y * rw + x] = 1;
   }
 
-  const comps = connected(ink, rw, rh).filter((c) => {
-    if (c.area < 5 || c.w < 3 || c.h < 3) return false;
-    if (c.w > rw * 0.86 || c.h > rh * 0.92) return false;
-    if (c.minX === 0 && c.w <= 2) return false;
-    if (c.minY === 0 && c.h <= 2) return false;
-    return true;
-  });
-  if (!comps.length) return null;
-
-  comps.sort((a, b) => {
-    const score = (c) => {
-      const shape = Math.min(1.35, c.area / Math.max(1, c.w * c.h * 0.42));
-      const aspect = Math.min(c.w, c.h) / Math.max(1, Math.max(c.w, c.h));
-      return c.area * shape * (0.72 + aspect * 0.28);
-    };
-    return score(b) - score(a);
-  });
-  return normalizeComponent(comps[0], redInk, rw, outW, outH, profile);
+  const raw = connected(ink, rw, rh);
+  let component = null;
+  if (profile.name === 'corner-under-rank') {
+    component = cornerComponent(raw, rw, rh);
+  } else {
+    const comps = raw.filter((c) => {
+      if (c.area < 5 || c.w < 3 || c.h < 3) return false;
+      if (c.w > rw * 0.86 || c.h > rh * 0.92) return false;
+      if (c.minX === 0 && c.w <= 2) return false;
+      if (c.minY === 0 && c.h <= 2) return false;
+      return true;
+    });
+    if (comps.length) {
+      comps.sort((a, b) => {
+        const score = (c) => {
+          const shape = Math.min(1.35, c.area / Math.max(1, c.w * c.h * 0.42));
+          const aspect = Math.min(c.w, c.h) / Math.max(1, Math.max(c.w, c.h));
+          return c.area * shape * (0.72 + aspect * 0.28);
+        };
+        return score(b) - score(a);
+      });
+      component = comps[0];
+    }
+  }
+  if (!component) return null;
+  return normalizeComponent(component, redInk, rw, outW, outH, profile);
 }
 
 function extractSuitCandidates(data, w, h, outW = SUIT_MASK_W, outH = SUIT_MASK_H, rank = null) {
