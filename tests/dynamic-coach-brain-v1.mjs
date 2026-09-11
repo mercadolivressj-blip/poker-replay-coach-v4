@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildReasoningPayload, reasoningFingerprint, dynamicDecisionIsUsable } from '../src/coach/reasoning-brain.js';
-import { sanitizePayload, allowedDecision } from '../api/coach.js';
+import { sanitizePayload, allowedDecision, objectiveDataQuality, shouldVerifyDecision, calibrateConfidence } from '../api/coach.js';
 
 const state = {
   street: 'river',
@@ -47,11 +47,21 @@ assert.equal(allowedDecision('call', safe.value.actions), true);
 assert.equal(allowedDecision('raise', safe.value.actions), false);
 assert.equal(allowedDecision('insufficient', safe.value.actions), true);
 
+const quality = objectiveDataQuality(safe.value);
+assert(quality >= 80, `well-observed replay spot should have strong objective quality, got ${quality}`);
+assert.equal(shouldVerifyDecision({ decision: 'call', confidence: 72, alternatives: [{ score: 55 }, { score: 52 }], uncertainties: [] }, quality), true, 'low-confidence close spot must get a second pass');
+assert.equal(shouldVerifyDecision({ decision: 'call', confidence: 94, alternatives: [{ score: 92 }, { score: 62 }], uncertainties: [] }, 95), false, 'clear high-quality spot should stay single-pass');
+assert.equal(calibrateConfidence({ decision: 'call', confidence: 96 }, 60, { performed: false, agreement: null }), 72, 'confidence must be capped by objective data quality');
+assert(calibrateConfidence({ decision: 'call', confidence: 96 }, 95, { performed: true, agreement: false }) <= 72, 'self-disagreement must reduce final confidence');
+
 const apiSource = fs.readFileSync(new URL('../api/coach.js', import.meta.url), 'utf8');
 assert.match(apiSource, /ONLY for replay\/simulation\/post-game study/i);
 assert.match(apiSource, /Reason independently/i);
+assert.match(apiSource, /maximum justified confidence/i);
+assert.match(apiSource, /verification pass/i);
 assert.match(apiSource, /Do not provide private chain-of-thought/i);
 assert.match(apiSource, /The final decision MUST be one of the physically available action types/i);
-assert.match(apiSource, /reasoning:\s*\{\s*effort:\s*'medium'/);
+assert.match(apiSource, /reasoning:\s*\{\s*effort\s*\}/);
+assert.match(apiSource, /effort:\s*'high'/);
 
 console.log('DYNAMIC COACH BRAIN V1 regressions passed');
