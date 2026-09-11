@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 const STREETS = ['preflop', 'flop', 'turn', 'river'];
+const ACTIONS = ['fold', 'check', 'call', 'bet', 'raise', 'allin'];
 
 function extractOutputText(response) {
   if (typeof response?.output_text === 'string') return response.output_text;
@@ -39,9 +40,11 @@ function schema() {
             dealer: { type: 'boolean' },
             folded: { type: ['boolean', 'null'] },
             hero: { type: 'boolean' },
+            visibleAction: { type: ['string', 'null'], enum: [...ACTIONS, null] },
+            visibleActionAmount: { type: ['number', 'null'], minimum: 0 },
             confidence: { type: 'number', minimum: 0, maximum: 1 },
           },
-          required: ['seatIndex', 'actorName', 'stack', 'committed', 'dealer', 'folded', 'hero', 'confidence'],
+          required: ['seatIndex', 'actorName', 'stack', 'committed', 'dealer', 'folded', 'hero', 'visibleAction', 'visibleActionAmount', 'confidence'],
         },
       },
       confidence: { type: 'number', minimum: 0, maximum: 1 },
@@ -67,7 +70,8 @@ export default async function handler(req, res) {
   if (!STREETS.includes(street)) return res.status(400).json({ error: 'invalid street' });
   if (typeof image !== 'string' || !image.startsWith('data:image/')) return res.status(400).json({ error: 'image required' });
   if (image.length > 2_500_000) return res.status(413).json({ error: 'image too large' });
-  if (fingerprint !== null && (typeof fingerprint !== 'string' || fingerprint.length > 256)) return res.status(400).json({ error: 'invalid fingerprint' });
+  if (fingerprint !== null && (typeof fingerprint !== 'string' || fingerprint.length > 256))
+    return res.status(400).json({ error: 'invalid fingerprint' });
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7500);
@@ -75,11 +79,13 @@ export default async function handler(req, res) {
   const prompt = [
     'Poker replay/simulation screenshot only. Read the visible table state; this is never live real-money assistance.',
     'Return one entry per clearly visible occupied seat, clockwise starting from the top-most/left-most reasonable seat as seatIndex 0 and continuing consistently around the table.',
-    'Read only text/numbers/markers physically visible in the screenshot: player display name, visible stack, chips visibly committed in front of the seat, dealer/button marker, whether the seat is visibly folded/inactive, and whether it is Hero.',
-    'Do NOT infer hidden cards, strategy, action history, position labels, missing stacks, or a fold merely because cards are not visible.',
+    'Read only text/numbers/markers physically visible in the screenshot: player display name, visible stack, chips visibly committed in front of the seat, dealer/button marker, whether the seat is visibly folded/inactive, whether it is Hero, and any action text explicitly visible next to that seat such as Checks, Calls, Bets, Raises, Folds or All-in.',
+    'visibleAction MUST be null unless explicit action text/bubble is physically readable in the screenshot. Never infer check from no chip movement and never infer an action from strategy or turn order.',
+    'visibleActionAmount is the explicit amount associated with that visible action text when readable; otherwise null.',
+    'Do NOT infer hidden cards, strategy, earlier action history, position labels, missing stacks, or a fold merely because cards are not visible.',
     'If a value is not clearly readable, use null and lower confidence. committed is only the chips/bet visibly placed for the CURRENT street, not total pot contribution.',
     'dealer=true only when a dealer/button marker is visibly associated with that seat. hero=true only when the seat is clearly the Hero seat from the visible table layout.',
-    'Never fabricate a player or numeric value. Precision is more important than coverage.',
+    'Never fabricate a player, action or numeric value. Precision is more important than coverage.',
   ].join('\n');
 
   try {
@@ -87,7 +93,7 @@ export default async function handler(req, res) {
       model: 'gpt-5.6-sol',
       reasoning: { effort: 'low' },
       store: false,
-      max_output_tokens: 1200,
+      max_output_tokens: 1400,
       input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }, { type: 'input_image', image_url: image, detail: 'high' }] }],
       text: { format: { type: 'json_schema', name: 'poker_replay_table_state', strict: true, schema: schema() } },
     };
@@ -112,6 +118,8 @@ export default async function handler(req, res) {
         dealer: Boolean(s.dealer),
         folded: typeof s.folded === 'boolean' ? s.folded : null,
         hero: Boolean(s.hero),
+        visibleAction: ACTIONS.includes(s.visibleAction) ? s.visibleAction : null,
+        visibleActionAmount: Number.isFinite(s.visibleActionAmount) ? s.visibleActionAmount : null,
         confidence: s.confidence,
       })) : [];
     return res.status(200).json({ seats, confidence: Number(parsed.confidence) || 0, handId, street, fingerprint, ms: Date.now() - t0 });
