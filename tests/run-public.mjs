@@ -11,6 +11,16 @@ import { reconcileTeacher } from '../src/core/teacher-merge.js';
 import { VisionTeacher } from '../src/vision/teacher.js';
 import handler from '../api/vision.js';
 
+function sustainedBoardBoundary(m, now) {
+  let opened = false;
+  for (let k = 0; k < 10 && !opened; k++) {
+    m.observeHero(null, false, now);
+    opened = m.observeBoardCount(0, now).newHand;
+    now += 100;
+  }
+  return { opened, now };
+}
+
 // Lifecycle + stale-write safety.
 {
   const A=[0,0,0,0,0,0,0,0], B=[1,1,1,1,0,0,0,0];
@@ -22,8 +32,9 @@ import handler from '../api/vision.js';
   const r=m.observeHero(B,true,1180); assert.equal(r.newHand,true); assert.equal(r.reason,'hero-glyph-change'); assert.equal(m.handId,2);
   assert.deepEqual(m.state.hero,[]); assert.equal(m.state.pot,null); assert.equal(m.state.heroToAct,false);
   assert.equal(m.setHero([{rank:'A'},{rank:'A'}],1),false); assert.equal(m.setPot(9999,1),false);
-  m.setBoard([{rank:'3'},{rank:'9'},{rank:'9'}],2); m.observeBoardCount(3,1400); m.observeBoardCount(0,1560);
-  assert.equal(m.observeBoardCount(0,1640).newHand,true); assert.equal(m.handId,3);
+  m.setBoard([{rank:'3'},{rank:'9'},{rank:'9'}],2); m.observeBoardCount(3,1400);
+  assert.equal(m.observeBoardCount(0,1560).newHand,false); assert.equal(m.observeBoardCount(0,1640).newHand,false);
+  const boundary=sustainedBoardBoundary(m,1720); assert.equal(boundary.opened,true); assert.equal(m.handId,3);
   assert.equal(m.setBoardOccupancy(3,3),true); assert.equal(m.state.street,'flop');
   assert.equal(m.setBoardOccupancy(5,3),true); assert.equal(m.state.street,'river');
   assert.equal(m.setBoardOccupancy(0,3),true); assert.equal(m.state.street,'preflop');
@@ -37,7 +48,11 @@ import handler from '../api/vision.js';
     const f=fp(h); let opened=false;
     if(h===1){opened=m.observeHero(f,true,now).newHand;now+=80}
     else if(h%4===0){for(let k=0;k<3;k++){m.observeHero(null,false,now);now+=80}m.observeHero(f,true,now);now+=80;opened=m.observeHero(f,true,now).newHand;now+=80}
-    else if(h%4===1){m.setBoard([{rank:'3'},{rank:'9'},{rank:'T'}],m.handId);m.observeBoardCount(3,now);now+=80;m.observeBoardCount(0,now);now+=80;opened=m.observeBoardCount(0,now).newHand;now+=80;m.observeHero(f,true,now);now+=80}
+    else if(h%4===1){
+      m.setBoard([{rank:'3'},{rank:'9'},{rank:'T'}],m.handId);m.observeBoardCount(3,now);now+=80;
+      const boundary=sustainedBoardBoundary(m,now);opened=boundary.opened;now=boundary.now;
+      m.observeHero(f,true,now);now+=80;
+    }
     else {m.observeHero(f,true,now);now+=80;opened=m.observeHero(f,true,now).newHand;now+=80}
     assert(opened,`hand ${h}`); assert.equal(m.handId,h); m.setHero([{rank:'A'},{rank:'9'}],h); m.setPot(100+h*10,h); m.setActions([{type:'fold'},{type:'call',amount:20}],h); now+=220;
   }
