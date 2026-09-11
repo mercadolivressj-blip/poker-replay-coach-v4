@@ -59,10 +59,10 @@ export default async function handler(req, res) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return res.status(501).json({ error: 'OPENAI_API_KEY not configured' });
   const accessToken = process.env.VISION_ACCESS_TOKEN;
-  if (process.env.VERCEL_ENV === 'production' && !accessToken)
-    return res.status(501).json({ error: 'VISION_ACCESS_TOKEN not configured' });
+  const production = process.env.VERCEL_ENV === 'production';
+  if (production && !accessToken) return res.status(501).json({ error: 'VISION_ACCESS_TOKEN not configured' });
   const providedToken = req.headers?.['x-coach-token'] ?? req.headers?.['X-Coach-Token'];
-  if (!tokenMatches(accessToken, providedToken)) return res.status(401).json({ error: 'coach auth required' });
+  if (production && !tokenMatches(accessToken, providedToken)) return res.status(401).json({ error: 'coach auth required' });
 
   const { mode, image, handId, street, fingerprint = null } = req.body || {};
   if (mode !== 'replay') return res.status(400).json({ error: 'replay mode required' });
@@ -81,6 +81,7 @@ export default async function handler(req, res) {
     'Use FIXED screen-position seat indexes around the table. seatIndex 0 is the top-most seat; continue clockwise around the physical table positions. Skip empty seats but NEVER renumber occupied seats just because another seat folds, sits out, disappears, or becomes empty. The same physical seat must keep the same seatIndex across snapshots.',
     'Read only facts physically visible in this screenshot: player display name, visible stack, chips visibly committed in front of that seat on the CURRENT street, dealer/button marker, whether the seat is visibly folded/inactive, whether it is Hero, and any action text explicitly visible next to that seat.',
     'PokerStars Portuguese action labels may include Pago/Paga/Pagou, Passo/Passa, Desisto/Desiste, Aposto/Aposta, Aumento para/Aumenta para and All In. English labels may include Calls, Checks, Folds, Bets, Raises and All-in. Map those explicit labels to call/check/fold/bet/raise/allin.',
+    'Action labels can be brief. If one is physically visible beside a seat, prioritize reading it and its amount accurately.',
     'visibleAction MUST be null unless explicit action text/bubble is physically readable in the screenshot. Never infer check merely from no chip movement.',
     'visibleActionAmount is the explicit amount associated with visible action text when readable; otherwise null.',
     'committed is crucial even when no action label exists: read only the chips/bet physically sitting in front of that seat for the CURRENT street so a temporal tracker can infer call/bet/raise from changes between snapshots.',
