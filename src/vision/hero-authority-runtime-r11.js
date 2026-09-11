@@ -15,6 +15,8 @@ const diagnostics = {
   handIdRebinds: 0,
   absentFrames: 0,
   candidateHits: 0,
+  generationLocks: 0,
+  manualRebinds: 0,
   hero: '—',
   lastError: null,
 };
@@ -39,6 +41,7 @@ let candidateHits = 0;
 let absentSince = 0;
 let absentFrames = 0;
 let gapArmed = false;
+let manualRebindToken = null;
 
 function visibleSource() {
   const video = document.getElementById('video');
@@ -72,9 +75,8 @@ function resetCandidate() {
   diagnostics.candidateHits = 0;
 }
 
-// R12 persistence rule: handId is bookkeeping, not visual truth. A confirmed Hero
-// hand must survive a spurious lifecycle rotation while the physical cards never
-// disappeared. Only a sustained physical gap arms a real redeal.
+// handId is bookkeeping; confirmed visual cards survive bookkeeping churn unless
+// a real physical card gap armed a redeal. Rank disagreement by itself is noise.
 function onHandId(machine) {
   if (!machine || machine.handId === seenHandId) return;
   const previous = seenHandId;
@@ -86,8 +88,6 @@ function onHandId(machine) {
     diagnostics.handIdRebinds++;
   }
 
-  // Never clear latch/latchFp here. The old R11 did that and caused the exact
-  // preflop -> flop blink: a lifecycle handId change erased a perfectly read hand.
   if (previous < 0) {
     absentSince = 0;
     absentFrames = 0;
@@ -106,8 +106,7 @@ function publish(machine) {
       const current = machine.state.hero || [];
       const same = current.length === 2 && current.every((c, i) => String(c?.rank || '') === String(latch.cards[i]?.rank || ''));
       if (!same || current.some((c, i) => !c?.suit && latch.cards[i]?.suit)) {
-        machine.state.hero = latch.cards.map((c) => ({ ...c }));
-        diagnostics.restores++;
+        if (machine.setHero(latch.cards.map((c) => ({ ...c })), machine.handId)) diagnostics.restores++;
       }
     }
     if (heroEl) heroEl.textContent = label(latch.cards);
@@ -151,30 +150,50 @@ function candidateIdentity(cards) {
 
 function commit(machine, cards, fp, reason) {
   if (!machine || cards?.length !== 2 || cards.some((c) => !c?.rank)) return false;
-  const previousHandId = machine.handId;
+  const now = performance.now();
   const ranksChanged = latch?.cards?.length === 2 && cards.some((c, i) => c.rank !== latch.cards[i].rank);
-  const visualChanged = latchFp && fp ? vectorDistance(latchFp, fp) >= 0.10 : false;
+  const sameGeneration = latch?.handId === machine.handId;
+  const manualRebind = Boolean(manualRebindToken && manualRebindToken.generation === machine.handId);
 
-  if (latch && latch.handId === machine.handId && ranksChanged && (gapArmed || visualChanged)) {
-    machine.newHand(gapArmed ? 'hero-authority-redeal-r12' : 'hero-authority-visual-change-r12', performance.now());
+  // Critical R14 rule: a visual/rank mismatch can NEVER create a new generation.
+  // Only a sustained physical absence can arm a redeal. This closes 7 -> 3 -> 2.
+  if (sameGeneration && ranksChanged && !gapArmed && !manualRebind) {
+    diagnostics.generationLocks++;
+    resetCandidate();
+    return false;
+  }
+
+  if (sameGeneration && ranksChanged && gapArmed) {
+    machine.newHand('hero-authority-physical-redeal-r14', now);
     seenHandId = machine.handId;
     boardDisplayLatch = [];
     diagnostics.relatches++;
   }
 
   const handId = machine.handId;
-  latch = { handId, cards: cards.map((c) => ({ ...c, authority: 'r12' })), reason, confirmedAt: performance.now() };
+  const nextCards = cards.map((c) => ({ ...c, authority: 'r14' }));
+  const options = manualRebind && handId === manualRebindToken.generation
+    ? { rebindToken: manualRebindToken, now }
+    : { now };
+  if (!machine.setHero(nextCards, handId, options)) {
+    if (ranksChanged) diagnostics.generationLocks++;
+    resetCandidate();
+    return false;
+  }
+
+  if (manualRebind && ranksChanged) diagnostics.manualRebinds++;
+  latch = { handId, cards: nextCards.map((c) => ({ ...c })), reason, confirmedAt: now };
   latchFp = fp;
-  machine.state.hero = latch.cards.map((c) => ({ ...c }));
-  machine.state.reason = machine.state.reason === 'waiting' ? 'hero-authority-r12' : machine.state.reason;
+  machine.state.reason = machine.state.reason === 'waiting' ? 'hero-authority-r14' : machine.state.reason;
   diagnostics.commits++;
   diagnostics.hero = label(latch.cards);
   gapArmed = false;
   absentSince = 0;
   absentFrames = 0;
+  manualRebindToken = null;
   resetCandidate();
   publish(machine);
-  return previousHandId !== handId || true;
+  return true;
 }
 
 async function readOnce() {
@@ -253,11 +272,12 @@ async function readOnce() {
           suitConfidence: Math.max(Number(old.suitConfidence) || 0, Number(incoming.suitConfidence) || 0),
         };
       });
-      latch.cards = merged;
-      latchFp = fp || latchFp;
-      machine.state.hero = merged.map((c) => ({ ...c }));
-      if (improved) diagnostics.commits++;
-      diagnostics.hero = label(merged);
+      if (machine.setHero(merged, machine.handId)) {
+        latch.cards = merged;
+        latchFp = fp || latchFp;
+        if (improved) diagnostics.commits++;
+        diagnostics.hero = label(merged);
+      }
       publish(machine);
       diagnostics.reads++;
       diagnostics.lastError = null;
@@ -275,13 +295,14 @@ async function readOnce() {
     }
     diagnostics.candidateHits = candidateHits;
 
-    const needed = latch ? (gapArmed ? 2 : 4) : 2;
-    if (candidateHits >= needed) commit(machine, candidateCards, candidateFp, latch ? 'relatch' : 'initial');
+    const manualRebind = Boolean(manualRebindToken && manualRebindToken.generation === machine.handId);
+    const needed = latch ? ((gapArmed || manualRebind) ? 2 : 4) : 2;
+    if (candidateHits >= needed) commit(machine, candidateCards, candidateFp, manualRebind ? 'manual-recalibration' : (latch ? 'relatch' : 'initial'));
     publish(machine);
     diagnostics.reads++;
     diagnostics.lastError = null;
   } catch (e) {
-    diagnostics.lastError = e?.message || 'hero-authority-r12-failed';
+    diagnostics.lastError = e?.message || 'hero-authority-r14-failed';
     publish(machine);
   } finally {
     busy = false;
@@ -293,6 +314,19 @@ function tick() {
   onHandId(machine);
   publish(machine);
   void readOnce();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('prc:recalibrate', (event) => {
+    const token = event?.detail?.token || null;
+    if (!token || token.generation !== activeHandMachine?.handId) return;
+    manualRebindToken = token;
+    felt = null;
+    layout = null;
+    lastGeomAt = 0;
+    lastReadAt = 0;
+    resetCandidate();
+  });
 }
 
 setInterval(tick, 55);
