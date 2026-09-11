@@ -13,9 +13,6 @@ const weak = (rank, candidate) => ({
   voteCount: 0,
 });
 
-// Real replay failure: 2♥ T♦ 5♣ had correct ranks but the board discarded
-// repeated weak suit candidates and stayed 2? T? 5♣ forever. Board consensus
-// must accumulate the same candidate across frames; no single frame may decide.
 {
   const s = new SuitConsensus({ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 });
   s.resetHand(7);
@@ -31,7 +28,6 @@ const weak = (rank, candidate) => ({
   assert.equal(r.confirmedCount, 3);
 }
 
-// Conflicting weak evidence must not get promoted just because candidates exist.
 {
   const s = new SuitConsensus({ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 });
   s.resetHand(8);
@@ -44,7 +40,6 @@ const weak = (rank, candidate) => ({
   assert.equal(r.suits[0], null, '2-vs-2 candidate conflict must remain unknown');
 }
 
-// Rank changes invalidate suit evidence for that slot.
 {
   const s = new SuitConsensus({ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 });
   s.resetHand(9);
@@ -54,6 +49,6 @@ const weak = (rank, candidate) => ({
 }
 
 const runtime = fs.readFileSync(new URL('../src/vision/card-refiner-runtime.js', import.meta.url), 'utf8');
-assert.match(runtime, /boardSuitConsensus = new SuitConsensus\(\{ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 \}\)/);
+assert.match(runtime, /boardSuitConsensus = new SuitConsensus\(\{ windowMs: 620, slots: 5, allowCandidates: true, candidateMinHits: 4 \}\)/);
 
 console.log('REPLAY STATE STABILITY V5 board-suit regressions passed');
