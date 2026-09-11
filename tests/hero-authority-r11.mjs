@@ -17,8 +17,10 @@ must(runtime.includes('machine.setHero('), 'Hero authority must route commits th
 must(!runtime.includes('machine.state.hero = latch.cards.map'), 'Hero authority must not bypass the generation lock with direct Hero writes');
 must(runtime.includes('absentFrames >= 4'), 'Hero authority must require sustained physical absence before arming a redeal');
 must(runtime.includes('candidateHits >= needed'), 'Hero authority must require temporal agreement before relatching');
+must(runtime.includes("if (sameGeneration && gapArmed && !manualRebind)"), 'Physical gap must define the generation boundary even if the next ranks repeat');
 must(runtime.includes("machine.newHand('hero-authority-physical-redeal-r14'"), 'Only a physical redeal may rotate the Hero generation');
 must(!runtime.includes('hero-authority-visual-change-r12'), 'Visual disagreement alone must never create a new generation');
+must(runtime.includes("sameLatchedRanks && (!gapArmed || manualRebind)"), 'Same ranks after an armed physical gap must not be mistaken for the previous deal');
 must(runtime.includes("window.addEventListener('prc:recalibrate'"), 'Manual recalibration must be an explicit event');
 must(runtime.includes("['flop', 'turn', 'river'].includes(machine.state.street)"), 'R11 must latch board display inside a street to prevent flicker');
 must(page.includes('V4 STANDALONE · R11'), 'R11 page badge missing');
