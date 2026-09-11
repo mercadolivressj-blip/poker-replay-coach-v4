@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { HeroCardConsensus } from '../src/core/hero-card-consensus.js';
 import { HandMachine } from '../src/core/state-machine.js';
+import { CALIBRATION_RANK_TEMPLATES } from '../src/core/rank-calibration.js';
 import { parseDealerActionLine } from '../src/vision/local-action-parser.js';
 
 const c = new HeroCardConsensus();
@@ -48,6 +49,11 @@ assert.equal(parseDealerActionLine('Dealer: Regnypontes, é a sua vez. Tem 8 seg
 assert.equal(parseDealerActionLine('Dealer: Mão #123: wruckzinho ganha pote (1.323)'), null, 'pot result is not an action');
 assert.equal(parseDealerActionLine('wruckzinho: boa mao'), null, 'ordinary chat is not an action');
 
+assert(CALIBRATION_RANK_TEMPLATES['7']?.length, 'real replay 7 calibration must ship');
+assert(CALIBRATION_RANK_TEMPLATES['6']?.length, 'real replay 6 calibration must ship');
+assert(CALIBRATION_RANK_TEMPLATES['T']?.length, 'real replay T calibration must ship');
+assert(CALIBRATION_RANK_TEMPLATES['3']?.length, 'real replay 3 calibration must ship');
+
 const guardSource = fs.readFileSync(new URL('../src/core/runtime-guards.js', import.meta.url), 'utf8');
 assert.match(guardSource, /hardDisabled/);
 assert.match(guardSource, /not configured\|auth required/);
@@ -55,6 +61,7 @@ const resolverRuntime = fs.readFileSync(new URL('../src/solver/resolver-runtime.
 assert.match(resolverRuntime, /RESOLVER PRONTO/);
 assert.match(resolverRuntime, /brain\.style\.display = 'none'/);
 const rankSource = fs.readFileSync(new URL('../src/core/rank-classifier.js', import.meta.url), 'utf8');
+assert.match(rankSource, /CALIBRATION_RANK_TEMPLATES/);
 assert.match(rankSource, /CONFUSION_MARGIN/);
 assert.match(rankSource, /'K': Object\.freeze\(\{ '7':/);
 assert.match(rankSource, /'T': Object\.freeze\(\{ '6':/);
