@@ -215,7 +215,13 @@ export function classifyPokerStarsSuitMask(mask, family = null) {
   const best = scores[0];
   const second = scores[1] || { d: 1 };
   const margin = Math.max(0, second.d - best.d);
-  const accepted = best.d <= 0.56 && margin >= 0.055;
+  // At small replay scales clubs and spades can differ by only a handful of
+  // pixels after normalization. If the absolute match is already very close to
+  // a real PokerStars template, allow a smaller inter-suit margin; otherwise
+  // keep the conservative margin used by the generic path.
+  const closeTemplateMatch = best.d <= 0.30 && margin >= 0.008;
+  const separatedMatch = best.d <= 0.56 && margin >= 0.055;
+  const accepted = closeTemplateMatch || separatedMatch;
   const confidence = accepted
     ? Math.max(0.88, Math.min(0.998, 0.90 + (0.56 - best.d) * 0.12 + Math.min(0.24, margin) * 0.22))
     : Math.max(0.18, Math.min(0.74, 0.62 + (0.56 - best.d) * 0.10 + margin * 0.18));
