@@ -104,6 +104,8 @@ function renderLocal(result, cacheHit, statusBadge) {
   const bits = [];
   if (Number.isFinite(result.equity)) bits.push(`Equity local ~${Math.round(result.equity * 100)}%`);
   if (result.rangeSummary?.comboCount) bits.push(`range ${result.rangeSummary.comboCount} combos`);
+  if (result.eventCount) bits.push(`histórico ${result.eventCount} ações`);
+  if (result.localChatCount) bits.push(`chat local ${result.localChatCount}`);
   bits.push(cacheHit ? 'pré-calculado antes da sua vez' : `micro-resolve ${Math.round((result.preparedMs || 0) + (result.ms || 0))}ms`);
   if (result.caveats?.length) bits.push(result.caveats[0]);
   details.textContent = bits.join(' · ');
