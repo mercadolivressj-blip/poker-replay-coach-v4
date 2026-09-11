@@ -163,7 +163,10 @@ function commit(machine, cards, fp, reason) {
     return false;
   }
 
-  if (sameGeneration && ranksChanged && gapArmed) {
+  // A confirmed physical card gap is the generation boundary even when the next
+  // deal happens to have the same two ranks. Manual recalibration explicitly
+  // suppresses this rotation because its contract is same-generation rebind.
+  if (sameGeneration && gapArmed && !manualRebind) {
     machine.newHand('hero-authority-physical-redeal-r14', now);
     seenHandId = machine.handId;
     boardDisplayLatch = [];
@@ -261,7 +264,9 @@ async function readOnce() {
       };
     });
 
-    if (latch?.handId === machine.handId && latch.cards.every((c, i) => c.rank === cards[i].rank)) {
+    const manualRebind = Boolean(manualRebindToken && manualRebindToken.generation === machine.handId);
+    const sameLatchedRanks = latch?.handId === machine.handId && latch.cards.every((c, i) => c.rank === cards[i].rank);
+    if (sameLatchedRanks && (!gapArmed || manualRebind)) {
       let improved = false;
       const merged = latch.cards.map((old, i) => {
         const incoming = cards[i];
@@ -278,6 +283,9 @@ async function readOnce() {
         if (improved) diagnostics.commits++;
         diagnostics.hero = label(merged);
       }
+      // A manual refresh that confirms the existing Hero is complete; do not
+      // leave its local escape hatch armed for a later noisy contradictory read.
+      if (manualRebind) manualRebindToken = null;
       publish(machine);
       diagnostics.reads++;
       diagnostics.lastError = null;
@@ -295,7 +303,6 @@ async function readOnce() {
     }
     diagnostics.candidateHits = candidateHits;
 
-    const manualRebind = Boolean(manualRebindToken && manualRebindToken.generation === machine.handId);
     const needed = latch ? ((gapArmed || manualRebind) ? 2 : 4) : 2;
     if (candidateHits >= needed) commit(machine, candidateCards, candidateFp, manualRebind ? 'manual-recalibration' : (latch ? 'relatch' : 'initial'));
     publish(machine);
