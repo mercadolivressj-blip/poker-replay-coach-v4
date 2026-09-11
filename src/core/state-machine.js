@@ -1,5 +1,7 @@
 import { pairVectorDistance } from './image.js';
 
+export let activeHandMachine = null;
+
 function semanticSlots(v) {
   if (typeof v === 'string' && v.length === 2) return [v[0], v[1]];
   if (Array.isArray(v) && v.length === 2 && v.every((x) => x == null || typeof x === 'string'))
@@ -24,7 +26,7 @@ function heroIdentityDistance(a, b) {
 }
 
 export class HandMachine {
-  constructor() { this.resetSession(); }
+  constructor() { this.resetSession(); activeHandMachine = this; }
   resetSession() {
     this.handId = 0; this.lastFp = null; this.pendingFp = null; this.pendingHits = 0;
     this.heroMissing = 0; this.reappearArmed = false; this.adoptNextHero = false; this.lastHeroSeenAt = 0;
