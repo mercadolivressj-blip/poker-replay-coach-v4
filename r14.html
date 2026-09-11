@@ -17,18 +17,19 @@
         <div class="toolbar">
           <button id="shareBtn" class="primary">Compartilhar replay</button>
           <label class="file-btn">Abrir arquivo<input id="fileInput" type="file" accept="video/*,image/*" hidden /></label>
+          <button id="recalibrateBtn" class="ghost" type="button">Recalibrar leitura</button>
           <button id="stopBtn">Parar</button>
           <button id="diagBtn" class="ghost">Diagnóstico</button>
         </div>
         <div id="stage" class="stage empty">
           <video id="video" autoplay muted playsinline></video><img id="image" alt="replay" /><canvas id="overlay"></canvas>
-          <div id="emptyState" class="empty-state"><div class="empty-icon">▶</div><h2>Abra ou compartilhe um replay</h2><p>R14: estado confirmado transacional. Frames ruins não apagam Hero, board ou pote; somente um redeal físico confirmado troca a mão.</p></div>
+          <div id="emptyState" class="empty-state"><div class="empty-icon">▶</div><h2>Abra ou compartilhe um replay</h2><p>R14: cartas confirmadas ficam travadas por generation. Use “Recalibrar leitura” para uma releitura manual controlada sem avançar a mão.</p></div>
         </div>
       </section>
       <aside class="coach-card">
         <div class="coach-head"><div><span class="eyebrow">COACH</span><h1 id="coachTitle">Aguardando replay</h1></div><span id="turnChip" class="turn-chip">FORA DA VEZ</span></div>
         <div class="hero-grid"><div class="metric"><span>SUAS CARTAS</span><strong id="heroCards">—</strong></div><div class="metric"><span>BOARD</span><strong id="boardCards">—</strong></div><div class="metric"><span>POTE</span><strong id="potValue">—</strong></div><div class="metric"><span>STREET</span><strong id="streetValue">—</strong></div></div>
-        <div class="decision-box"><span class="eyebrow">RECOMENDAÇÃO</span><div id="decisionText" class="decision">Esperando estado confiável.</div><div id="decisionReason" class="reason">R14 usa um único snapshot confirmado para impedir pisca e reset concorrente.</div><div id="decisionDetails" class="decision-details"></div></div>
+        <div class="decision-box"><span class="eyebrow">RECOMENDAÇÃO</span><div id="decisionText" class="decision">Esperando estado confiável.</div><div id="decisionReason" class="reason">R14 usa um único DealSnapshot: conflito de rank não troca a carta dentro da mesma generation.</div><div id="decisionDetails" class="decision-details"></div></div>
         <div class="actions" id="actions"></div><div class="confidence-row"><span>Confiança</span><strong id="confidence">—</strong></div>
       </aside>
     </main>
