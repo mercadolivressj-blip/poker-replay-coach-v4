@@ -5,8 +5,8 @@ import { HeroCardConsensus } from '../src/core/hero-card-consensus.js';
 
 // Calibrated from the real replay screenshots that produced A? 9♥ and K? T♣.
 // The physical Hero card top sits around 0.90 felt-heights below the felt top.
-// The historical fast-rank slot intentionally starts lower (0.94); the suit
-// refiner needs its own crop so the tiny corner glyph is not cut off.
+// The historical fast-rank slot intentionally starts lower (0.94); dedicated
+// rank/suit refiners must start above it so the corner glyph is never clipped.
 const felt = { x: 0.24, y: 0.23, w: 0.582, h: 0.487 };
 const layout = layoutFromFelt(felt);
 assert.equal(layout.heroSlots.length, 2);
@@ -25,15 +25,9 @@ for (let i = 0; i < 2; i++) {
   assert(Math.abs(suit.w - fast.w) < 1e-9, `hero suit slot ${i} must keep proven horizontal width`);
 }
 
-// Guard the board geometry: this fix is Hero-only because the board was already
-// reading rank+suit correctly in the same real replays.
 assert(Math.abs(layout.boardSlots[0].y - (felt.y + 0.265 * felt.h)) < 1e-9);
 assert(Math.abs(layout.boardSlots[0].h - 0.29 * felt.h) < 1e-9);
 
-// Real failure shape from replay testing: hand #1 confirms correctly, the table
-// rolls into hand #2, the legacy fast crop emits a contradictory rank candidate,
-// and the dedicated Hero refiner sees the real new hand. Three strong refiner
-// frames must win without being vetoed by fast-path noise.
 const rollover = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
 const firstHand = [
   { rank: 'A', suit: 'clubs', confidence: 0.94, source: 'card-refiner-local' },
@@ -66,14 +60,15 @@ assert.equal(accepted.key, '82');
 assert.equal(accepted.reason, 'refiner-consensus');
 
 const runtime = fs.readFileSync(new URL('../src/vision/card-refiner-runtime.js', import.meta.url), 'utf8');
-assert.match(runtime, /const heroRankSlots = layout\.heroSlots/, 'Hero rank must keep the proven legacy rank geometry');
+assert.match(runtime, /function dedicatedHeroRankSlots/, 'R8 Hero rank must use the dedicated high crop');
+assert.match(runtime, /heroRankGeometry: 'dedicated-r8'/, 'diagnostics must expose dedicated R8 rank geometry');
 assert.match(runtime, /layout\.heroSuitSlots \|\| layout\.heroSlots/, 'Hero refiner must consume dedicated suit geometry');
 assert.match(runtime, /function classifyHeroCard\(rankSlotCrop, suitSlotCrop/, 'Hero rank and suit must use separate crop inputs');
 assert.match(runtime, /confirmedRank/, 'Hero suit refinement must preserve the already-confirmed rank');
 assert.match(runtime, /classifySuitPixels\(suitSlotCrop\.data, suitSlotCrop\.w, suitSlotCrop\.h, rank\)/, 'Hero refiner must classify suit using the rank while reading the dedicated suit crop');
 assert.match(runtime, /classifyRankPixels\(rankSlotCrop\.data, rankSlotCrop\.w, rankSlotCrop\.h\)/, 'Hero refiner must never read rank from the suit crop');
 assert.match(runtime, /function syncCardHand/, 'card refiner must explicitly reset Hero and board consensus on hand rollover');
-assert.match(runtime, /heroBurstUntil = now \+ 420/, 'new hand should trigger a bounded foreground card read burst');
+assert.match(runtime, /heroBurstUntil = now \+ 520/, 'new hand should trigger a bounded foreground card read burst');
 assert.match(runtime, /return 'refiner'/, 'dedicated Hero refiner must have an explicit consensus source');
 assert.match(runtime, /const boardCrops = layout\.boardSlots/, 'board path must remain on the proven board geometry');
 
