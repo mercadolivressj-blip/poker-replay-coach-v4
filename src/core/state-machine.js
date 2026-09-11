@@ -85,7 +85,7 @@ export class HandMachine {
   resetSession() {
     this.handId = 0; this.lastFp = null; this.pendingFp = null; this.pendingHits = 0;
     this.heroMissing = 0; this.reappearArmed = false; this.adoptNextHero = false; this.lastHeroSeenAt = 0;
-    this.lastBoardCountVisual = 0; this.boardZeroHits = 0; this.actionMisses = 0;
+    this.lastBoardCountVisual = 0; this.boardZeroHits = 0; this.boardZeroSince = 0; this.actionMisses = 0;
     this.potResetPending = null; this.potResetHits = 0; this.state = this.blank(0);
   }
   blank(now = performance.now()) {
@@ -93,7 +93,7 @@ export class HandMachine {
   }
   newHand(reason, now = performance.now()) {
     this.handId++; this.state = this.blank(now); this.state.reason = reason; this.actionMisses = 0;
-    this.boardZeroHits = 0; this.lastBoardCountVisual = 0; this.potResetPending = null; this.potResetHits = 0;
+    this.boardZeroHits = 0; this.boardZeroSince = 0; this.lastBoardCountVisual = 0; this.potResetPending = null; this.potResetHits = 0;
   }
   observeHero(fp, present, now = performance.now()) {
     if (!present) {
@@ -135,10 +135,26 @@ export class HandMachine {
   }
   observeBoardCount(count, now = performance.now()) {
     if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
-    if (count > 0) { this.lastBoardCountVisual = Math.max(this.lastBoardCountVisual, count); this.boardZeroHits = 0; return { newHand: false, reason: null }; }
+    if (count > 0) {
+      this.lastBoardCountVisual = Math.max(this.lastBoardCountVisual, count);
+      this.boardZeroHits = 0;
+      this.boardZeroSince = 0;
+      return { newHand: false, reason: null };
+    }
     if (this.lastBoardCountVisual <= 0) return { newHand: false, reason: null };
+
+    // Two missed board frames are common while animations/chips overlap the cards.
+    // Never roll the hand on that alone: require a sustained board disappearance
+    // AND sustained Hero disappearance. Pot reset / Hero reappearance remain the
+    // primary new-hand signals, so this path is only a conservative fallback.
     this.boardZeroHits++;
-    if (this.boardZeroHits < 2 || now - this.state.startedAt <= 150) return { newHand: false, reason: null };
+    if (!this.boardZeroSince) this.boardZeroSince = now;
+    const boardGoneLongEnough = this.boardZeroHits >= 8 && now - this.boardZeroSince >= 700;
+    const heroGoneLongEnough = this.heroMissing >= 8 && now - this.lastHeroSeenAt >= 320;
+    if (!boardGoneLongEnough || !heroGoneLongEnough || now - this.state.startedAt <= 250) {
+      return { newHand: false, reason: null };
+    }
+
     this.newHand('board-reset', now); this.lastFp = null; this.pendingFp = null; this.pendingHits = 0; this.adoptNextHero = true;
     return { newHand: true, reason: 'board-reset' };
   }
