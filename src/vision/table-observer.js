@@ -5,7 +5,7 @@ export class TableObserver {
     this.generation = 0;
     this.controller = null;
     this.lastReadAt = 0;
-    this.minIntervalMs = 2200;
+    this.minIntervalMs = 1350;
     this.lastError = null;
     this.last = null;
     try { this.accessToken = sessionStorage.getItem('prc.vision-token') || ''; } catch { this.accessToken = ''; }
@@ -34,12 +34,14 @@ export class TableObserver {
     this.controller?.abort();
     this.controller = null;
     this.busy = false;
+    this.lastReadAt = 0;
     this.lastError = null;
     this.last = null;
+    this.enabled = true;
   }
 
   shouldRead(handId, now = performance.now()) {
-    if (!this.enabled || this.busy || !this.accessToken || !Number.isInteger(handId) || handId <= 0) return false;
+    if (!this.enabled || this.busy || !Number.isInteger(handId) || handId <= 0) return false;
     return now - this.lastReadAt >= this.minIntervalMs;
   }
 
@@ -53,7 +55,7 @@ export class TableObserver {
     this.controller = controller;
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const image = canvas.toDataURL('image/jpeg', 0.74);
+      const image = canvas.toDataURL('image/jpeg', 0.72);
       const r = await fetch('/api/table-state', {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(this.accessToken ? { 'x-coach-token': this.accessToken } : {}) },
