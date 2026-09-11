@@ -12,7 +12,6 @@ try {
 const optionalModules = [
   './core/runtime-guards.js',
   './vision/card-refiner-runtime.js',
-  './vision/pot-refiner-runtime.js',
   './coach/coach-runtime.js',
   './coach/local-ui-bridge.js',
   './vision/local-action-runtime.js',
