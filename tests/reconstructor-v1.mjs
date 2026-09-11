@@ -25,15 +25,16 @@ assert.equal(timeline.append({ handId: 9, street: 'flop', actorName: 'Vilao', ac
 assert.equal(timeline.append({ handId: 9, street: 'turn', actorName: 'Vilao', action: 'bet', amount: 250 }), true);
 assert.equal(timeline.snapshot().events.length, 2);
 
-const polarEvents = [
+// River raises are value-dense by default when hole cards are never revealed.
+const riverRaiseEvents = [
   { actorName: 'Vilao', street: 'turn', action: 'call', amount: 400 },
   { actorName: 'Vilao', street: 'river', action: 'raise', amount: 1500 },
 ];
-const polar = assessOpponent({ actorName: 'Vilao', events: polarEvents, board: [{rank:'A'},{rank:'7'},{rank:'2'},{rank:'T'},{rank:'3'}], potBefore: 1000 });
-assert.equal(polar.status, 'polar');
-assert(polar.bluffSignal >= 55);
-assert.match(polar.disclaimer, /inferência de range/i);
-assert.doesNotMatch(polar.label, /confirmado/i);
+const riverRaise = assessOpponent({ actorName: 'Vilao', events: riverRaiseEvents, board: [{rank:'A'},{rank:'7'},{rank:'2'},{rank:'T'},{rank:'3'}], potBefore: 1000 });
+assert.equal(riverRaise.status, 'value-leaning');
+assert(riverRaise.valueSignal > riverRaise.bluffSignal);
+assert.match(riverRaise.disclaimer, /inferência de range/i);
+assert.doesNotMatch(riverRaise.label, /confirmado/i);
 
 const valueEvents = [
   { actorName: 'Reg', street: 'flop', action: 'bet', amount: 200 },
