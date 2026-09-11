@@ -11,6 +11,24 @@ function avgConfidence(cards = []) {
 
 function cloneCards(cards = []) { return cards.map((c) => ({ ...c })); }
 
+function sourceWeight(source) {
+  if (source === 'teacher') return 1.65;
+  if (source === 'refiner-ocr') return 1.5;
+  if (source === 'refiner') return 1.35;
+  if (source === 'ocr') return 1.12;
+  if (source === 'fast') return 0.82;
+  return 1;
+}
+
+function sourcePriority(source) {
+  if (source === 'teacher') return 5;
+  if (source === 'refiner-ocr') return 4;
+  if (source === 'refiner') return 3;
+  if (source === 'ocr') return 2;
+  if (source === 'fast') return 1;
+  return 0;
+}
+
 function enrichCommitted(base, incoming) {
   return base.map((old, i) => {
     const next = incoming[i] || {};
@@ -50,28 +68,74 @@ export class HeroCardConsensus {
 
     const confidence = avgConfidence(cards);
     this.samples.push({ key, cards: cloneCards(cards), confidence, source, at: now });
-    this.samples = this.samples.filter((s) => now - s.at <= this.windowMs).slice(-10);
+    this.samples = this.samples.filter((s) => now - s.at <= this.windowMs).slice(-12);
 
     const byKey = new Map();
     for (const sample of this.samples) {
-      const bucket = byKey.get(sample.key) || { key: sample.key, hits: 0, weighted: 0, strongHits: 0, teacherHits: 0, best: sample };
+      const bucket = byKey.get(sample.key) || {
+        key: sample.key,
+        hits: 0,
+        weighted: 0,
+        strongHits: 0,
+        teacherHits: 0,
+        refinerHits: 0,
+        refinerStrongHits: 0,
+        ocrStrongHits: 0,
+        fastHits: 0,
+        best: sample,
+      };
       bucket.hits++;
-      const sourceBonus = sample.source === 'teacher' ? 1.45 : sample.source === 'ocr' ? 1.12 : 1;
-      bucket.weighted += Math.max(0.15, sample.confidence) * sourceBonus;
+      bucket.weighted += Math.max(0.15, sample.confidence) * sourceWeight(sample.source);
       if (sample.confidence >= this.strongConfidence) bucket.strongHits++;
       if (sample.source === 'teacher') bucket.teacherHits++;
-      if (sample.confidence > bucket.best.confidence || sample.source === 'teacher') bucket.best = sample;
+      if (sample.source === 'fast') bucket.fastHits++;
+      if (sample.source === 'refiner' || sample.source === 'refiner-ocr') {
+        bucket.refinerHits++;
+        if (sample.confidence >= this.strongConfidence) bucket.refinerStrongHits++;
+      }
+      if ((sample.source === 'ocr' || sample.source === 'refiner-ocr') && sample.confidence >= this.strongConfidence) bucket.ocrStrongHits++;
+      const bestPriority = sourcePriority(bucket.best.source);
+      const samplePriority = sourcePriority(sample.source);
+      if (samplePriority > bestPriority || (samplePriority === bestPriority && sample.confidence > bucket.best.confidence)) bucket.best = sample;
       byKey.set(sample.key, bucket);
     }
 
     const ranked = [...byKey.values()].sort((a, b) => b.weighted - a.weighted || b.hits - a.hits);
-    const best = ranked[0];
+    let best = ranked[0];
     if (!best) return { accepted: false, reason: 'no-candidate' };
-    const secondWeight = ranked[1]?.weighted || 0;
+
+    // The dedicated Hero refiner uses the geometry that actually contains the
+    // whole physical card. During a hand rollover the legacy fast crop can emit
+    // transient rank noise. Three strong refiner frames are therefore allowed to
+    // resolve the new hand without being vetoed by contradictory fast samples.
+    const trustedRefiner = ranked
+      .filter((b) => b.refinerStrongHits >= 3)
+      .sort((a, b) => b.refinerStrongHits - a.refinerStrongHits || b.weighted - a.weighted)[0];
+    if (trustedRefiner) {
+      best = trustedRefiner;
+      this.committed = { key: best.key, cards: cloneCards(best.best.cards) };
+      this.committedAt = now;
+      return { accepted: true, changed: true, reason: 'refiner-consensus', cards: cloneCards(this.committed.cards), key: best.key };
+    }
+
+    const secondWeight = ranked.find((b) => b.key !== best.key)?.weighted || 0;
     const dominant = best.weighted >= Math.max(0.01, secondWeight * 1.55);
-    const enough = best.strongHits >= 3 || best.hits >= 4 || (best.teacherHits >= 1 && best.hits >= 2);
+    const fastOnly = best.fastHits === best.hits;
+    // Explicit fast-path samples need four agreeing reads. Generic local/legacy
+    // samples keep the historical three-strong-read behavior, OCR can confirm
+    // after three strong reads, and teacher evidence keeps its existing shortcut.
+    const enough = fastOnly
+      ? best.hits >= 4
+      : best.strongHits >= 3 || best.hits >= 4 || best.ocrStrongHits >= 3 || (best.teacherHits >= 1 && best.hits >= 2);
     if (!dominant || !enough) {
-      return { accepted: false, reason: 'collecting', candidate: best.key, hits: best.hits, strongHits: best.strongHits };
+      return {
+        accepted: false,
+        reason: 'collecting',
+        candidate: best.key,
+        hits: best.hits,
+        strongHits: best.strongHits,
+        refinerStrongHits: best.refinerStrongHits,
+      };
     }
 
     this.committed = { key: best.key, cards: cloneCards(best.best.cards) };
