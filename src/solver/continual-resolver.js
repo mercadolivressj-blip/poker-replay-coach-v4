@@ -7,6 +7,7 @@ function now() { return typeof performance !== 'undefined' && performance.now ? 
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function eventKey(e) { return `${e?.street || '-'}:${e?.actorName || '-'}:${e?.action || '-'}:${Number.isFinite(e?.amount) ? Math.round(e.amount * 100) / 100 : '-'}`; }
 function seatKey(s) { return `${s?.seatIndex ?? '-'}:${s?.actorName || '-'}:${s?.position || '-'}:${Number.isFinite(s?.stack) ? Math.round(s.stack) : '-'}:${Number.isFinite(s?.committed) ? Math.round(s.committed) : '-'}:${s?.folded === true ? 'F' : 'A'}`; }
+function actorKey(name) { return String(name || '').trim().toLowerCase(); }
 
 export function resolverFingerprint({ handId, state, events = [], actorName = null, table = null } = {}) {
   const hero = (state?.hero || []).map(cardId).join(',');
@@ -16,17 +17,39 @@ export function resolverFingerprint({ handId, state, events = [], actorName = nu
   return [handId || 0, state?.street || '-', hero, board, Number.isFinite(state?.pot) ? Math.round(state.pot * 100) / 100 : '-', actorName || '-', history, table?.heroPosition || '-', Number.isFinite(table?.effectiveStack) ? Math.round(table.effectiveStack) : '-', seats].join('#').slice(0, 1400);
 }
 
-function activeOpponentCount(table) {
-  if (!table?.seats?.length) return 1;
-  return table.seats.filter((s) => !s.hero && s.folded !== true).length;
+function activeOpponentCount(table, events = []) {
+  if (table?.seats?.length) return Math.max(1, table.seats.filter((s) => !s.hero && s.folded !== true).length);
+  const names = new Set(events.map((e) => actorKey(e.actorName)).filter(Boolean));
+  return Math.max(1, Math.min(6, names.size || 1));
 }
 
-function evidenceQuality(context, equity) {
+function evidenceMetrics(context, equity) {
   const events = context.events || [];
-  const eventConf = events.length ? events.reduce((s, e) => s + clamp(Number(e.confidence) || 0.55, 0, 1), 0) / events.length : 0;
+  const actor = actorKey(context.actorName);
+  const actorEvents = actor ? events.filter((e) => actorKey(e.actorName) === actor) : [];
+  const relevant = actorEvents.length ? actorEvents : events;
+  const eventConf = relevant.length ? relevant.reduce((s, e) => s + clamp(Number(e.confidence) || 0.55, 0, 1), 0) / relevant.length : 0;
+  const eventCoverage = Math.min(1, relevant.length / 4);
   const tableConf = clamp(Number(context.table?.confidence) || 0, 0, 1);
   const sampleCertainty = equity?.stderr === 0 ? 1 : clamp(1 - (Number(equity?.stderr) || 0.2) * 8, 0, 1);
-  return clamp(eventConf * 0.46 + tableConf * 0.24 + sampleCertainty * 0.30, 0, 1);
+  const actorKnown = actor ? 1 : 0;
+  const quality = clamp(
+    eventConf * eventCoverage * 0.34 +
+    tableConf * 0.20 +
+    actorKnown * 0.16 +
+    sampleCertainty * 0.22 +
+    (Number.isFinite(context.state?.pot) ? 0.08 : 0),
+    0,
+    1,
+  );
+  return {
+    quality,
+    eventCount: events.length,
+    actorEventCount: actorEvents.length,
+    localChatCount: events.filter((e) => e.source === 'local-dealer-chat').length,
+    sampleCertainty,
+    actorKnown: Boolean(actor),
+  };
 }
 
 export function prepareResolverState(context, { budget = 620 } = {}) {
@@ -47,6 +70,7 @@ export function prepareResolverState(context, { budget = 620 } = {}) {
     budget,
     seed: fingerprint,
   });
+  const evidence = evidenceMetrics(context, equity);
   return {
     fingerprint,
     handId: context.handId,
@@ -56,8 +80,13 @@ export function prepareResolverState(context, { budget = 620 } = {}) {
     table: context.table || null,
     range,
     equity,
-    activeOpponents: activeOpponentCount(context.table),
-    evidenceQuality: evidenceQuality(context, equity),
+    activeOpponents: activeOpponentCount(context.table, context.events || []),
+    evidenceQuality: evidence.quality,
+    eventCount: evidence.eventCount,
+    actorEventCount: evidence.actorEventCount,
+    localChatCount: evidence.localChatCount,
+    sampleCertainty: evidence.sampleCertainty,
+    actorKnown: evidence.actorKnown,
     preparedMs: now() - t0,
     preparedAt: now(),
   };
@@ -66,12 +95,11 @@ export function prepareResolverState(context, { budget = 620 } = {}) {
 function explanation(best, prepared) {
   const eq = Math.round((prepared.equity?.equity || 0) * 100);
   const strong = Math.round((prepared.range?.summary?.strongShare || 0) * 100);
-  const draw = Math.round((prepared.range?.summary?.drawShare || 0) * 100);
   if (best.action === 'call') return `PAGAR: equity estimada ~${eq}% contra o range reconstruído; o preço observado mantém o call competitivo.`;
   if (best.action === 'fold') return `DESISTIR: o valor esperado das continuações ficou abaixo do fold; o range reconstruído tem ~${strong}% de região forte neste modelo.`;
   if (best.action === 'raise' || best.action === 'bet' || best.action === 'allin') {
     const fe = Math.round((best.foldEquity || 0) * 100);
-    return `${best.action === 'bet' ? 'APOSTAR' : best.action === 'raise' ? 'AUMENTAR' : 'ALL-IN'}: combina ~${eq}% de equity estimada com ~${fe}% de fold equity no range atual.`;
+    return `${best.action === 'bet' ? 'APOSTAR' : best.action === 'raise' ? 'AUMENTAR' : 'ALL-IN'}: combina ~${eq}% de equity estimada com ~${fe}% de fold equity sustentada pelo contexto observado.`;
   }
   if (best.action === 'check') return `PASSAR: mantém o pote controlado com ~${eq}% de equity estimada sem assumir ação futura que ainda não aconteceu.`;
   return 'Estado local resolvido.';
@@ -89,6 +117,8 @@ export function decidePrepared(prepared, actions = []) {
     rangeSummary: prepared.range?.summary,
     street: prepared.street,
     effectiveStack: prepared.table?.effectiveStack,
+    evidenceQuality: prepared.evidenceQuality,
+    actorKnown: prepared.actorKnown,
   });
   if (!values.length) return { decision: 'insufficient', confidence: 0, reason: 'Nenhuma ação pôde ser avaliada localmente.', values: [], ms: now() - t0 };
 
@@ -96,15 +126,17 @@ export function decidePrepared(prepared, actions = []) {
   const scale = Math.max(1, prepared.pot + Math.max(...values.map((v) => Number(v.risk) || 0)));
   const gap = valueGap(values, scale);
   const evidence = prepared.evidenceQuality || 0;
-  const sampleCertainty = prepared.equity.stderr === 0 ? 1 : clamp(1 - (prepared.equity.stderr || 0.2) * 8, 0, 1);
-  let confidence = Math.round(48 + gap * 30 + evidence * 12 + sampleCertainty * 9);
-  if (!prepared.actorName) confidence = Math.min(confidence, 68);
-  if (prepared.activeOpponents > 1) confidence = Math.min(confidence, 72);
-  confidence = clamp(confidence, 35, 94);
+  const sampleCertainty = prepared.sampleCertainty || 0;
+  let confidence = Math.round(30 + gap * 32 + evidence * 30 + sampleCertainty * 8);
+  if (!prepared.actorKnown) confidence = Math.min(confidence, 55);
+  if (!prepared.actorEventCount) confidence = Math.min(confidence, 58);
+  if (prepared.activeOpponents > 1) confidence = Math.min(confidence, 68);
+  confidence = clamp(confidence, 28, 94);
 
   const caveats = [];
   if (prepared.activeOpponents > 1) caveats.push('multiway ainda usa aproximação por range principal');
-  if (!prepared.actorName) caveats.push('rival principal não identificado');
+  if (!prepared.actorKnown) caveats.push('rival principal não identificado');
+  if (!prepared.actorEventCount) caveats.push('sem ação explícita suficiente do rival');
   if ((prepared.range?.summary?.comboCount || 0) < 80) caveats.push('range estreito por pouca cobertura');
 
   return {
@@ -115,6 +147,10 @@ export function decidePrepared(prepared, actions = []) {
     equity: prepared.equity.equity,
     rangeSummary: prepared.range?.summary || null,
     actorName: prepared.actorName,
+    eventCount: prepared.eventCount,
+    actorEventCount: prepared.actorEventCount,
+    localChatCount: prepared.localChatCount,
+    evidenceQuality: prepared.evidenceQuality,
     fingerprint: prepared.fingerprint,
     preparedMs: prepared.preparedMs,
     ms: now() - t0,
