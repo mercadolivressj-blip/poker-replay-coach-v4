@@ -29,7 +29,7 @@ if (typeof window !== 'undefined') window.__prcCardRefinerDiagnostics = diagnost
 
 const ocr = new OcrService();
 const consensus = new HeroCardConsensus({ windowMs: 520, strongConfidence: 0.76 });
-const heroSuitConsensus = new SuitConsensus({ windowMs: 360, slots: 2, allowFacePairCandidates: true });
+const heroSuitConsensus = new SuitConsensus({ windowMs: 420, slots: 2, allowFacePairCandidates: true, candidateMinHits: 3 });
 const boardRankConsensus = new BoardCardConsensus({ windowMs: 420, slots: 5, minHits: 3 });
 const boardSuitConsensus = new SuitConsensus({ windowMs: 520, slots: 5, allowCandidates: true, candidateMinHits: 4 });
 let consensusHandId = 0;
@@ -74,16 +74,26 @@ function cardSource(cards) {
   return 'fast';
 }
 
-function syncHeroHand(machine, now = performance.now()) {
-  if (!machine || consensusHandId === machine.handId) return false;
+function syncCardHand(machine, now = performance.now()) {
+  if (!machine || (consensusHandId === machine.handId && boardConsensusHandId === machine.handId)) return false;
   consensusHandId = machine.handId;
+  boardConsensusHandId = machine.handId;
   consensus.resetHand(machine.handId);
   heroSuitConsensus.resetHand(machine.handId);
+  boardRankConsensus.resetHand(machine.handId);
+  boardSuitConsensus.resetHand(machine.handId);
   diagnostics.heroSuitConsensus = '0/2';
+  diagnostics.boardRankConsensus = '0/5';
+  diagnostics.boardSuitConsensus = '0/5';
   diagnostics.hero = '—';
+  diagnostics.board = '—';
   diagnostics.rolloverResets++;
-  heroBurstUntil = now + 320;
+  heroBurstUntil = now + 420;
   lastReadAt = 0;
+  // Recompute slot geometry on every hand boundary. The table itself is stable,
+  // but PokerStars replay can subtly shift/scale the felt after animations.
+  layout = null;
+  lastGeomAt = 0;
   return true;
 }
 
@@ -93,7 +103,7 @@ function installCardConsensus(machine) {
   machine.setHero = (cards, handId) => {
     if (handId !== machine.handId) return false;
     const now = performance.now();
-    syncHeroHand(machine, now);
+    syncCardHand(machine, now);
     const observed = consensus.observe(cards, { handId, source: cardSource(cards), now });
     if (!observed.accepted) return false;
     const suitObserved = heroSuitConsensus.observe(cards, { handId, now });
@@ -120,13 +130,7 @@ function installCardConsensus(machine) {
   machine.setBoard = (cards, handId) => {
     if (handId !== machine.handId || !Array.isArray(cards)) return false;
     const now = performance.now();
-    if (boardConsensusHandId !== handId) {
-      boardConsensusHandId = handId;
-      boardRankConsensus.resetHand(handId);
-      boardSuitConsensus.resetHand(handId);
-      diagnostics.boardRankConsensus = '0/5';
-      diagnostics.boardSuitConsensus = '0/5';
-    }
+    syncCardHand(machine, now);
     if (!cards.length) return rawSetBoard(cards, handId);
 
     const rankStable = boardRankConsensus.observe(cards, { handId, now });
@@ -257,7 +261,7 @@ async function readOnce() {
   const source = visibleSource();
   if (!machine || !source || busy) return;
   const now = performance.now();
-  syncHeroHand(machine, now);
+  syncCardHand(machine, now);
   if (now - lastReadAt < 58) return;
   lastReadAt = now;
   const frame = captureFrame(source); if (!frame) return;
@@ -308,7 +312,7 @@ async function readOnce() {
 
 function tick() {
   const machine = activeHandMachine;
-  const changed = syncHeroHand(machine);
+  const changed = syncCardHand(machine);
   syncVisibleCardLabels(machine);
   const urgent = changed || performance.now() < heroBurstUntil;
   if (urgent) {
