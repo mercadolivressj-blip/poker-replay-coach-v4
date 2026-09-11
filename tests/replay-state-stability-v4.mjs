@@ -3,8 +3,6 @@ import fs from 'node:fs';
 import { BoardCardConsensus } from '../src/core/board-card-consensus.js';
 import { HandMachine } from '../src/core/state-machine.js';
 
-// Board rank lock must not erase later live suit evidence. This reproduces the
-// replay symptom where 5/3/3 ranks were right but every suit stayed unknown.
 const board = new BoardCardConsensus({ windowMs: 500, slots: 5, minHits: 3 });
 board.resetHand(21);
 const noSuit = [
@@ -23,8 +21,6 @@ assert.equal(stable.ready, true);
 assert.deepEqual(stable.cards.map((c) => c.suit), ['diamonds','spades','diamonds']);
 assert.deepEqual(stable.cards.map((c) => c.suitCandidate), ['diamonds','spades','diamonds']);
 
-// Brief board dropouts while Hero remains visible must not roll handId. PokerStars
-// animation/chip overlap can make the board detector report zero for several frames.
 const m = new HandMachine();
 m.newHand('fixture', 1000);
 const id = m.handId;
@@ -36,21 +32,20 @@ for (let i = 0; i < 7; i++) {
   assert.equal(out.newHand, false);
   assert.equal(m.handId, id);
 }
-// Even after the old two-hit threshold, a visible Hero protects the current hand.
 const stillSame = m.observeBoardCount(0, 1900);
 assert.equal(stillSame.newHand, false);
 assert.equal(m.handId, id);
-// A sustained board + Hero disappearance can still serve as fallback hand boundary.
 m.heroMissing = 10;
 m.lastHeroSeenAt = 1300;
 const rollover = m.observeBoardCount(0, 2050);
 assert.equal(rollover.newHand, true);
 assert.equal(m.handId, id + 1);
 
-// Runtime contract: Hero rank and suit must come from separate geometries. The
-// dedicated suit crop is never allowed to invent or replace rank.
+// R8 runtime contract: trusted Hero rank and suit come from separate dedicated
+// geometries. The historical layout.heroSlots lane remains only the fast hint.
 const runtime = fs.readFileSync(new URL('../src/vision/card-refiner-runtime.js', import.meta.url), 'utf8');
-assert.match(runtime, /const heroRankSlots = layout\.heroSlots/);
+assert.match(runtime, /function dedicatedHeroRankSlots/);
+assert.match(runtime, /const heroRankSlots = dedicatedHeroRankSlots\(felt\)/);
 assert.match(runtime, /const heroSuitSlots = layout\.heroSuitSlots \|\| layout\.heroSlots/);
 assert.match(runtime, /classifyHeroCard\(rankSlotCrop, suitSlotCrop/);
 assert.match(runtime, /classifyRankPixels\(rankSlotCrop\.data, rankSlotCrop\.w, rankSlotCrop\.h\)/);
