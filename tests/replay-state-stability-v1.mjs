@@ -100,7 +100,7 @@ for (const suit of ['spades','clubs']) {
 // Runtime contracts for this sprint.
 const tableObserver = fs.readFileSync(new URL('../src/vision/table-observer.js', import.meta.url), 'utf8');
 assert.doesNotMatch(tableObserver, /!this\.accessToken/, 'preview table observer must be allowed to auto-probe visual state');
-assert.match(tableObserver, /minIntervalMs = 1350/);
+assert.match(tableObserver, /minIntervalMs = 850/);
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap.js', import.meta.url), 'utf8');
 assert.doesNotMatch(bootstrap, /local-action-runtime/, 'Dealer chat OCR must stay off the replay hot path');
 const api = fs.readFileSync(new URL('../api/table-state.js', import.meta.url), 'utf8');
