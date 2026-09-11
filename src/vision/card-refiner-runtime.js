@@ -118,7 +118,7 @@ installCardConsensus(activeHandMachine);
 
 function classifyLocalCard(crop) {
   const rank = classifyRankPixels(crop.data, crop.w, crop.h);
-  const suit = classifySuitPixels(crop.data, crop.w, crop.h);
+  const suit = classifySuitPixels(crop.data, crop.w, crop.h, rank.rank || null);
   return {
     rank: rank.rank || null,
     suit: suit.suit || null,
@@ -136,9 +136,15 @@ async function completeRank(card, crop, lane) {
   if (card.rank) return card;
   const read = await ocr.readRank(rankCrop(crop.canvas), lane);
   if (!read?.value) return card;
+  const suit = classifySuitPixels(crop.data, crop.w, crop.h, read.value);
   return {
     ...card,
     rank: read.value,
+    suit: suit.suit || null,
+    suitConfidence: suit.confidence || 0,
+    suitCandidate: suit.candidate || null,
+    suitRoi: suit.roi || null,
+    voteCount: suit.voteCount || 0,
     confidence: Math.max(card.confidence || 0, Math.max(0.45, (read.confidence || 0) / 100)),
     source: 'ocr-refiner',
   };
