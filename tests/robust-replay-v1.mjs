@@ -31,7 +31,6 @@ assert.equal(committedT6.key, 'T6');
 assert.equal(c.observe(tt, { handId: 2, now: 195 }).reason, 'sticky-mismatch');
 assert.equal(c.snapshot().committed.key, 'T6');
 
-// Semantic rank jitter alone must not rotate a hand after only a few bad frames.
 const machine = new HandMachine();
 assert.equal(machine.observeHero(['7','3'], true, 1000).newHand, true);
 for (const t of [1100, 1160, 1220, 1280]) assert.equal(machine.observeHero(['K','3'], true, t).newHand, false);
@@ -42,6 +41,9 @@ assert.deepEqual(parseDealerActionLine('Regnypontes: aumenta 200 para 600'), { a
 assert.deepEqual(parseDealerActionLine('quemelster: passa'), { actorName: 'quemelster', action: 'check', amount: null });
 assert.deepEqual(parseDealerActionLine('xsouthpawxx: bets 350'), { actorName: 'xsouthpawxx', action: 'bet', amount: 350 });
 assert.deepEqual(parseDealerActionLine('abc: raises 200 to 700'), { actorName: 'abc', action: 'raise', amount: 700 });
+assert.deepEqual(parseDealerActionLine('Dealer: tattou81 paga 200'), { actorName: 'tattou81', action: 'call', amount: 200 });
+assert.deepEqual(parseDealerActionLine('Dealer: Regnypontes raises 200 to 700'), { actorName: 'Regnypontes', action: 'raise', amount: 700 });
+assert.deepEqual(parseDealerActionLine('Dealer: quemelster: passa'), { actorName: 'quemelster', action: 'check', amount: null });
 assert.equal(parseDealerActionLine('Dealer: Regnypontes, é a sua vez. Tem 8 segundos para agir'), null, 'turn prompt is not an action');
 assert.equal(parseDealerActionLine('Dealer: Mão #123: wruckzinho ganha pote (1.323)'), null, 'pot result is not an action');
 assert.equal(parseDealerActionLine('wruckzinho: boa mao'), null, 'ordinary chat is not an action');
@@ -56,5 +58,8 @@ const rankSource = fs.readFileSync(new URL('../src/core/rank-classifier.js', imp
 assert.match(rankSource, /CONFUSION_MARGIN/);
 assert.match(rankSource, /'K': Object\.freeze\(\{ '7':/);
 assert.match(rankSource, /'T': Object\.freeze\(\{ '6':/);
+const localActionRuntime = fs.readFileSync(new URL('../src/vision/local-action-runtime.js', import.meta.url), 'utf8');
+assert.match(localActionRuntime, /recentLines/);
+assert.match(localActionRuntime, /2400/);
 
 console.log('ROBUST REPLAY V1 regressions passed');
