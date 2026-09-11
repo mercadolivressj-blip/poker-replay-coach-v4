@@ -4,6 +4,7 @@ function normSuit(s) {
   return ['clubs','diamonds','hearts','spades'].includes(v) ? v : null;
 }
 function normRank(r) { return r ? String(r).toUpperCase() : null; }
+function faceRank(r) { return ['A','J','Q','K'].includes(normRank(r)); }
 function weight(card) {
   const conf = Number(card?.suitConfidence);
   const base = Number.isFinite(conf) ? Math.max(0.1, Math.min(1, conf)) : 0.1;
@@ -57,9 +58,14 @@ export class SuitConsensus {
       const second = ranked[1];
       if (!best) continue;
       const dominant = !second || best.score >= second.score * 1.55;
-      // Require temporal confirmation. Multiple-pip voting helps the score/confidence
-      // but one frame alone never becomes authoritative.
-      const enough = best.hits >= 2 && (best.strong >= 1 || best.score >= 1.25 || best.voted >= 1);
+      const isFace = faceRank(this.ranks[i]);
+      // Face/ace cards expose only the authoritative corner glyph. Require three
+      // agreeing frames so a single decorative face/watermark region can never
+      // become sticky after just two repeated mistakes. Numeric cards can use
+      // repeated pip votes and keep the faster two-frame confirmation.
+      const enough = isFace
+        ? best.hits >= 3 && best.strong >= 2
+        : best.hits >= 2 && (best.strong >= 1 || best.score >= 1.25 || best.voted >= 1);
       if (dominant && enough) this.confirmed[i] = best.suit;
     }
 
