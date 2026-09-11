@@ -125,6 +125,14 @@ export function layoutFromFelt(f) {
   const heroSlots = [0, 1].map((i) =>
     C(f.x + (0.405 + i * 0.09) * f.w, f.y + 0.94 * f.h, 0.09 * f.w, 0.17 * f.h),
   );
+  // The fast rank lane intentionally keeps its long-standing Hero geometry.
+  // Suit glyphs live near the top-left corner of each physical card, though,
+  // and real replay screenshots show that 0.94*h starts roughly 10–15 px too
+  // low at common PokerStars sizes. A dedicated, slightly taller crop lets the
+  // suit refiner see that corner without touching the proven fast path.
+  const heroSuitSlots = [0, 1].map((i) =>
+    C(f.x + (0.405 + i * 0.09) * f.w, f.y + 0.875 * f.h, 0.09 * f.w, 0.205 * f.h),
+  );
   const boardSlots = [0, 1, 2, 3, 4].map((i) =>
     C(f.x + (0.255 + i * 0.1) * f.w, f.y + 0.265 * f.h, 0.09 * f.w, 0.29 * f.h),
   );
@@ -132,7 +140,7 @@ export function layoutFromFelt(f) {
   const actionX = f.x + 0.5 * f.w;
   const actionY = f.y + 1.28 * f.h;
   const action = C(actionX, actionY, 1 - actionX - 0.005, 1 - actionY - 0.018);
-  return { heroSlots, boardSlots, pot, action };
+  return { heroSlots, heroSuitSlots, boardSlots, pot, action };
 }
 
 /** Compatibility wrapper for older code. */
