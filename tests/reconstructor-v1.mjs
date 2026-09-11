@@ -25,7 +25,6 @@ assert.equal(timeline.append({ handId: 9, street: 'flop', actorName: 'Vilao', ac
 assert.equal(timeline.append({ handId: 9, street: 'turn', actorName: 'Vilao', action: 'bet', amount: 250 }), true);
 assert.equal(timeline.snapshot().events.length, 2);
 
-a = null;
 const polarEvents = [
   { actorName: 'Vilao', street: 'turn', action: 'call', amount: 400 },
   { actorName: 'Vilao', street: 'river', action: 'raise', amount: 1500 },
