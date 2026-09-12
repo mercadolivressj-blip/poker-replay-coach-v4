@@ -97,8 +97,8 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
 
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return res.status(501).json({ error: 'OPENAI_API_KEY not configured' });
+  const key = process.env.OPENAI_API_KEY || process.env.CHATGPT;
+  if (!key) return res.status(501).json({ error: 'OpenAI API key not configured (OPENAI_API_KEY or CHATGPT)' });
   const accessToken = process.env.VISION_ACCESS_TOKEN;
   const production = process.env.VERCEL_ENV === 'production';
   if (production && !accessToken) return res.status(501).json({ error: 'VISION_ACCESS_TOKEN not configured' });
