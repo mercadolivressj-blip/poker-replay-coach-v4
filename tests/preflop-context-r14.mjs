@@ -55,11 +55,14 @@ assert.equal(ctx.aggressorCommitted, 0.06);
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
 const ui = fs.readFileSync(new URL('../src/solver/single-decision-ui-r14.js', import.meta.url), 'utf8');
+const decisionApi = fs.readFileSync(new URL('../api/decision-state.js', import.meta.url), 'utf8');
 assert.match(bootstrap, /preflop-policy-runtime-r14/);
 assert.match(bootstrap, /single-decision-ui-r14/);
 assert.match(gate, /unopenedPreflopOwnedByPolicy/);
 assert.match(gate, /preflop-unopened-policy-r14/);
 assert.match(ui, /decision-store-only/);
 assert.match(ui, /getDecision/);
+assert.match(decisionApi, /mandatory SB\/BB postings are NOT aggression/);
+assert.match(decisionApi, /Never call the BB the aggressor merely because BB > SB/);
 
 console.log('PREFLOP CONTEXT R14 passed');
