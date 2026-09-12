@@ -100,8 +100,10 @@ function applyPublished() {
 }
 
 function publishUi(entry) {
-  lastPublished = entry;
-  publishDecision(entry);
+  // IMPORTANT: publishDecision() applies the study-safety gate. The UI must
+  // render the returned/gated decision, never the raw resolver suggestion.
+  // Otherwise a blocked PAGAR/PASSAR/RAISE can leak back onto the screen.
+  lastPublished = publishDecision(entry);
   applyPublished();
 }
 
