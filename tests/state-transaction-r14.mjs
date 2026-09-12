@@ -5,22 +5,25 @@ import { parseCards, parsePot } from '../src/vision/manual-controls-runtime-r14.
 
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
+const lifecycle = fs.readFileSync(new URL('../src/core/deal-lifecycle-r14.js', import.meta.url), 'utf8');
 const boardRefiner = fs.readFileSync(new URL('../src/vision/board-refiner-runtime-r14.js', import.meta.url), 'utf8');
-const heroAuthority = fs.readFileSync(new URL('../src/vision/hero-authority-runtime-r11.js', import.meta.url), 'utf8');
 const recalibrate = fs.readFileSync(new URL('../src/vision/recalibrate-runtime-r14.js', import.meta.url), 'utf8');
 const manualControls = fs.readFileSync(new URL('../src/vision/manual-controls-runtime-r14.js', import.meta.url), 'utf8');
 const page = fs.readFileSync(new URL('../r14.html', import.meta.url), 'utf8');
 
 assert.match(bootstrap, /state-transaction-runtime-r14/);
+assert.match(bootstrap, /manual-hero-authority-r14/);
 assert.match(bootstrap, /board-refiner-runtime-r14/);
 assert.match(bootstrap, /suit-scanner-runtime-r9/);
-assert.match(bootstrap, /hero-authority-runtime-r11/);
+assert.doesNotMatch(bootstrap, /hero-authority-runtime-r11/);
 assert.match(bootstrap, /recalibrate-runtime-r14/);
 assert.match(bootstrap, /manual-controls-runtime-r14/);
 assert.doesNotMatch(bootstrap, /replay-lifecycle-r8/);
 assert.doesNotMatch(bootstrap, /card-refiner-runtime\.js/);
 
 assert.match(transaction, /DealSnapshotArbiter/);
+assert.match(transaction, /DealLifecycleR14/);
+assert.match(transaction, /physical-redeal/);
 assert.match(transaction, /requestReadingRecalibration/);
 assert.match(transaction, /applyManualReplayState/);
 assert.match(transaction, /automatic-refresh/);
@@ -33,10 +36,10 @@ assert.doesNotMatch(transaction, /stableHero\s*=/);
 assert.doesNotMatch(transaction, /stableBoard\s*=/);
 assert.doesNotMatch(transaction, /stablePot\s*=/);
 
-assert.doesNotMatch(heroAuthority, /hero-authority-visual-change-r12/);
-assert.match(heroAuthority, /hero-authority-physical-redeal-r14/);
-assert.match(heroAuthority, /manualRebindToken/);
-assert.doesNotMatch(heroAuthority, /machine\.state\.hero\s*=/);
+assert.match(lifecycle, /heroGapArmed/);
+assert.match(lifecycle, /boardClearArmed/);
+assert.match(lifecycle, /heroReappearHits/);
+assert.match(lifecycle, /physical-redeal/);
 
 assert.doesNotMatch(boardRefiner, /newHand\s*\(/);
 assert.doesNotMatch(boardRefiner, /quarantine/i);
@@ -86,7 +89,6 @@ assert.equal(observeStablePot(c, 0.05), null);
 assert.equal(observeStablePot(c, 0.05), 0.05);
 assert.equal(c.value, 0.05);
 
-// Keep the existing R14 temporal pot behavior untouched in this card-generation change.
 assert.equal(observeStablePot(c, 4), null);
 assert.equal(observeStablePot(c, 4), null);
 assert.equal(observeStablePot(c, 4), 4);
