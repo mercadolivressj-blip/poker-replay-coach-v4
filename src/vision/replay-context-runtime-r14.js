@@ -2,10 +2,9 @@ import { activeHandMachine } from '../core/state-machine.js';
 import { ActionTimeline } from '../core/action-timeline.js';
 import { TableStateTracker } from '../core/table-state-tracker.js';
 
-// R14 used to import the resolver without ever instantiating the two live stores
-// it reads from. Own them here so every replay hand has one public action timeline
-// and one optional table snapshot tracker. Local chat OCR is loaded only after the
-// timeline exists, otherwise its live binding is null during module evaluation.
+// R14 owns one public-state timeline and one table tracker per replay hand.
+// The primary evidence source is now the table itself (seat panels + stack/action
+// changes). Chat OCR is intentionally not required for the resolver path.
 const timeline = new ActionTimeline();
 const tableTracker = new TableStateTracker();
 
@@ -15,6 +14,7 @@ const diagnostics = {
   eventCount: 0,
   actors: [],
   lastEvent: null,
+  source: 'visual-table-r14',
 };
 
 if (typeof window !== 'undefined') {
@@ -51,7 +51,8 @@ if (typeof window !== 'undefined') {
   setTimeout(syncHand, 0);
 }
 
-// Must remain a dynamic import: ActionTimeline above has to be constructed first.
-await import('./local-action-runtime.js');
+// Dynamic import is deliberate: the live exports above must exist before the
+// visual reader imports activeActionTimeline / activeTableStateTracker.
+await import('./visual-table-runtime-r14.js');
 
 export { timeline as replayActionTimelineR14, tableTracker as replayTableTrackerR14 };
