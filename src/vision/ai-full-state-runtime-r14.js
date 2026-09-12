@@ -4,7 +4,7 @@ import { activeTableStateTracker } from '../core/table-state-tracker.js';
 
 const SUIT_SYMBOL = { clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' };
 const diagnostics = {
-  source: 'gpt-5.6-sol-full-frame',
+  source: 'gpt-5.6-luna-full-frame',
   enabled: true,
   handId: 0,
   requests: 0,
@@ -34,9 +34,8 @@ if (typeof window !== 'undefined') window.__prcAIStateR14 = diagnostics;
 
 let generation = 0;
 let captureSeq = 0;
-let applySeq = 1;
+let lastAppliedSeq = 0;
 let lastCaptureAt = 0;
-let responses = new Map();
 let heroCandidate = null;
 let boardCandidate = null;
 let potCandidate = null;
@@ -87,10 +86,10 @@ function resetForHand(handId) {
   diagnostics.board = [];
   diagnostics.pot = null;
   diagnostics.seats = [];
+  diagnostics.lastError = null;
   diagnostics.manual = { hero: false, board: false, pot: false };
   captureSeq = 0;
-  applySeq = 1;
-  responses = new Map();
+  lastAppliedSeq = 0;
   heroCandidate = null;
   boardCandidate = null;
   potCandidate = null;
@@ -311,23 +310,13 @@ function renderReadout() {
   }
 }
 
-function flushResponses(localGeneration) {
-  if (localGeneration !== generation) return;
-  while (responses.has(applySeq)) {
-    const out = responses.get(applySeq);
-    responses.delete(applySeq);
-    applySeq++;
-    if (out) applyState(out);
-  }
-}
-
 async function requestFrame(seq, canvas, handId, localGeneration) {
   diagnostics.inFlight++;
   diagnostics.requests++;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 13000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const image = canvas.toDataURL('image/jpeg', 0.82);
+    const image = canvas.toDataURL('image/jpeg', 0.78);
     const r = await fetch('/api/full-state', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(accessToken ? { 'x-coach-token': accessToken } : {}) },
@@ -335,24 +324,26 @@ async function requestFrame(seq, canvas, handId, localGeneration) {
       signal: controller.signal,
     });
     if (localGeneration !== generation) return;
+
     if (!r.ok) {
       let reason = `HTTP ${r.status}`;
       try { const j = await r.json(); if (j?.error) reason += ` · ${j.error}`; } catch {}
       diagnostics.failures++;
-      diagnostics.lastError = reason;
-      responses.set(seq, null);
-    } else {
-      responses.set(seq, await r.json());
+      if (seq > lastAppliedSeq) diagnostics.lastError = reason;
+      return;
     }
+
+    const out = await r.json();
+    if (localGeneration !== generation || seq <= lastAppliedSeq) return;
+    lastAppliedSeq = seq;
+    applyState(out);
   } catch (e) {
     if (localGeneration !== generation) return;
     diagnostics.failures++;
-    diagnostics.lastError = e?.name === 'AbortError' ? 'timeout da IA' : 'falha de rede da IA';
-    responses.set(seq, null);
+    if (seq > lastAppliedSeq) diagnostics.lastError = e?.name === 'AbortError' ? 'timeout da IA' : 'falha de rede da IA';
   } finally {
     clearTimeout(timer);
     diagnostics.inFlight = Math.max(0, diagnostics.inFlight - 1);
-    flushResponses(localGeneration);
     renderReadout();
   }
 }
@@ -364,7 +355,7 @@ function captureTick() {
   if (diagnostics.handId !== machine.handId) resetForHand(machine.handId);
 
   const t = now();
-  const interval = machine.state.heroToAct ? 650 : 1050;
+  const interval = diagnostics.trusted ? 900 : (machine.state.heroToAct ? 450 : 700);
   if (t - lastCaptureAt < interval || diagnostics.inFlight >= 2) return;
   const canvas = snapshotSource(source);
   if (!canvas) return;
@@ -389,10 +380,11 @@ if (typeof window !== 'undefined') {
     lastCaptureAt = 0;
     diagnostics.stableFrames = 0;
     diagnostics.trusted = false;
+    diagnostics.lastError = null;
     diagnostics.trustReason = 'Refresh solicitado · IA relendo o frame inteiro.';
     captureTick();
   };
 }
 
-setInterval(captureTick, 180);
-setTimeout(() => { ensureReadout(); captureTick(); }, 400);
+setInterval(captureTick, 160);
+setTimeout(() => { ensureReadout(); captureTick(); }, 300);
