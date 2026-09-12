@@ -2,6 +2,7 @@ import { activeHandMachine } from '../core/state-machine.js';
 
 const authority = {
   handId: 0,
+  manualOnly: true,
   heroLocked: false,
   lockedAt: 0,
 };
@@ -23,6 +24,14 @@ function sameCards(a, b) {
     && a.every((card, index) => cardId(card) === cardId(b[index]));
 }
 
+function heroReady() {
+  const cards = activeHandMachine?.state?.hero || [];
+  return authority.heroLocked
+    && authority.handId === activeHandMachine?.handId
+    && cards.length === 2
+    && cards.every((card) => card?.rank && card?.suit);
+}
+
 function reset(handId = activeHandMachine?.handId || 0) {
   authority.handId = Number(handId) || 0;
   authority.heroLocked = false;
@@ -35,20 +44,7 @@ function lockHero() {
   authority.handId = machine.handId;
   authority.heroLocked = true;
   authority.lockedAt = now();
-
-  const full = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
-  if (full) {
-    full.manual ||= { hero: false, board: false, pot: false };
-    full.manual.hero = true;
-    full.hero = (machine.state.hero || []).map((card) => ({ ...card }));
-    full.heroConfidence = 1;
-  }
-
-  const fast = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
-  if (fast) {
-    fast.hero = (machine.state.hero || []).map((card) => ({ ...card }));
-    fast.heroConfidence = 1;
-  }
+  syncManualOnlyState();
 }
 
 function installMachineGuard() {
@@ -58,10 +54,9 @@ function installMachineGuard() {
   const setHero = machine.setHero.bind(machine);
   machine.setHero = (cards, handId, options = {}) => {
     const source = String(options?.source || 'local');
-    const locked = authority.heroLocked && authority.handId === handId && handId === machine.handId;
-    if (locked && source !== 'manual') {
-      // Idempotent reads are accepted so downstream confidence can converge,
-      // but no sensor/AI is allowed to replace the user's correction.
+    if (source !== 'manual') {
+      // R14 manual-only Hero lane: visual/AI readers may still detect physical
+      // card presence for hand lifecycle, but they never own Hero ranks/suits.
       return sameCards(machine.state.hero || [], cards || []);
     }
     return setHero(cards, handId, options);
@@ -75,53 +70,51 @@ function installDecisionDiagnosticGuard() {
   const d = window.__prcAIDecisionR14;
   if (!d || d.__prcManualHeroAccessorR14) return;
 
-  let storedHero = Array.isArray(d.hero) ? d.hero : [];
   Object.defineProperty(d, 'hero', {
     configurable: true,
     enumerable: true,
     get() {
-      if (authority.heroLocked && authority.handId === activeHandMachine?.handId) {
-        return (activeHandMachine?.state?.hero || []).map((card) => ({ ...card }));
-      }
-      return storedHero;
+      return (activeHandMachine?.state?.hero || []).map((card) => ({ ...card }));
     },
-    set(value) {
-      if (authority.heroLocked && authority.handId === activeHandMachine?.handId) {
-        storedHero = (activeHandMachine?.state?.hero || []).map((card) => ({ ...card }));
-        return;
-      }
-      storedHero = Array.isArray(value) ? value : [];
+    set(_value) {
+      // Ignore AI Hero-card reads completely. The decision lane may keep reading
+      // pot/actions/aggressor while Hero cards remain manual-only.
     },
+  });
+
+  Object.defineProperty(d, 'heroConfidence', {
+    configurable: true,
+    enumerable: true,
+    get() { return heroReady() ? 1 : 0; },
+    set(_value) {},
   });
 
   d.__prcManualHeroAccessorR14 = true;
 }
 
-function syncLockedHero() {
-  if (!authority.heroLocked || authority.handId !== activeHandMachine?.handId) return;
-  const hero = (activeHandMachine?.state?.hero || []).map((card) => ({ ...card }));
+function syncManualOnlyState() {
+  const machine = activeHandMachine;
+  if (!machine?.state) return;
+  const ready = heroReady();
+  const hero = ready ? (machine.state.hero || []).map((card) => ({ ...card })) : [];
 
   const full = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
   if (full) {
     full.manual ||= { hero: false, board: false, pot: false };
+    // Always true: full-frame owns table context, never Hero cards.
     full.manual.hero = true;
     full.hero = hero.map((card) => ({ ...card }));
-    full.heroConfidence = 1;
-  }
-
-  const fast = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
-  if (fast) {
-    fast.heroConfidence = 1;
+    full.heroConfidence = ready ? 1 : 0;
   }
 }
 
 installMachineGuard();
-installDecisionDiagnosticGuard();
 reset(activeHandMachine?.handId || 0);
 
 if (typeof window !== 'undefined') {
   window.addEventListener('prc:generation-change', (event) => {
     reset(Number(event.detail?.generation) || activeHandMachine?.handId || 0);
+    syncManualOnlyState();
   });
 
   window.addEventListener('prc:manual-state-applied', (event) => {
@@ -134,5 +127,5 @@ if (typeof window !== 'undefined') {
 setInterval(() => {
   installMachineGuard();
   installDecisionDiagnosticGuard();
-  syncLockedHero();
-}, 120);
+  syncManualOnlyState();
+}, 80);
