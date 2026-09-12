@@ -13,7 +13,9 @@ assert.match(api, /gpt-5\.6-luna/);
 assert.match(api, /reasoning: \{ effort: 'none' \}/);
 assert.match(api, /input_image/);
 assert.match(api, /detail: 'high'/);
-assert.match(api, /Pot: read only the central pot label/);
+assert.match(api, /Pot: read ONLY the central visible label/);
+assert.match(api, /Pote: 630/);
+assert.match(api, /Pote: 2\.508/);
 assert.match(api, /COMPLETE CLOCKWISE PERIMETER SWEEP/);
 assert.match(api, /tableSize means PHYSICAL TABLE CAPACITY/);
 assert.match(api, /Never return opponent hole cards/);
@@ -35,12 +37,13 @@ assert.match(runtime, /forceRebind: true/);
 assert.match(runtime, /source: 'ai-full-frame'/);
 assert.match(runtime, /gpt-5\.6-luna-full-frame/);
 assert.match(runtime, /MESA IA · FRAME INTEIRO/);
-assert.match(gate, /__prcAIStateR14/);
-assert.match(gate, /ai-full-frame/);
-assert.match(gate, /stickyValidatedState/);
-assert.match(gate, /freshnessWindow/);
-assert.match(gate, /strongCoreFrame/);
-assert.match(gate, /machineMatchesAI/);
+
+// Full-frame remains contextual evidence, but strategic release now requires
+// the two-frame fast-decision consensus so a stale/full-table pot cannot publish
+// a recommendation during Hero's 10-second decision window.
+assert.doesNotMatch(gate, /__prcAIStateR14/);
+assert.match(gate, /ai-decision-frame-consensus/);
+assert.match(gate, /stableFrames >= 2/);
 assert.doesNotMatch(bootstrap, /pot-validation-runtime-r14/);
 assert.match(transaction, /\['ai-full-frame', 'manual'\]/);
 assert.match(transaction, /forceRebind: Boolean\(options\?\.forceRebind\)/);
