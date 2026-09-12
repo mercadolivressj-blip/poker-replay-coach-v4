@@ -42,7 +42,9 @@ assert.match(runtime, /MESA IA · FRAME INTEIRO/);
 
 assert.doesNotMatch(gate, /__prcAIStateR14/);
 assert.match(gate, /manual-hero/);
-assert.match(gate, /ai-decision-frame-consensus/);
+assert.match(gate, /ai-decision-raw-2of2/);
+assert.match(gate, /physical-board-match/);
+assert.match(gate, /rawStableFrames >= 2/);
 assert.match(gate, /stableFrames >= 2/);
 assert.doesNotMatch(bootstrap, /pot-validation-runtime-r14/);
 assert.match(transaction, /\['ai-full-frame', 'ai-decision', 'manual'\]/);
