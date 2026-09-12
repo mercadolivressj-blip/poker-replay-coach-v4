@@ -72,10 +72,15 @@ assert.equal(fresh.street, 'preflop');
 // Hero authority, and normal strategy requires raw 2/2 plus physical board match.
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
+const lifecycleSource = fs.readFileSync(new URL('../src/core/deal-lifecycle-r14.js', import.meta.url), 'utf8');
 const safety = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
 assert.doesNotMatch(bootstrap, /hero-authority-runtime-r11/);
 assert.match(transaction, /DealLifecycleR14/);
-assert.match(transaction, /physical-redeal/);
+assert.match(transaction, /lifecycle\.observeHero\(Boolean\(present\), now\)/);
+assert.match(transaction, /if \(observed\.newDeal\)/);
+assert.match(transaction, /diagnostics\.physicalRedeals\+\+/);
+assert.match(transaction, /machine\.newHand\(reason, now\)/);
+assert.match(lifecycleSource, /physical-redeal/);
 assert.match(safety, /rawStableFrames >= 2/);
 assert.match(safety, /physical-board-match/);
 assert.match(safety, /visualBoardCount/);
