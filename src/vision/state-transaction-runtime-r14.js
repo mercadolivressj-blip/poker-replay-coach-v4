@@ -25,8 +25,6 @@ const SUIT_SYMBOL = Object.freeze({ clubs: '♣', diamonds: '♦', hearts: '♥'
 const cardLabel = (cards) => (cards || []).map((c) => `${c?.rank || '?'}${c?.suit ? (SUIT_SYMBOL[c.suit] || '?') : '?'}`).join(' ');
 const heroComplete = (cards) => Array.isArray(cards) && cards.length === 2 && cards.every((c) => c?.rank);
 
-// Replace the monotonic R13 pot consensus with a temporal consensus that can
-// correct OCR mistakes without allowing pot changes to rotate the hand.
 PotConsensus.prototype.observe = function observeR14(value) {
   return observeStablePot(this, value);
 };
@@ -67,6 +65,7 @@ function install(machine) {
     const result = arbiter.commitHero(cards, {
       generation: handId,
       rebindToken: options?.rebindToken || null,
+      forceRebind: Boolean(options?.forceRebind),
       now: options?.now,
     });
     diagnostics.lockedHeroConflicts += arbiter.diagnostics.heroLocks - beforeLocks;
@@ -80,6 +79,7 @@ function install(machine) {
     const result = arbiter.commitBoard(cards, {
       generation: handId,
       rebindToken: options?.rebindToken || null,
+      forceRebind: Boolean(options?.forceRebind),
       now: options?.now,
     });
     diagnostics.lockedBoardConflicts += arbiter.diagnostics.boardLocks - beforeLocks;
@@ -87,14 +87,13 @@ function install(machine) {
     return result.accepted;
   };
 
-  machine.setPot = (value, handId, options = {}) => arbiter.commitPot(value, {
-    generation: handId,
-    now: options?.now,
-  }).accepted;
+  machine.setPot = (value, handId, options = {}) => {
+    const source = String(options?.source || 'local');
+    const ai = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
+    if (ai?.enabled && Number(ai.responses) > 0 && !['ai-full-frame', 'manual'].includes(source)) return false;
+    return arbiter.commitPot(value, { generation: handId, now: options?.now }).accepted;
+  };
 
-  // The base detector can create only the first generation. After that, redeals
-  // are owned by Hero Authority and require a sustained physical card gap plus a
-  // stable replacement pair. Rank disagreement alone can never rotate a hand.
   machine.observeHero = (fp, present, now = performance.now()) => {
     if (machine.handId <= 0) return rawObserveHero(fp, present, now);
     if (!present) {
@@ -135,6 +134,7 @@ export function requestReadingRecalibration() {
   const token = arbiter.beginManualRecalibration();
   diagnostics.manualRefreshes++;
   dispatchRecalibration(token, 'automatic-refresh');
+  if (typeof window !== 'undefined') setTimeout(() => window.__prcAIRefreshR14?.(), 0);
   return token;
 }
 
@@ -151,21 +151,18 @@ export function applyManualReplayState({ hero, board, pot } = {}) {
   const result = { accepted: true, generation, hero: null, board: null, pot: null };
 
   if (hasHero) {
-    result.hero = activeHandMachine.setHero(hero, generation, { rebindToken: token, now });
+    result.hero = activeHandMachine.setHero(hero, generation, { rebindToken: token, forceRebind: true, source: 'manual', now });
     result.accepted = result.accepted && result.hero;
   }
   if (hasBoard) {
-    result.board = activeHandMachine.setBoard(board, generation, { rebindToken: token, now });
+    result.board = activeHandMachine.setBoard(board, generation, { rebindToken: token, forceRebind: true, source: 'manual', now });
     result.accepted = result.accepted && result.board;
   }
   if (hasPot) {
-    result.pot = activeHandMachine.setPot(Number(pot), generation, { now });
+    result.pot = activeHandMachine.setPot(Number(pot), generation, { source: 'manual', now });
     result.accepted = result.accepted && result.pot;
   }
 
-  // Burn both one-shot rebind lanes before waking sensors. This makes Manual
-  // deterministic: omitted fields stay untouched, and a stale detector cannot
-  // consume the same token immediately after the user's correction.
   arbiter.consumeManualRebind(token, 'hero', now);
   arbiter.consumeManualRebind(token, 'board', now);
   diagnostics.manualOverrides++;
@@ -207,9 +204,6 @@ function syncStableState() {
       if (!beforePot && snapshot.pot !== null) diagnostics.potRestores++;
     }
 
-    // Presentation is derived from the same generation-locked snapshot. A bad
-    // frame can no longer render a transient contradiction, and a new generation
-    // starts from a clean snapshot rather than inheriting the old river state.
     const heroEl = document.getElementById('heroCards');
     const boardEl = document.getElementById('boardCards');
     const potEl = document.getElementById('potValue');
