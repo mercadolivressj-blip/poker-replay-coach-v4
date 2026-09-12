@@ -5,6 +5,19 @@ const STRATEGIC = new Set(['PAGAR','DESISTIR','PASSAR','APOSTAR','AUMENTAR','ALL
 let painting = false;
 
 function $(id) { return document.getElementById(id); }
+function setText(el, value) {
+  if (!el) return;
+  const next = String(value ?? '');
+  if (el.textContent !== next) el.textContent = next;
+}
+function setFinal(el, enabled) {
+  if (!el) return;
+  if (enabled) {
+    if (el.dataset.final !== 'true') el.dataset.final = 'true';
+  } else if ('final' in el.dataset) {
+    delete el.dataset.final;
+  }
+}
 
 function render() {
   if (painting) return;
@@ -19,36 +32,36 @@ function render() {
   try {
     const current = getDecision();
     if (!machine.state?.heroToAct) {
-      decision.textContent = '—';
-      reason.textContent = 'Aguardando sua vez.';
-      details.textContent = '';
-      confidence.textContent = '—';
+      setText(decision, '—');
+      setText(reason, 'Aguardando sua vez.');
+      setText(details, '');
+      setText(confidence, '—');
+      setFinal(decision, false);
       return;
     }
 
     if (!current) {
-      decision.textContent = 'ANALISANDO';
-      reason.textContent = 'Fechando o snapshot e o contexto desta decisão.';
-      details.textContent = 'A caixa estratégica é controlada por uma única fonte; o classificador antigo não pode mais publicar uma ação paralela.';
-      confidence.textContent = '—';
+      setText(decision, 'ANALISANDO');
+      setText(reason, 'Fechando o snapshot e o contexto desta decisão.');
+      setText(details, 'A caixa estratégica é controlada por uma única fonte; o classificador antigo não pode mais publicar uma ação paralela.');
+      setText(confidence, '—');
+      setFinal(decision, false);
       return;
     }
 
-    decision.textContent = current.decision || 'ANALISANDO';
-    reason.textContent = current.reason || 'Analisando a decisão atual.';
-    details.textContent = Array.isArray(current.details) ? current.details.join(' · ') : String(current.details || '');
-    confidence.textContent = Number(current.confidence) > 0 ? `${Math.round(Number(current.confidence))}%` : '—';
-
-    if (STRATEGIC.has(current.decision)) {
-      decision.dataset.final = 'true';
-    } else {
-      delete decision.dataset.final;
-    }
+    setText(decision, current.decision || 'ANALISANDO');
+    setText(reason, current.reason || 'Analisando a decisão atual.');
+    setText(details, Array.isArray(current.details) ? current.details.join(' · ') : String(current.details || ''));
+    setText(confidence, Number(current.confidence) > 0 ? `${Math.round(Number(current.confidence))}%` : '—');
+    setFinal(decision, STRATEGIC.has(current.decision));
   } finally {
     painting = false;
   }
 }
 
+// The legacy renderer can still touch the same DOM nodes. Observe those writes and
+// restore the decision-store view, but ONLY mutate when the text actually differs.
+// This avoids the self-triggering MutationObserver loop that could freeze/crash the tab.
 const target = document.querySelector('.decision-box') || document.querySelector('.coach-card') || document.body;
 if (target && typeof MutationObserver !== 'undefined') {
   const observer = new MutationObserver(() => render());
@@ -57,8 +70,8 @@ if (target && typeof MutationObserver !== 'undefined') {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('prc:decision', render);
-  window.__prcSingleDecisionUiR14 = { enabled: true, source: 'decision-store-only' };
+  window.__prcSingleDecisionUiR14 = { enabled: true, source: 'decision-store-only', idempotent: true };
 }
 
-setInterval(render, 30);
+setInterval(render, 80);
 setTimeout(render, 0);
