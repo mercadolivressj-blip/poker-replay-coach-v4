@@ -79,7 +79,8 @@ function prompt() {
     'Cash examples: "Pago US$ 0,04" => call 0.04; "Aumento para US$ 0,10" => raise 0.10.',
     'Tournament examples: "Pago 120" => call 120; "Aumento para 240" => raise 240; "PAGO 747" => call 747. "Passo" => check; "Desisto" => fold.',
     'aggressorName: return ONLY the exact visible PLAYER NICKNAME of the opponent responsible for the largest live wager Hero is facing. Never return an action word or button label such as Aumento, Raise, Pago, Call, Desisto, Fold, Aposta, Bet, Passo or Check. If you cannot match the wager to a readable nickname, return null.',
-    'Use explicit Bet/Raise action text attached to a player or the largest visible committed-chip label to identify that player.',
+    'PREFLOP FORCED-BLIND RULE: mandatory SB/BB postings are NOT aggression. If the only live commitments are the posted small blind and big blind and nobody has raised above the big blind, return aggressorName=null and aggressorCommitted=null. Never call the BB the aggressor merely because BB > SB.',
+    'Use explicit Bet/Raise action text attached to a player or a commitment clearly ABOVE the posted big blind to identify a real preflop aggressor.',
     'aggressorCommitted: current total amount visibly committed by that opponent on this street. heroCommitted: current amount visibly committed by Hero on this street.',
     'Use null / lower confidence instead of guessing.',
   ].join('\n');
