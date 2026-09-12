@@ -45,18 +45,35 @@ function availableActionTypes() {
   return types;
 }
 
+function currentStateKey() {
+  const machine = activeHandMachine;
+  return machine ? decisionStateKey(machine.handId, machine.state) : '0#-';
+}
+
+function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisão.') {
+  return {
+    stateKey: currentStateKey(),
+    decision: 'ANALISANDO',
+    reason: `${reason} Vou publicar uma ação final em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`,
+    details: 'Cartas, board, pote e ações estão sendo confirmados antes de congelar a recomendação.',
+    confidence: 0,
+    source: 'r14-decision-finalizer',
+  };
+}
+
 function conservativeDeadlineDecision(entry, elapsed) {
   const types = availableActionTypes();
   // If the snapshot still has not closed by the hard deadline, never invent an
   // investment. In an unopened/checkable spot, CHECK is the conservative legal
-  // action. When facing a wager, FOLD is always legal. This guarantees that the
-  // 10-second study window ends with one actionable answer without teaching a
-  // speculative call/raise from incomplete evidence.
+  // action. When facing a wager (or when actions remain unreadable), FOLD is the
+  // fail-closed answer. This guarantees the 10-second study window ends with one
+  // actionable answer without teaching a speculative call/raise from incomplete evidence.
   const noWagerSpot = types.has('check') || (types.has('bet') && !types.has('call'));
   const decision = noWagerSpot ? 'PASSAR' : 'DESISTIR';
 
   return {
-    ...entry,
+    ...(entry || {}),
+    stateKey: entry?.stateKey || currentStateKey(),
     decision,
     reason: decision === 'PASSAR'
       ? 'Prazo de decisão atingido sem snapshot completo; linha conservadora: PASSAR sem investir fichas.'
@@ -118,14 +135,7 @@ export function publishDecision(entry) {
       next = { ...lockedFinal };
     } else if (next.decision === 'LEITURA INSUFICIENTE') {
       if (elapsed < HARD_DEADLINE_MS) {
-        next = {
-          ...next,
-          decision: 'ANALISANDO',
-          reason: `Fechando o snapshot desta decisão. Vou publicar uma ação final em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`,
-          details: 'Cartas, board, pote e ações estão sendo confirmados antes de congelar a recomendação.',
-          confidence: 0,
-          source: 'r14-decision-finalizer',
-        };
+        next = analyzingEntry(elapsed);
       } else {
         lockedFinal = conservativeDeadlineDecision(next, elapsed);
         next = { ...lockedFinal, finalDecision: true, lockedAt: nowMs(), turnStartedAt };
@@ -142,7 +152,25 @@ export function publishDecision(entry) {
 export function clearDecision() {
   const activeTurn = ensureTurnClock();
   if (activeTurn) {
-    if (lockedFinal) current = { ...lockedFinal };
+    if (lockedFinal) {
+      current = { ...lockedFinal };
+    } else {
+      const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
+      if (elapsed >= HARD_DEADLINE_MS) {
+        lockedFinal = {
+          ...conservativeDeadlineDecision(current, elapsed),
+          finalDecision: true,
+          lockedAt: nowMs(),
+          turnStartedAt,
+        };
+        current = { ...lockedFinal };
+      } else if (!current || current.decision !== 'ANALISANDO') {
+        current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
+      } else {
+        // Keep the countdown copy fresh even when the resolver has no actions yet.
+        current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
+      }
+    }
     dispatchCurrent();
     return current;
   }
