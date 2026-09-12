@@ -1,6 +1,7 @@
 import { activeHandMachine } from '../core/state-machine.js';
 import { PotConsensus } from '../detectors/pot.js';
 import { DealSnapshotArbiter } from '../core/deal-snapshot-arbiter-r14.js';
+import { DealLifecycleR14 } from '../core/deal-lifecycle-r14.js';
 import { observeStablePot } from '../core/stable-pot-consensus-r14.js';
 import { formatAmount } from './money-runtime-r13.js';
 
@@ -10,12 +11,19 @@ const diagnostics = {
   boardRestores: 0,
   potRestores: 0,
   lifecycleBlocks: 0,
+  physicalRedeals: 0,
   lockedHeroConflicts: 0,
   lockedBoardConflicts: 0,
+  potRegressionBlocks: 0,
   manualRefreshes: 0,
   manualOverrides: 0,
   manualRebinds: 0,
   fullPotBlocksDuringHeroTurn: 0,
+  visualBoardCount: 0,
+  visualBoardHits: 0,
+  heroGapArmed: false,
+  boardClearArmed: false,
+  lastLifecycleReason: 'boot',
   lastHero: '—',
   lastBoard: '—',
   lastPot: null,
@@ -31,7 +39,28 @@ PotConsensus.prototype.observe = function observeR14(value) {
 };
 
 const arbiter = activeHandMachine ? new DealSnapshotArbiter(activeHandMachine) : null;
-if (typeof window !== 'undefined' && arbiter) window.__prcDealArbiterR14 = arbiter;
+const lifecycle = new DealLifecycleR14();
+if (typeof window !== 'undefined' && arbiter) {
+  window.__prcDealArbiterR14 = arbiter;
+  window.__prcPublicLifecycleR14 = {
+    view: () => lifecycle.view(),
+    get generation() { return lifecycle.generation; },
+    get heroGapArmed() { return lifecycle.heroGapArmed; },
+    get boardClearArmed() { return lifecycle.boardClearArmed; },
+    get visualBoardCount() { return lifecycle.visualBoardCount; },
+    get visualBoardHits() { return lifecycle.visualBoardHits; },
+    get visualBoardUpdatedAt() { return lifecycle.visualBoardUpdatedAt; },
+  };
+}
+
+function syncLifecycleDiagnostics() {
+  const view = lifecycle.view();
+  diagnostics.visualBoardCount = view.visualBoardCount;
+  diagnostics.visualBoardHits = view.visualBoardHits;
+  diagnostics.heroGapArmed = view.heroGapArmed;
+  diagnostics.boardClearArmed = view.boardClearArmed;
+  diagnostics.lastLifecycleReason = view.lastReason;
+}
 
 function dispatchGeneration(machine, reason) {
   if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
@@ -49,10 +78,10 @@ function dispatchRecalibration(token, source = 'refresh') {
 
 function fastDecisionOwnsPot(machine, fast) {
   if (!machine || !fast || Number(fast.handId) !== Number(machine.handId)) return false;
-  const lifecycle = String(fast.trustReason || '').startsWith('Sua vez');
+  const lifecycleSignal = String(fast.trustReason || '').startsWith('Sua vez');
   const currentFrame = fast.heroToAct === true && Array.isArray(fast.actions) && fast.actions.length >= 2;
   const hasDecisionEvidence = Number(fast.lastSeenAt) > 0 && Number(fast.rawStableFrames) >= 1;
-  return Boolean(hasDecisionEvidence && (machine.state?.heroToAct || lifecycle || currentFrame));
+  return Boolean(hasDecisionEvidence && (machine.state?.heroToAct || lifecycleSignal || currentFrame));
 }
 
 function install(machine) {
@@ -64,7 +93,9 @@ function install(machine) {
   machine.newHand = (reason, now = performance.now()) => {
     rawNewHand(reason, now);
     arbiter.syncGeneration(now);
+    lifecycle.reset(machine.handId, now);
     diagnostics.handId = machine.handId;
+    syncLifecycleDiagnostics();
     dispatchGeneration(machine, reason);
   };
 
@@ -106,44 +137,69 @@ function install(machine) {
     // exact Hero decision window after it has produced a current snapshot.
     if (full?.enabled && Number(full.responses) > 0 && !['ai-full-frame', 'ai-decision', 'manual'].includes(source)) return false;
 
-    // Do not require the legacy/local heroToAct flag here. The fast decision
-    // lane may correctly recognize Hero's turn even when the local button
-    // detector missed it. In that case its current pot must still outrank a
-    // slower full-frame response captured earlier.
     const fastOwnsCurrentTurn = fastDecisionOwnsPot(machine, fast);
     if (source === 'ai-full-frame' && fastOwnsCurrentTurn) {
       diagnostics.fullPotBlocksDuringHeroTurn++;
       return false;
     }
 
-    return arbiter.commitPot(value, { generation: handId, now: options?.now }).accepted;
+    const beforeBlocks = arbiter.diagnostics.potRegressionBlocks || 0;
+    const accepted = arbiter.commitPot(value, { generation: handId, source, now: options?.now }).accepted;
+    diagnostics.potRegressionBlocks += (arbiter.diagnostics.potRegressionBlocks || 0) - beforeBlocks;
+    return accepted;
   };
 
+  // Physical Hero presence is the authoritative generation boundary. Ranks are
+  // deliberately ignored here because Hero cards are manual-only and a noisy
+  // rank must never decide whether a new deal exists.
   machine.observeHero = (fp, present, now = performance.now()) => {
-    if (machine.handId <= 0) return rawObserveHero(fp, present, now);
-    if (!present) {
-      machine.heroMissing = (machine.heroMissing || 0) + 1;
-      return { newHand: false, reason: 'r14-hero-gap-observed' };
+    if (machine.handId <= 0) {
+      const out = rawObserveHero(fp, present, now);
+      if (out?.newHand && present) lifecycle.seedHeroPresence(true, now);
+      syncLifecycleDiagnostics();
+      return out;
     }
-    machine.heroMissing = 0;
-    machine.lastHeroSeenAt = now;
-    return { newHand: false, reason: 'r14-hero-observed' };
+
+    const observed = lifecycle.observeHero(Boolean(present), now);
+    if (!present) machine.heroMissing = (machine.heroMissing || 0) + 1;
+    else {
+      machine.heroMissing = 0;
+      machine.lastHeroSeenAt = now;
+    }
+
+    if (observed.newDeal) {
+      const reason = `r14-${observed.reason}`;
+      diagnostics.physicalRedeals++;
+      machine.newHand(reason, now);
+      // The frame that proved the new generation already contains physical Hero
+      // cards, so seed the fresh lifecycle immediately instead of waiting for a
+      // later frame to establish initial presence.
+      lifecycle.seedHeroPresence(true, now);
+      syncLifecycleDiagnostics();
+      return { newHand: true, reason };
+    }
+
+    syncLifecycleDiagnostics();
+    return { newHand: false, reason: `r14-${observed.reason || 'hero-observed'}` };
   };
 
+  // Board occupancy is a second, independent public signal. It never rotates a
+  // hand by itself (a bad crop must not reset state), but a stable old-board -> 0
+  // transition arms the physical Hero reappearance boundary and blocks strategy
+  // while the deal is between generations.
   machine.observeBoardCount = (count, now = performance.now()) => {
     if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
-    if (count > 0) {
-      machine.lastBoardCountVisual = Math.max(machine.lastBoardCountVisual || 0, count);
-      machine.boardZeroHits = 0;
-      machine.boardZeroSince = 0;
-    } else if ((machine.lastBoardCountVisual || 0) > 0) {
-      if (!machine.boardZeroSince) machine.boardZeroSince = now;
-      machine.boardZeroHits = (machine.boardZeroHits || 0) + 1;
-    }
+    lifecycle.observeBoardCount(count, now);
+    machine.lastBoardCountVisual = count;
+    if (count === 0) machine.boardZeroHits = lifecycle.visualBoardHits;
+    else machine.boardZeroHits = 0;
+    syncLifecycleDiagnostics();
     diagnostics.lifecycleBlocks++;
-    return { newHand: false, reason: 'r14-board-observation-only' };
+    return { newHand: false, reason: lifecycle.boardClearArmed ? 'r14-board-clear-armed' : 'r14-board-observation' };
   };
 
+  // Pot drops are useful diagnostics but never define a hand boundary. Physical
+  // redeal owns lifecycle, preventing one bad decimal read from rotating state.
   machine.observePotValue = () => {
     diagnostics.lifecycleBlocks++;
     return { newHand: false, reason: 'r14-pot-observation-only' };
@@ -223,6 +279,7 @@ function syncStableState() {
     diagnostics.lastHero = snapshot.hero.length ? cardLabel(snapshot.hero) : '—';
     diagnostics.lastBoard = snapshot.board.length ? cardLabel(snapshot.board) : '—';
     diagnostics.lastPot = snapshot.pot;
+    syncLifecycleDiagnostics();
     if (restored) {
       if (!beforeHero && snapshot.hero.length) diagnostics.heroRestores++;
       if (!beforeBoard && snapshot.board.length) diagnostics.boardRestores++;
