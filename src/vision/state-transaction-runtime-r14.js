@@ -15,6 +15,7 @@ const diagnostics = {
   manualRefreshes: 0,
   manualOverrides: 0,
   manualRebinds: 0,
+  fullPotBlocksDuringHeroTurn: 0,
   lastHero: '—',
   lastBoard: '—',
   lastPot: null,
@@ -89,8 +90,25 @@ function install(machine) {
 
   machine.setPot = (value, handId, options = {}) => {
     const source = String(options?.source || 'local');
-    const ai = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
-    if (ai?.enabled && Number(ai.responses) > 0 && !['ai-full-frame', 'manual'].includes(source)) return false;
+    const full = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
+    const fast = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
+
+    // Once AI perception is active, local OCR is no longer allowed to replace
+    // the authoritative pot. Full-frame owns context; fast-decision owns the
+    // exact Hero decision window after it has produced a current snapshot.
+    if (full?.enabled && Number(full.responses) > 0 && !['ai-full-frame', 'ai-decision', 'manual'].includes(source)) return false;
+
+    const fastOwnsCurrentTurn = Boolean(
+      machine.state?.heroToAct
+      && Number(fast?.handId) === machine.handId
+      && Number(fast?.lastSeenAt) > 0
+      && Number(fast?.rawStableFrames) >= 1
+    );
+    if (source === 'ai-full-frame' && fastOwnsCurrentTurn) {
+      diagnostics.fullPotBlocksDuringHeroTurn++;
+      return false;
+    }
+
     return arbiter.commitPot(value, { generation: handId, now: options?.now }).accepted;
   };
 
