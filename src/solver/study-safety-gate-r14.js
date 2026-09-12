@@ -72,10 +72,6 @@ function publicBoardTrust(d = null) {
   const transitioning = Boolean(life?.heroGapArmed || life?.boardClearArmed);
   const countMatches = stablePhysical && physicalCount === logicalCount;
 
-  // The 5-minute replay showed the local occupancy detector lagging while the
-  // fast lane had already confirmed the exact board twice. Exact 2/2 identity
-  // is stronger evidence than a count-only detector and still rejects a stale
-  // board because machine + fast cards must match card-for-card.
   const fastBoard = Array.isArray(d?.board) ? d.board : [];
   const fastIdentityConsensus = Number(d?.rawStableFrames) >= 2
     && [0,3,4,5].includes(fastBoard.length)
@@ -108,6 +104,53 @@ function publicBoardTrust(d = null) {
   };
 }
 
+function tableContextTrust(d = null) {
+  const machine = activeHandMachine;
+  const table = activeTableStateTracker?.latest;
+  const t = nowMs();
+  if (!machine || !table || Number(table.handId) !== Number(machine.handId)) {
+    return { trusted: false, reason: 'Aguardando a leitura atual dos assentos, posições e apostas.' };
+  }
+
+  const age = Number.isFinite(Number(table.observedAt)) ? t - Number(table.observedAt) : Infinity;
+  const seats = Array.isArray(table.seats) ? table.seats : [];
+  const heroSeat = seats.find((seat) => seat?.hero);
+  const fresh = age <= 8500;
+  const enoughSeats = seats.filter((seat) => seat && (seat.hero || seat.actorName || Number.isFinite(seat.stack) || Number.isFinite(seat.committed))).length >= 2;
+  const heroKnown = Boolean(heroSeat);
+  const preflop = machine.state?.street === 'preflop';
+  const positionKnown = !preflop || Boolean(table.heroPosition || heroSeat?.position);
+
+  let preflopContext = null;
+  if (preflop && fresh && enoughSeats && heroKnown && positionKnown) {
+    preflopContext = classifyPreflopContext({
+      seats,
+      heroCommitted: Number.isFinite(d?.heroCommitted) ? d.heroCommitted : heroSeat?.committed,
+      proposedAggressorName: d?.aggressorName,
+      proposedAggressorCommitted: d?.aggressorCommitted,
+    });
+  }
+
+  const contextKnown = !preflop || ['unopened','limped','raised'].includes(preflopContext?.mode);
+  const trusted = Boolean(fresh && enoughSeats && heroKnown && positionKnown && contextKnown);
+
+  let reason = 'Mesa, posições e apostas atuais confirmadas.';
+  if (!fresh) reason = 'A leitura dos jogadores/posições está velha; aguardando um frame inteiro atual.';
+  else if (!enoughSeats) reason = 'Ainda não há assentos suficientes confirmados para reconstruir a ação.';
+  else if (!heroKnown) reason = 'A posição do Hero ainda não foi ligada a um assento da mesa.';
+  else if (!positionKnown) reason = 'A posição pré-flop do Hero ainda não foi confirmada.';
+  else if (!contextKnown) reason = 'Ainda não foi possível reconstruir se o pote está unopened, limpado ou aumentado.';
+
+  return {
+    trusted,
+    reason,
+    age,
+    seatCount: seats.length,
+    heroPosition: table.heroPosition || heroSeat?.position || null,
+    preflopMode: preflopContext?.mode || null,
+  };
+}
+
 function decisionTrust() {
   const d = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
   const machine = activeHandMachine;
@@ -123,6 +166,7 @@ function decisionTrust() {
   const actions = Array.isArray(d?.actions) ? d.actions : [];
   const hasPricedCall = !actions.some((a) => a?.type === 'call') || actions.some((a) => a?.type === 'call' && Number.isFinite(a?.amount));
   const publicBoard = publicBoardTrust(d);
+  const tableContext = tableContextTrust(d);
   const trusted = Boolean(d?.trusted)
     && heroReady
     && rawStableFrames >= 2
@@ -130,12 +174,14 @@ function decisionTrust() {
     && sameHand
     && coreMatches
     && publicBoard.trusted
+    && tableContext.trusted
     && age <= freshnessWindow
     && actions.length >= 2
     && hasPricedCall;
 
   let reason = heroReady ? (d?.trustReason || 'A IA rápida ainda não confirmou a decisão atual.') : 'Informe suas duas cartas manualmente para liberar a decisão.';
   if (heroReady && !publicBoard.trusted) reason = publicBoard.reason;
+  else if (heroReady && !tableContext.trusted) reason = tableContext.reason;
   else if (heroReady && rawStableFrames < 2) reason = 'Aguardando a segunda leitura rápida igual (2/2).';
 
   return {
@@ -150,6 +196,7 @@ function decisionTrust() {
     stableFrames,
     rawStableFrames,
     publicBoard,
+    tableContext,
     aggressorName: d?.aggressorName || null,
     aggressorCommitted: Number.isFinite(d?.aggressorCommitted) ? d.aggressorCommitted : null,
     heroCommitted: Number.isFinite(d?.heroCommitted) ? d.heroCommitted : null,
@@ -184,12 +231,13 @@ setDecisionGate((entry) => {
         : fast.reason || 'A decisão atual ainda não fechou duas leituras iguais.';
     const age = Number.isFinite(fast.age) ? `${Math.round(fast.age)}ms atrás` : 'sem leitura rápida válida';
     const board = fast.publicBoard || {};
+    const table = fast.tableContext || {};
 
     return {
       ...entry,
       decision: 'LEITURA INSUFICIENTE',
       reason,
-      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · IA rápida ${fast.rawStableFrames}/2 (consenso ${fast.stableFrames}/2) · board físico ${Number.isFinite(board.physicalCount) ? board.physicalCount : '?'} / estado ${Number.isFinite(board.logicalCount) ? board.logicalCount : '?'}${board.fastIdentityConsensus ? ' · identidade rápida OK' : ''} · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'sem agressor confirmado'} · ${age}.`,
+      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · IA rápida ${fast.rawStableFrames}/2 (consenso ${fast.stableFrames}/2) · board físico ${Number.isFinite(board.physicalCount) ? board.physicalCount : '?'} / estado ${Number.isFinite(board.logicalCount) ? board.logicalCount : '?'}${board.fastIdentityConsensus ? ' · identidade rápida OK' : ''} · mesa ${table.heroPosition || '?'} / ${table.preflopMode || machine?.state?.street || '?'} · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'sem agressor confirmado'} · ${age}.`,
       confidence: 0,
       source: 'study-safety-gate-ai-r14',
     };
@@ -212,11 +260,12 @@ setDecisionGate((entry) => {
 if (typeof window !== 'undefined') {
   window.__prcStudySafetyGateR14 = {
     enabled: true,
-    requires: ['manual-hero','ai-decision-raw-2of2','physical-board-or-fast-identity'],
+    requires: ['manual-hero','ai-decision-raw-2of2','physical-board-or-fast-identity','fresh-table-context'],
     stableDecisionFrames: 2,
     rawDecisionFrames: 2,
     physicalBoardConsensus: 3,
     fastBoardIdentityConsensus: 2,
+    tableContextMaxAgeMs: 8500,
     unopenedPreflopPolicy: true,
     finalDecisionFrozenUntilHeroActs: true,
   };
