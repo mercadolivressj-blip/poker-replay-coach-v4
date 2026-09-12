@@ -52,6 +52,9 @@ assert.match(resolver, /mergeDecisionActions/);
 assert.match(gate, /decisionTrust/);
 assert.match(gate, /ai-decision-raw-2of2/);
 assert.match(gate, /physical-board-or-fast-identity/);
+assert.match(gate, /fresh-table-context/);
+assert.match(gate, /tableContextTrust/);
+assert.match(gate, /tableContextMaxAgeMs: 8500/);
 assert.match(gate, /fastIdentityConsensus/);
 assert.match(gate, /rawStableFrames >= 2/);
 assert.match(gate, /stableFrames >= 2/);
@@ -74,6 +77,7 @@ assert.doesNotMatch(store, /conservativeDeadlineDecision/);
 assert.match(bootstrap, /ai-decision-runtime-r14/);
 assert.match(bootstrap, /ai-decision-consensus-r14/);
 assert.match(bootstrap, /ai-decision-pot-bridge-r14/);
+assert.match(bootstrap, /manual-hero-boundary-r14/);
 
 const base = {
   equity: 0.28,
