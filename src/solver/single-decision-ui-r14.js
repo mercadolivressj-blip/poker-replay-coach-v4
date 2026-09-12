@@ -43,7 +43,7 @@ function render() {
     if (!current) {
       setText(decision, 'ANALISANDO');
       setText(reason, 'Fechando o snapshot e o contexto desta decisão.');
-      setText(details, 'A caixa estratégica é controlada por uma única fonte; o classificador antigo não pode mais publicar uma ação paralela.');
+      setText(details, 'A caixa estratégica é controlada somente pelo decision-store R14.');
       setText(confidence, '—');
       setFinal(decision, false);
       return;
@@ -59,19 +59,20 @@ function render() {
   }
 }
 
-// The legacy renderer can still touch the same DOM nodes. Observe those writes and
-// restore the decision-store view, but ONLY mutate when the text actually differs.
-// This avoids the self-triggering MutationObserver loop that could freeze/crash the tab.
-const target = document.querySelector('.decision-box') || document.querySelector('.coach-card') || document.body;
-if (target && typeof MutationObserver !== 'undefined') {
-  const observer = new MutationObserver(() => render());
-  observer.observe(target, { subtree: true, childList: true, characterData: true });
-}
-
+// The legacy renderer is isolated before main.js is imported, so this module no
+// longer needs a MutationObserver. Event-driven rendering plus a low-frequency
+// watchdog avoids DOM feedback loops and keeps the tab responsive during long replays.
 if (typeof window !== 'undefined') {
   window.addEventListener('prc:decision', render);
-  window.__prcSingleDecisionUiR14 = { enabled: true, source: 'decision-store-only', idempotent: true };
+  window.addEventListener('prc:generation-change', render);
+  window.__prcSingleDecisionUiR14 = {
+    enabled: true,
+    source: 'decision-store-only',
+    idempotent: true,
+    mutationObserver: false,
+    legacyUiIsolated: true,
+  };
 }
 
-setInterval(render, 80);
+setInterval(render, 160);
 setTimeout(render, 0);
