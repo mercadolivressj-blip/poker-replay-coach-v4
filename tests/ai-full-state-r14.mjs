@@ -40,12 +40,15 @@ assert.match(runtime, /MESA IA · FRAME INTEIRO/);
 
 // Full-frame remains contextual evidence, but strategic release now requires
 // the two-frame fast-decision consensus so a stale/full-table pot cannot publish
-// a recommendation during Hero's 10-second decision window.
+// a recommendation during Hero's decision window.
 assert.doesNotMatch(gate, /__prcAIStateR14/);
 assert.match(gate, /ai-decision-frame-consensus/);
 assert.match(gate, /stableFrames >= 2/);
 assert.doesNotMatch(bootstrap, /pot-validation-runtime-r14/);
-assert.match(transaction, /\['ai-full-frame', 'manual'\]/);
+assert.match(transaction, /\['ai-full-frame', 'ai-decision', 'manual'\]/);
+assert.match(transaction, /fastOwnsCurrentTurn/);
+assert.match(transaction, /source === 'ai-full-frame' && fastOwnsCurrentTurn/);
+assert.match(transaction, /fullPotBlocksDuringHeroTurn/);
 assert.match(transaction, /forceRebind: Boolean\(options\?\.forceRebind\)/);
 
 const machine = {
