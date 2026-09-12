@@ -38,7 +38,7 @@ if (d && !d.__prcConsensusR14) {
     configurable: true,
     enumerable: true,
     get() {
-      return Boolean(rawTrusted && stableHits >= 2);
+      return Boolean(rawTrusted && (Number(d.rawStableFrames) >= 2 || stableHits >= 2));
     },
     set(value) {
       rawTrusted = Boolean(value);
@@ -55,10 +55,11 @@ if (d && !d.__prcConsensusR14) {
         stableKey = key;
         stableHits = key ? 1 : 0;
       }
-      d.stableDecisionFrames = stableHits;
+      if (Number(d.rawStableFrames) >= 2) stableHits = Math.max(stableHits, 2);
+      d.stableDecisionFrames = Math.max(stableHits, Number(d.rawStableFrames) || 0);
       d.rawTrusted = rawTrusted;
       d.consensusKey = stableKey;
-      if (stableHits < 2) d.trustReason = `Confirmando o mesmo snapshot da decisão (${stableHits}/2).`;
+      if (d.stableDecisionFrames < 2) d.trustReason = `Confirmando o mesmo snapshot da decisão (${d.stableDecisionFrames}/2).`;
     },
   });
 
