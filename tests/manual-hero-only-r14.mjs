@@ -9,6 +9,7 @@ const consensus = fs.readFileSync(new URL('../src/vision/ai-decision-consensus-r
 const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
 const decisionApi = fs.readFileSync(new URL('../api/decision-state.js', import.meta.url), 'utf8');
 const fullApi = fs.readFileSync(new URL('../api/full-state.js', import.meta.url), 'utf8');
+const store = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
 
 assert.ok(
   bootstrap.indexOf('manual-hero-authority-r14') < bootstrap.indexOf('suit-scanner-runtime-r9'),
@@ -25,9 +26,12 @@ assert.match(prefetch, /Mesa e ação já estavam pré-lidas/);
 assert.match(prefetch, /rawStableFrames\) >= 2/);
 assert.doesNotMatch(consensus, /cardKey\(d\.hero\)/, 'manual Hero must not reset table/action consensus');
 assert.match(gate, /manualHeroReady/);
-assert.match(gate, /requires: \['manual-hero','ai-decision-raw-2of2','physical-board-match'\]/);
+assert.match(gate, /requires: \['manual-hero','ai-decision-raw-2of2','physical-board-or-fast-identity'\]/);
 assert.match(gate, /rawStableFrames >= 2/);
 assert.match(gate, /physicalBoardConsensus: 3/);
+assert.match(gate, /fastBoardIdentityConsensus: 2/);
+assert.match(store, /clockStartsAfterManualHero: true/);
+assert.match(store, /manualHeroReadyForDecision/);
 assert.match(decisionApi, /Hero hole cards are MANUAL-ONLY/);
 assert.match(decisionApi, /hero: \[\]/);
 assert.match(decisionApi, /heroConfidence: 0/);
