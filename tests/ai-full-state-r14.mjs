@@ -10,17 +10,21 @@ const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
 
 assert.match(api, /gpt-5\.6-luna/);
-assert.match(api, /reasoning: \{ effort: 'none' \}/);
+assert.match(api, /reasoning:\{effort:'none'\}/);
 assert.match(api, /input_image/);
-assert.match(api, /detail: 'high'/);
-assert.match(api, /Pot: read ONLY the central visible label/);
+assert.match(api, /detail:'high'/);
+assert.match(api, /Pot: read ONLY the central visible TEXT label/);
 assert.match(api, /Pote: 630/);
 assert.match(api, /Pote: 2\.508/);
+assert.match(api, /Pote: US\$ 0,50/);
+assert.match(api, /US\$ 0,31/);
+assert.match(api, /Pote: US\$ 0,92/);
+assert.match(api, /US\$ 0,67/);
 assert.match(api, /COMPLETE CLOCKWISE PERIMETER SWEEP/);
 assert.match(api, /tableSize means PHYSICAL TABLE CAPACITY/);
 assert.match(api, /Hero hole cards are MANUAL-ONLY/);
-assert.match(api, /hero: \[\]/);
-assert.match(api, /heroConfidence: 0/);
+assert.match(api, /hero:\[\]/);
+assert.match(api, /heroConfidence:0/);
 assert.match(api, /heroToAct/);
 assert.match(api, /seatsConfidence/);
 
@@ -44,6 +48,7 @@ assert.doesNotMatch(gate, /__prcAIStateR14/);
 assert.match(gate, /manual-hero/);
 assert.match(gate, /ai-decision-raw-2of2/);
 assert.match(gate, /physical-board-or-fast-identity/);
+assert.match(gate, /fresh-table-context/);
 assert.match(gate, /fastIdentityConsensus/);
 assert.match(gate, /rawStableFrames >= 2/);
 assert.match(gate, /stableFrames >= 2/);
