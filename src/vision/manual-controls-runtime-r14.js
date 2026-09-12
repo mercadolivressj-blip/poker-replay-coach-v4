@@ -192,11 +192,6 @@ function selectCardPart(kind, value) {
   cards[working.activeSlot].confidence = 1;
   cards[working.activeSlot].suitConfidence = 1;
   cards[working.activeSlot].source = 'manual-r14';
-
-  if (completeCard(cards[working.activeSlot])) {
-    const next = cards.findIndex((card, index) => index > working.activeSlot && index < count && !completeCard(card));
-    if (next >= 0) working.activeSlot = next;
-  }
   renderCardEditor();
   setMessage('Seleção pronta para aplicar.');
 }
