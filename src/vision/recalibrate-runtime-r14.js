@@ -22,7 +22,7 @@ function install() {
 
   button.addEventListener('click', () => {
     diagnostics.clicks++;
-    const original = 'Recalibrar leitura';
+    const original = button.dataset.defaultLabel || '↻ Refresh leitura';
     if (!hasVisibleSource()) {
       diagnostics.ignoredNoSource++;
       button.textContent = 'Abra um replay primeiro';
@@ -39,7 +39,7 @@ function install() {
     diagnostics.lastGeneration = token.generation;
     diagnostics.lastAt = Date.now();
     button.disabled = true;
-    button.textContent = 'Recalibrando…';
+    button.textContent = 'Relendo…';
     setTimeout(() => {
       button.disabled = false;
       button.textContent = original;
