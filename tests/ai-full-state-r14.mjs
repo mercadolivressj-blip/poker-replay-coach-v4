@@ -9,11 +9,12 @@ const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', i
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
 
-assert.match(api, /gpt-5\.6-sol/);
+assert.match(api, /gpt-5\.6-luna/);
+assert.match(api, /reasoning: \{ effort: 'none' \}/);
 assert.match(api, /input_image/);
 assert.match(api, /detail: 'high'/);
-assert.match(api, /central pot label exactly/);
-assert.match(api, /Read every physical seat visible/);
+assert.match(api, /Pot: read only the central pot label/);
+assert.match(api, /Seats: read every visible physical seat/);
 assert.match(api, /Never return opponent hole cards/);
 assert.match(api, /heroToAct/);
 assert.match(api, /seatsConfidence/);
@@ -22,8 +23,12 @@ assert.match(context, /ai-full-state-runtime-r14/);
 assert.doesNotMatch(context, /visual-table-runtime-r14b/);
 assert.match(runtime, /\/api\/full-state/);
 assert.match(runtime, /inFlight >= 2/);
+assert.match(runtime, /lastAppliedSeq/);
+assert.doesNotMatch(runtime, /responses = new Map/);
+assert.doesNotMatch(runtime, /applySeq/);
 assert.match(runtime, /forceRebind: true/);
 assert.match(runtime, /source: 'ai-full-frame'/);
+assert.match(runtime, /gpt-5\.6-luna-full-frame/);
 assert.match(runtime, /MESA IA · FRAME INTEIRO/);
 assert.match(gate, /__prcAIStateR14/);
 assert.match(gate, /ai-full-frame/);
