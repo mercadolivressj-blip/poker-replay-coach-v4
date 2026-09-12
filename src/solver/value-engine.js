@@ -11,7 +11,15 @@ function foldEquity(rangeSummary, risk, pot, street, actionType, evidenceQuality
   const pressure = Number.isFinite(risk) && Number.isFinite(pot) && pot > 0 ? clamp(risk / (pot + risk), 0, 1) : 0.33;
   const aggression = actionType === 'allin' ? 1.18 : actionType === 'raise' ? 1.08 : 1;
   const evidenceScale = actorKnown ? (0.38 + clamp(evidenceQuality, 0, 1) * 0.62) : (0.18 + clamp(evidenceQuality, 0, 1) * 0.32);
-  return clamp(foldable * (0.52 + pressure * 0.72) * aggression * evidenceScale, 0.01, actorKnown ? 0.80 : 0.34);
+  const headsUp = clamp(foldable * (0.52 + pressure * 0.72) * aggression * evidenceScale, 0.01, actorKnown ? 0.80 : 0.34);
+
+  // To win a multiway pot uncontested, every live opponent must fold. Treating
+  // heads-up fold equity as if one fold were enough made speculative raises far
+  // too attractive. rangeCount comes from the independently reconstructed
+  // opponent ranges; use the joint fold probability as a conservative model.
+  const opponents = Math.max(1, Math.min(5, Math.round(Number(rangeSummary?.rangeCount) || 1)));
+  if (opponents <= 1) return headsUp;
+  return clamp(Math.pow(headsUp, opponents), 0.002, 0.38);
 }
 
 function callEv(equity, pot, call) {
