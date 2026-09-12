@@ -47,6 +47,14 @@ function dispatchRecalibration(token, source = 'refresh') {
   }));
 }
 
+function fastDecisionOwnsPot(machine, fast) {
+  if (!machine || !fast || Number(fast.handId) !== Number(machine.handId)) return false;
+  const lifecycle = String(fast.trustReason || '').startsWith('Sua vez');
+  const currentFrame = fast.heroToAct === true && Array.isArray(fast.actions) && fast.actions.length >= 2;
+  const hasDecisionEvidence = Number(fast.lastSeenAt) > 0 && Number(fast.rawStableFrames) >= 1;
+  return Boolean(hasDecisionEvidence && (machine.state?.heroToAct || lifecycle || currentFrame));
+}
+
 function install(machine) {
   if (!machine || machine.__prcStateTransactionR14 || !arbiter) return;
 
@@ -98,12 +106,11 @@ function install(machine) {
     // exact Hero decision window after it has produced a current snapshot.
     if (full?.enabled && Number(full.responses) > 0 && !['ai-full-frame', 'ai-decision', 'manual'].includes(source)) return false;
 
-    const fastOwnsCurrentTurn = Boolean(
-      machine.state?.heroToAct
-      && Number(fast?.handId) === machine.handId
-      && Number(fast?.lastSeenAt) > 0
-      && Number(fast?.rawStableFrames) >= 1
-    );
+    // Do not require the legacy/local heroToAct flag here. The fast decision
+    // lane may correctly recognize Hero's turn even when the local button
+    // detector missed it. In that case its current pot must still outrank a
+    // slower full-frame response captured earlier.
+    const fastOwnsCurrentTurn = fastDecisionOwnsPot(machine, fast);
     if (source === 'ai-full-frame' && fastOwnsCurrentTurn) {
       diagnostics.fullPotBlocksDuringHeroTurn++;
       return false;
