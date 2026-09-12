@@ -41,7 +41,8 @@ function decisionTrust() {
   const latency = Math.max(0, Number(d?.lastLatencyMs) || 0);
   const freshnessWindow = Math.max(4500, Math.min(9000, latency * 2 + 1800));
   const sameHand = machine?.handId > 0 && Number(d?.handId) === machine.handId;
-  const trusted = Boolean(d?.trusted) && sameHand && age <= freshnessWindow;
+  const coreMatches = machineMatchesAI(d?.hero || [], d?.board || [], d?.pot);
+  const trusted = Boolean(d?.trusted) && sameHand && coreMatches && age <= freshnessWindow;
   return {
     trusted,
     reason: d?.trustReason || 'A IA rápida ainda não confirmou a decisão atual.',
@@ -83,8 +84,7 @@ function aiTrust() {
   const coreMatches = machineMatchesAI(d?.hero || [], d?.board || [], d?.pot);
 
   const directTrusted = Boolean(d?.trusted) && age <= freshnessWindow && coreMatches;
-  const strongCoreFrame = !error
-    && age <= freshnessWindow
+  const strongCoreFrame = age <= freshnessWindow
     && coreMatches
     && stableFrames >= 1
     && confidence >= 0.92
@@ -95,16 +95,15 @@ function aiTrust() {
 
   const machine = activeHandMachine;
   const stickyAge = lastValidated ? t - lastValidated.seenAt : Infinity;
-  const stickyTrusted = !error
-    && Boolean(lastValidated)
+  const stickyTrusted = Boolean(lastValidated)
     && machine?.handId === lastValidated.handId
     && stickyAge <= freshnessWindow
     && machineMatchesAI(lastValidated.hero, lastValidated.board, lastValidated.pot);
 
   const trusted = directTrusted || strongCoreFrame || stickyTrusted;
   let reason = d?.trustReason || 'A IA ainda não validou o frame inteiro.';
-  if (stickyTrusted && !directTrusted && !strongCoreFrame) reason = '✓ Mantendo a última leitura confirmada enquanto a próxima leitura da IA termina.';
-  else if (strongCoreFrame && !directTrusted) reason = '✓ Estado principal confirmado; variação de assentos não bloqueia o solver.';
+  if (stickyTrusted && !directTrusted && !strongCoreFrame) reason = '✓ Mantendo a última leitura confirmada enquanto a visão reconecta.';
+  else if (strongCoreFrame && !directTrusted) reason = '✓ Estado principal confirmado; variação de assentos/rede não bloqueia o solver.';
 
   return { trusted, reason, age, freshnessWindow, stableFrames, confidence, seats, error };
 }
@@ -127,7 +126,7 @@ setDecisionGate((entry) => {
     ...entry,
     decision: 'LEITURA INSUFICIENTE',
     reason,
-    details: `Segurança de estudo ativa · decisão IA ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'agressor pendente'} · ${age}. A leitura completa continua em paralelo, mas não precisa terminar para liberar uma decisão já confirmada pela IA rápida.`,
+    details: `Segurança de estudo ativa · decisão IA ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'agressor pendente'} · ${age}. Falha transitória de rede não invalida uma leitura já confirmada; o bloqueio volta apenas quando o estado público muda ou a leitura expira.`,
     confidence: 0,
     source: 'study-safety-gate-ai-r14',
   };
