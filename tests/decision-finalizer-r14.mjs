@@ -18,6 +18,7 @@ globalThis.CustomEvent = class CustomEvent {
 
 globalThis.window = {
   __prcAIDecisionR14: null,
+  __prcManualHeroAuthorityR14: { manualOnly: true, heroLocked: false, handId: 0 },
   dispatchEvent() {},
 };
 
@@ -42,26 +43,43 @@ window.__prcAIDecisionR14 = {
   lastSeenAt: 0,
   lastLatencyMs: null,
 };
+window.__prcManualHeroAuthorityR14.handId = machine.handId;
 
 const store = await import(`../src/core/decision-store.js?decision-finalizer-test=${Date.now()}`);
 const watchdog = timers.find((timer) => timer.ms === 100)?.fn;
 assert.equal(typeof watchdog, 'function', 'decision watchdog must run independently every 100ms');
 
 const first = store.clearDecision();
-assert.equal(first?.decision, 'ANALISANDO', 'fast Hero-turn lifecycle must start ANALISANDO even when local action buttons are missing');
+assert.equal(first?.decision, 'ANALISANDO', 'Hero turn may show ANALISANDO while manual cards are pending');
 assert.equal(window.__prcDecisionFinalizerR14?.elapsedMs, 0);
 
-clock = 7099;
+clock = 9000;
 watchdog();
-assert.equal(store.getDecision()?.decision, 'ANALISANDO', 'must not close before the 7s deadline');
+assert.equal(store.getDecision()?.decision, 'ANALISANDO', 'time spent selecting manual Hero cards must not trigger a deadline');
+assert.equal(window.__prcDecisionFinalizerR14?.elapsedMs, 0, 'decision clock must remain stopped before manual Hero is locked');
 
-clock = 7200;
+machine.state.hero = [
+  { rank: 'A', suit: 'spades', confidence: 1 },
+  { rank: 'K', suit: 'hearts', confidence: 1 },
+];
+window.__prcManualHeroAuthorityR14.heroLocked = true;
+clock = 9100;
+watchdog();
+assert.equal(store.getDecision()?.decision, 'ANALISANDO');
+assert.equal(window.__prcDecisionFinalizerR14?.elapsedMs, 0, 'clock begins only after Hero cards are ready');
+
+clock = 16099;
+watchdog();
+assert.equal(store.getDecision()?.decision, 'ANALISANDO', 'must not close before 7s measured from manual Hero readiness');
+
+clock = 16200;
 watchdog();
 const deadline = store.getDecision();
 assert.equal(deadline?.decision, 'LEITURA INSUFICIENTE', 'an incomplete snapshot must never be converted into a poker action at the deadline');
 assert.equal(deadline?.finalDecision, undefined, 'timeout warning is not a frozen strategic decision');
 assert.equal(deadline?.deadlineFinal, true);
 assert.equal(window.__prcDecisionFinalizerR14?.strategicDeadlineFallback, false);
+assert.equal(window.__prcDecisionFinalizerR14?.clockStartsAfterManualHero, true);
 
 const lateTrusted = store.publishDecision({
   stateKey: store.decisionStateKey(machine.handId, machine.state),
@@ -86,7 +104,7 @@ window.__prcAIDecisionR14.trustReason = 'Aguardando decisão do Hero.';
 window.__prcAIDecisionR14.heroToAct = false;
 window.__prcAIDecisionR14.actions = [];
 machine.state.heroToAct = false;
-clock = 7300;
+clock = 16300;
 watchdog();
 assert.equal(store.getDecision(), null, 'final recommendation must clear after Hero turn ends');
 
