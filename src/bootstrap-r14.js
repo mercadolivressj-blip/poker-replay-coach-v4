@@ -5,7 +5,6 @@ await import('./vision/state-transaction-runtime-r14.js');
 await import('./vision/manual-hero-authority-r14.js');
 await import('./vision/board-refiner-runtime-r14.js');
 await import('./vision/suit-scanner-runtime-r9.js');
-await import('./vision/hero-authority-runtime-r11.js');
 await import('./vision/recalibrate-runtime-r14.js');
 await import('./vision/manual-controls-runtime-r14.js');
 await import('./vision/manual-hero-entry-r14.js');
