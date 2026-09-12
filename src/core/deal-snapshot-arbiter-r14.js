@@ -33,6 +33,11 @@ function normalizePot(value) {
   return Math.round(n * 1000) / 1000;
 }
 
+function potTolerance(value) {
+  const n = Math.abs(Number(value) || 0);
+  return Math.max(0.001, n * 0.02);
+}
+
 export class DealSnapshotArbiter {
   constructor(machine, { manualWindowMs = 3500 } = {}) {
     this.machine = machine;
@@ -45,6 +50,7 @@ export class DealSnapshotArbiter {
       generationChanges: 0,
       heroLocks: 0,
       boardLocks: 0,
+      potRegressionBlocks: 0,
       restores: 0,
       manualRequests: 0,
       manualRebinds: 0,
@@ -173,10 +179,18 @@ export class DealSnapshotArbiter {
     return { accepted: true, rebound, cards: cloneCards(next) };
   }
 
-  commitPot(value, { generation = this.machine?.handId, now = nowMs() } = {}) {
+  commitPot(value, { generation = this.machine?.handId, source = 'unknown', now = nowMs() } = {}) {
     this.syncGeneration(now);
     const pot = normalizePot(value);
     if (generation !== this.generation || pot === null) return { accepted: false, reason: 'invalid-or-stale' };
+
+    const current = normalizePot(this.snapshot.pot);
+    const manual = String(source) === 'manual';
+    if (!manual && current !== null && pot < current - potTolerance(current)) {
+      this.diagnostics.potRegressionBlocks++;
+      return { accepted: false, reason: 'pot-regression-lock', current, incoming: pot };
+    }
+
     this.snapshot.pot = pot;
     this.snapshot.committedAt = now;
     this.machine.state.pot = pot;
