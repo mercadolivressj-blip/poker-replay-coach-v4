@@ -23,14 +23,26 @@ function closeMoney(a, b) {
   return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Math.max(0.005, Math.abs(b) * 0.018);
 }
 
+function manualHeroReady() {
+  const machine = activeHandMachine;
+  const authority = typeof window !== 'undefined' ? window.__prcManualHeroAuthorityR14 : null;
+  const hero = machine?.state?.hero || [];
+  return Boolean(
+    machine?.handId > 0
+    && authority?.manualOnly
+    && authority?.heroLocked
+    && Number(authority.handId) === machine.handId
+    && hero.length === 2
+    && hero.every((card) => card?.rank && card?.suit)
+  );
+}
+
 function machineMatchesDecision(d) {
   const machine = activeHandMachine;
-  if (!machine || machine.handId <= 0) return false;
-  const hero = machine.state?.hero || [];
+  if (!machine || machine.handId <= 0 || !manualHeroReady()) return false;
   const board = machine.state?.board || [];
   const pot = Number(machine.state?.pot);
-  return exactCards(hero, d?.hero || [])
-    && exactCards(board, d?.board || [])
+  return exactCards(board, d?.board || [])
     && closeMoney(pot, Number(d?.pot));
 }
 
@@ -42,11 +54,13 @@ function decisionTrust() {
   const latency = Math.max(0, Number(d?.lastLatencyMs) || 0);
   const freshnessWindow = Math.max(5000, Math.min(9000, latency * 2 + 1800));
   const sameHand = machine?.handId > 0 && Number(d?.handId) === machine.handId;
+  const heroReady = manualHeroReady();
   const coreMatches = machineMatchesDecision(d);
   const stableFrames = Number(d?.stableDecisionFrames) || 0;
   const actions = Array.isArray(d?.actions) ? d.actions : [];
   const hasPricedCall = !actions.some((a) => a?.type === 'call') || actions.some((a) => a?.type === 'call' && Number.isFinite(a?.amount));
   const trusted = Boolean(d?.trusted)
+    && heroReady
     && stableFrames >= 2
     && sameHand
     && coreMatches
@@ -56,7 +70,8 @@ function decisionTrust() {
 
   return {
     trusted,
-    reason: d?.trustReason || 'A IA rápida ainda não confirmou a decisão atual.',
+    heroReady,
+    reason: heroReady ? (d?.trustReason || 'A IA rápida ainda não confirmou a decisão atual.') : 'Informe suas duas cartas manualmente para liberar a decisão.',
     age,
     freshnessWindow,
     confidence: Number(d?.confidence) || 0,
@@ -74,16 +89,18 @@ setDecisionGate((entry) => {
   const fast = decisionTrust();
   if (fast.trusted) return entry;
 
-  const reason = fast.error
-    ? `IA rápida indisponível: ${fast.error}`
-    : fast.reason || 'A decisão atual ainda não fechou duas leituras iguais.';
+  const reason = !fast.heroReady
+    ? 'Informe suas duas cartas manualmente para liberar a decisão.'
+    : fast.error
+      ? `IA rápida indisponível: ${fast.error}`
+      : fast.reason || 'A decisão atual ainda não fechou duas leituras iguais.';
   const age = Number.isFinite(fast.age) ? `${Math.round(fast.age)}ms atrás` : 'sem leitura rápida válida';
 
   return {
     ...entry,
     decision: 'LEITURA INSUFICIENTE',
     reason,
-    details: `Segurança de estudo · snapshot rápido ${fast.stableFrames}/2 · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'agressor pendente'} · ${age}. A decisão estratégica só sai quando o snapshot rápido fecha; depois fica congelada até o Hero agir.`,
+    details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · snapshot rápido ${fast.stableFrames}/2 · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'agressor pendente'} · ${age}. A mesa pode ser pré-lida antes das cartas; a estratégia só sai depois das cartas manuais.`,
     confidence: 0,
     source: 'study-safety-gate-ai-r14',
   };
@@ -92,7 +109,7 @@ setDecisionGate((entry) => {
 if (typeof window !== 'undefined') {
   window.__prcStudySafetyGateR14 = {
     enabled: true,
-    requires: ['ai-decision-frame-consensus'],
+    requires: ['manual-hero','ai-decision-frame-consensus'],
     stableDecisionFrames: 2,
     finalDecisionFrozenUntilHeroActs: true,
   };
