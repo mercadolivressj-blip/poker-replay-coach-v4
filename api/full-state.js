@@ -78,13 +78,13 @@ function schema() {
 
 function prompt() {
   return [
-    'Poker REPLAY / post-game study screenshot. Read visible public state only. Never provide strategy.',
+    'Poker REPLAY / post-game study screenshot. Read visible public table state only. Never provide strategy.',
     'Inspect the whole table image directly. Precision over coverage: use null/low confidence instead of guessing.',
+    'Hero hole cards are MANUAL-ONLY in this coach. Do NOT inspect, infer or return Hero hole cards. Always return hero=[] and heroConfidence=0. You may still identify which seat is Hero from the bottom/known Hero seat and set seats[].hero=true.',
     'Before returning JSON, perform a COMPLETE CLOCKWISE PERIMETER SWEEP of the table starting at the top-most physical seat and continuing through every visible seat slot until you return to the start.',
     'Do not skip a seat because its avatar overlaps, text is dim, the player folded, is away/disconnected, or the nickname is small. Do not merge adjacent seats into one.',
     'After the sweep, verify that every visible occupied nickname around the rail appears exactly once in seats. If a readable nickname is visible but missing from your first pass, add it before answering.',
     'tableSize means PHYSICAL TABLE CAPACITY / seat layout, not the number of currently active players. Infer it from the whole seat geometry. If the visible perimeter clearly contains 9 physical positions, do not return 8-max.',
-    'Hero: return exactly the two clearly face-up hero cards only. Never return opponent hole cards.',
     'Board: return community cards left-to-right; length 0, 3, 4 or 5. Street must match board length.',
     'Pot: read ONLY the central visible label beginning with "Pote:". It may be CASH ("Pote: US$ 0,12") or TOURNAMENT CHIPS ("Pote: 630", "Pote: 2.508").',
     'Tournament formatting matters: "Pote: 630" => numeric 630; pt-BR thousands "Pote: 2.508" => numeric 2508. Never reinterpret those chip counts as decimals.',
@@ -150,7 +150,6 @@ export default async function handler(req, res) {
 
     const board = Array.isArray(parsed.board) && [0,3,4,5].includes(parsed.board.length) ? parsed.board : [];
     const street = board.length === 5 ? 'river' : board.length === 4 ? 'turn' : board.length === 3 ? 'flop' : 'preflop';
-    const hero = Array.isArray(parsed.hero) && parsed.hero.length === 2 ? parsed.hero : [];
     const seats = Array.isArray(parsed.seats) ? parsed.seats
       .filter((s) => s && Number.isInteger(s.seatIndex) && Number.isFinite(s.confidence))
       .map((s) => ({
@@ -171,14 +170,14 @@ export default async function handler(req, res) {
       fingerprint,
       model: 'gpt-5.6-luna',
       tableSize: Number.isInteger(parsed.tableSize) ? parsed.tableSize : null,
-      hero,
+      hero: [],
       board,
       pot: Number.isFinite(parsed.pot) && parsed.pot > 0 ? parsed.pot : null,
       street,
       heroToAct: typeof parsed.heroToAct === 'boolean' ? parsed.heroToAct : null,
       seats,
       confidence: Number(parsed.confidence) || 0,
-      heroConfidence: Number(parsed.heroConfidence) || 0,
+      heroConfidence: 0,
       boardConfidence: Number(parsed.boardConfidence) || 0,
       potConfidence: Number(parsed.potConfidence) || 0,
       seatsConfidence: Number(parsed.seatsConfidence) || 0,
