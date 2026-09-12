@@ -55,6 +55,7 @@ assert.equal(prepared.actorCurrentFrameConfirmed, true);
 const capacitySource = fs.readFileSync(new URL('../src/vision/table-capacity-stabilizer-r14.js', import.meta.url), 'utf8');
 assert.match(capacitySource, /candidateHits >= 2/);
 assert.match(capacitySource, /contradictionHits >= 4/);
-assert.match(capacitySource, /emptyPhysicalSlot/);
+assert.match(capacitySource, /originalIngest\(snapshot\)/);
+assert.doesNotMatch(capacitySource, /emptyPhysicalSlot/);
 
 console.log('POKER EVIDENCE R14 passed');
