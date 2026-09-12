@@ -68,12 +68,14 @@ assert.deepEqual(fresh.board, []);
 assert.equal(fresh.pot, null);
 assert.equal(fresh.street, 'preflop');
 
-// VIDEO REGRESSION 5: R14 manual-Hero build must not load the legacy automatic
-// Hero authority, and normal strategy requires raw 2/2 plus physical board match.
+// VIDEO REGRESSION 5: manual-Hero, raw 2/2 and a trustworthy public board are
+// mandatory. Board trust may come from stable physical occupancy OR exact fast
+// board identity 2/2 when the local count-only detector lags.
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
 const lifecycleSource = fs.readFileSync(new URL('../src/core/deal-lifecycle-r14.js', import.meta.url), 'utf8');
 const safety = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
+const decisionStore = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
 assert.doesNotMatch(bootstrap, /hero-authority-runtime-r11/);
 assert.match(transaction, /DealLifecycleR14/);
 assert.match(transaction, /lifecycle\.observeHero\(Boolean\(present\), now\)/);
@@ -82,7 +84,9 @@ assert.match(transaction, /diagnostics\.physicalRedeals\+\+/);
 assert.match(transaction, /machine\.newHand\(reason, now\)/);
 assert.match(lifecycleSource, /physical-redeal/);
 assert.match(safety, /rawStableFrames >= 2/);
-assert.match(safety, /physical-board-match/);
+assert.match(safety, /fastIdentityConsensus/);
 assert.match(safety, /visualBoardCount/);
+assert.match(decisionStore, /strategicDeadlineFallback: false/);
+assert.match(decisionStore, /clockStartsAfterManualHero: true/);
 
 console.log('VIDEO REGRESSIONS R14 passed');
