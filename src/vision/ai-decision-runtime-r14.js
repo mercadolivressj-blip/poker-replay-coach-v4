@@ -27,6 +27,7 @@ const diagnostics = {
   aggressorName: null,
   aggressorCommitted: null,
   heroCommitted: null,
+  rawStableFrames: 0,
   lastError: null,
   trustReason: 'Aguardando decisão do Hero.',
 };
@@ -39,6 +40,8 @@ let lastCaptureAt = 0;
 let nextRetryAt = 0;
 let burstRemaining = 0;
 let lastHeroTurn = false;
+let candidateKey = '';
+let candidateHits = 0;
 let accessToken = '';
 try { accessToken = sessionStorage.getItem('prc.vision-token') || ''; } catch {}
 
@@ -49,6 +52,7 @@ function exactCards(a, b) { return Array.isArray(a) && Array.isArray(b) && a.len
 function closeMoney(a, b) { return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Math.max(0.005, Math.abs(b) * 0.02); }
 function fmt(n) { return Number.isFinite(n) ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(n) : '—'; }
 function actionKey(actions) { return (actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).sort().join('|'); }
+function moneyKey(value) { return Number.isFinite(value) ? String(Math.round(value * 1000) / 1000) : '-'; }
 
 function visibleSource() {
   const video = document.getElementById('video');
@@ -87,33 +91,59 @@ function fillDerivedCall(actions, aggressorCommitted, heroCommitted) {
   return out;
 }
 
+function decisionSnapshotKey() {
+  return [
+    diagnostics.handId,
+    cardsKey(diagnostics.hero),
+    cardsKey(diagnostics.board),
+    moneyKey(diagnostics.pot),
+    actionKey(diagnostics.actions),
+    String(diagnostics.aggressorName || '').trim().toLowerCase(),
+    moneyKey(diagnostics.aggressorCommitted),
+    moneyKey(diagnostics.heroCommitted),
+  ].join('#');
+}
+
+function observeCandidate() {
+  const key = decisionSnapshotKey();
+  if (key && key === candidateKey) candidateHits++;
+  else {
+    candidateKey = key;
+    candidateHits = key ? 1 : 0;
+  }
+  diagnostics.rawStableFrames = candidateHits;
+  return candidateHits;
+}
+
 function commitCritical(out) {
   const machine = activeHandMachine;
-  if (!machine || out.handId !== machine.handId) return;
+  if (!machine || out.handId !== machine.handId || candidateHits < 2) return;
   const t = now();
   const token = authoritativeToken();
-  if (Array.isArray(out.hero) && out.hero.length === 2 && out.heroConfidence >= 0.88 && !exactCards(machine.state.hero || [], out.hero)) {
+  if (Array.isArray(out.hero) && out.hero.length === 2 && out.heroConfidence >= 0.88 && !exactCards(machine.state.hero || [], diagnostics.hero)) {
     machine.setHero(out.hero, machine.handId, { source: 'ai-decision', rebindToken: token, forceRebind: true, now: t });
   }
-  if (Array.isArray(out.board) && [0, 3, 4, 5].includes(out.board.length) && out.boardConfidence >= 0.84 && !exactCards(machine.state.board || [], out.board)) {
+  if (Array.isArray(out.board) && [0, 3, 4, 5].includes(out.board.length) && out.boardConfidence >= 0.84 && !exactCards(machine.state.board || [], diagnostics.board)) {
     if (out.board.length || !(machine.state.board || []).length) machine.setBoard(out.board, machine.handId, { source: 'ai-decision', rebindToken: token, forceRebind: true, now: t });
   }
-  if (Number.isFinite(out.pot) && out.pot > 0 && out.potConfidence >= 0.88 && !closeMoney(Number(machine.state.pot), out.pot)) {
+  if (Number.isFinite(out.pot) && out.pot > 0 && out.potConfidence >= 0.88 && !closeMoney(Number(machine.state.pot), diagnostics.pot)) {
     machine.setPot(out.pot, machine.handId, { source: 'ai-decision', now: t });
   }
 }
 
 function uiHeroTurn() {
   const chip = String(document.getElementById('turnChip')?.textContent || '').toUpperCase();
-  const title = String(document.getElementById('coachTitle')?.textContent || '').toUpperCase();
-  const actions = document.getElementById('actions');
-  const actionCount = actions ? actions.children.length : 0;
-  return chip.includes('SUA VEZ') || title.includes('DECISÃO DO HERO') || actionCount >= 2;
+  return chip.includes('SUA VEZ');
 }
 
 function heroTurnSignal(machine) {
-  const full = window.__prcAIStateR14;
-  return Boolean(machine?.state?.heroToAct || full?.heroToAct === true || uiHeroTurn());
+  return Boolean(machine?.state?.heroToAct || uiHeroTurn());
+}
+
+function resetCandidate() {
+  candidateKey = '';
+  candidateHits = 0;
+  diagnostics.rawStableFrames = 0;
 }
 
 function startTurn() {
@@ -123,6 +153,7 @@ function startTurn() {
   lastCaptureAt = 0;
   nextRetryAt = 0;
   burstRemaining = 2;
+  resetCandidate();
   diagnostics.trusted = false;
   diagnostics.lastSeenAt = 0;
   diagnostics.lastSuccessAt = 0;
@@ -138,7 +169,9 @@ function startTurn() {
 
 function endTurn() {
   generation++;
+  resetCandidate();
   diagnostics.trusted = false;
+  diagnostics.heroToAct = false;
   diagnostics.lastError = null;
   diagnostics.consecutiveFailures = 0;
   diagnostics.trustReason = 'Aguardando decisão do Hero.';
@@ -166,6 +199,7 @@ function resetHand(handId) {
   nextRetryAt = 0;
   burstRemaining = 0;
   lastHeroTurn = false;
+  resetCandidate();
   renderDecisionReadout();
 }
 
@@ -220,6 +254,7 @@ function apply(out) {
   diagnostics.consecutiveFailures = 0;
   nextRetryAt = 0;
 
+  const stableFrames = observeCandidate();
   commitCritical(out);
 
   const stateHero = machine.state.hero || [];
@@ -233,11 +268,12 @@ function apply(out) {
   const turnConfirmed = diagnostics.heroToAct === true || diagnostics.actions.length >= 2;
   const actionsOk = turnConfirmed && diagnostics.actions.length >= 2 && diagnostics.actionsConfidence >= 0.78 && actionAmountsOk;
   const confidenceOk = diagnostics.confidence >= 0.84 && diagnostics.heroConfidence >= 0.86 && diagnostics.boardConfidence >= 0.78 && diagnostics.potConfidence >= 0.84;
-  const trustedNow = Boolean(heroOk && boardOk && potOk && actionsOk && confidenceOk);
+  const trustedNow = Boolean(stableFrames >= 2 && heroOk && boardOk && potOk && actionsOk && confidenceOk);
   const sameActions = oldActionsKey && oldActionsKey === actionKey(diagnostics.actions);
 
-  diagnostics.trusted = trustedNow || Boolean(hadTrusted && heroOk && boardOk && potOk && (sameActions || diagnostics.actionsConfidence < 0.78));
-  if (diagnostics.trusted) diagnostics.trustReason = '✓ Decisão atual confirmada pela IA rápida.';
+  diagnostics.trusted = trustedNow || Boolean(hadTrusted && heroOk && boardOk && potOk && stableFrames >= 2 && (sameActions || diagnostics.actionsConfidence < 0.78));
+  if (diagnostics.trusted) diagnostics.trustReason = '✓ Decisão atual confirmada em duas leituras iguais.';
+  else if (stableFrames < 2) diagnostics.trustReason = `Confirmando o mesmo snapshot da decisão (${stableFrames}/2).`;
   else if (!heroOk) diagnostics.trustReason = 'IA rápida ainda confirmando suas cartas.';
   else if (!boardOk) diagnostics.trustReason = 'IA rápida ainda confirmando board/street.';
   else if (!potOk) diagnostics.trustReason = 'IA rápida ainda confirmando o pote atual.';
@@ -293,7 +329,7 @@ function renderDecisionReadout() {
   }
 
   const actions = diagnostics.actions.map((a) => `${String(a.type).toUpperCase()}${Number.isFinite(a.amount) ? ` ${fmt(a.amount)}` : ''}`).join(' · ');
-  title.textContent = `${diagnostics.trusted ? '✓ ' : ''}IA rápida ${Math.round(diagnostics.confidence * 100)}%${Number.isFinite(diagnostics.lastLatencyMs) ? ` · ${diagnostics.lastLatencyMs}ms` : ''}`;
+  title.textContent = `${diagnostics.trusted ? '✓ ' : ''}IA rápida ${Math.round(diagnostics.confidence * 100)}%${Number.isFinite(diagnostics.lastLatencyMs) ? ` · ${diagnostics.lastLatencyMs}ms` : ''} · ${diagnostics.rawStableFrames}/2`;
   detail.textContent = `${actions || 'ações pendentes'}${diagnostics.aggressorName ? ` · agressor ${diagnostics.aggressorName}` : ''}${diagnostics.consecutiveFailures ? ' · reconectando' : ''}`;
 }
 
@@ -350,8 +386,8 @@ function tick() {
   const t = now();
   if (t < nextRetryAt) return;
   const initialBurst = burstRemaining > 0;
-  const maxInFlight = initialBurst ? 2 : 1;
-  const interval = initialBurst ? 280 : diagnostics.trusted ? 2600 : 1100;
+  const maxInFlight = 1;
+  const interval = initialBurst ? 120 : diagnostics.trusted ? 2600 : 450;
   if (diagnostics.inFlight >= maxInFlight || t - lastCaptureAt < interval) return;
 
   const canvas = snapshot(source);
@@ -368,6 +404,7 @@ if (typeof window !== 'undefined') {
     lastCaptureAt = 0;
     nextRetryAt = 0;
     burstRemaining = 2;
+    resetCandidate();
     diagnostics.trusted = false;
     diagnostics.lastError = null;
     diagnostics.consecutiveFailures = 0;
