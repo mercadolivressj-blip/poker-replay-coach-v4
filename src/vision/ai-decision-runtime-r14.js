@@ -40,6 +40,7 @@ let lastCaptureAt = 0;
 let nextRetryAt = 0;
 let burstRemaining = 0;
 let lastHeroTurn = false;
+let turnSignalStartedAt = 0;
 let candidateKey = '';
 let candidateHits = 0;
 let accessToken = '';
@@ -136,8 +137,34 @@ function uiHeroTurn() {
   return chip.includes('SUA VEZ');
 }
 
+function fullFrameHeroTurn(machine) {
+  if (typeof window === 'undefined') return false;
+  const full = window.__prcAIStateR14;
+  if (!full || Number(full.handId) !== Number(machine?.handId) || full.heroToAct !== true) return false;
+  const age = Number.isFinite(Number(full.lastSeenAt)) && Number(full.lastSeenAt) > 0 ? now() - Number(full.lastSeenAt) : Infinity;
+  const latency = Math.max(0, Number(full.lastLatencyMs) || 0);
+  const freshnessWindow = Math.max(3500, Math.min(6500, latency + 2200));
+  return age <= freshnessWindow;
+}
+
+function fastFrameStillHeroTurn(machine) {
+  if (Number(diagnostics.handId) !== Number(machine?.handId)) return false;
+  const age = Number.isFinite(Number(diagnostics.lastSeenAt)) && Number(diagnostics.lastSeenAt) > 0 ? now() - Number(diagnostics.lastSeenAt) : Infinity;
+  const latency = Math.max(0, Number(diagnostics.lastLatencyMs) || 0);
+  const freshnessWindow = Math.max(3000, Math.min(5200, latency + 1800));
+  return diagnostics.heroToAct === true && diagnostics.actions.length >= 2 && age <= freshnessWindow;
+}
+
 function heroTurnSignal(machine) {
-  return Boolean(machine?.state?.heroToAct || uiHeroTurn());
+  const local = Boolean(machine?.state?.heroToAct || uiHeroTurn());
+  if (local) return true;
+
+  // Once a fast response captured after this turn started explicitly says Hero
+  // is no longer to act, that fresh decision frame overrides a slower/stale
+  // full-table heroToAct=true and ends the turn immediately.
+  if (lastHeroTurn && turnSignalStartedAt > 0 && diagnostics.lastSeenAt >= turnSignalStartedAt && diagnostics.heroToAct === false) return false;
+
+  return fastFrameStillHeroTurn(machine) || fullFrameHeroTurn(machine);
 }
 
 function resetCandidate() {
@@ -148,6 +175,7 @@ function resetCandidate() {
 
 function startTurn() {
   generation++;
+  turnSignalStartedAt = now();
   seq = 0;
   lastAppliedSeq = 0;
   lastCaptureAt = 0;
@@ -157,6 +185,7 @@ function startTurn() {
   diagnostics.trusted = false;
   diagnostics.lastSeenAt = 0;
   diagnostics.lastSuccessAt = 0;
+  diagnostics.heroToAct = null;
   diagnostics.lastError = null;
   diagnostics.consecutiveFailures = 0;
   diagnostics.actions = [];
@@ -169,6 +198,7 @@ function startTurn() {
 
 function endTurn() {
   generation++;
+  turnSignalStartedAt = 0;
   resetCandidate();
   diagnostics.trusted = false;
   diagnostics.heroToAct = false;
@@ -184,10 +214,12 @@ function endTurn() {
 
 function resetHand(handId) {
   generation++;
+  turnSignalStartedAt = 0;
   diagnostics.handId = handId;
   diagnostics.trusted = false;
   diagnostics.lastSeenAt = 0;
   diagnostics.lastSuccessAt = 0;
+  diagnostics.heroToAct = false;
   diagnostics.actions = [];
   diagnostics.aggressorName = null;
   diagnostics.lastError = null;
