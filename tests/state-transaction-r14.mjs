@@ -23,7 +23,8 @@ assert.doesNotMatch(bootstrap, /card-refiner-runtime\.js/);
 
 assert.match(transaction, /DealSnapshotArbiter/);
 assert.match(transaction, /DealLifecycleR14/);
-assert.match(transaction, /physical-redeal/);
+assert.match(transaction, /observed\.newDeal/);
+assert.match(transaction, /machine\.newHand\(reason, now\)/);
 assert.match(transaction, /requestReadingRecalibration/);
 assert.match(transaction, /applyManualReplayState/);
 assert.match(transaction, /automatic-refresh/);
