@@ -17,4 +17,6 @@ await import('./vision/ai-decision-consensus-r14.js');
 await import('./vision/manual-hero-prefetch-r14.js');
 await import('./vision/ai-decision-evidence-guard-r14.js');
 await import('./solver/study-safety-gate-r14.js');
+await import('./solver/preflop-policy-runtime-r14.js');
 await import('./solver/resolver-runtime.js');
+await import('./solver/single-decision-ui-r14.js');
