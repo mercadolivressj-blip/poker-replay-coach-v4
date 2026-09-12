@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { classifyPreflopContext } from '../src/core/preflop-context-r14.js';
+import { assignPositions, inferEvents } from '../src/core/table-state-tracker.js';
 import { recommendUnopenedPreflop } from '../src/solver/preflop-policy-r14.js';
 
 const c = (rank, suit) => ({ rank, suit });
@@ -51,6 +52,34 @@ ctx = classifyPreflopContext({ seats: raisedSpot, heroCommitted: 0, proposedAggr
 assert.equal(ctx.mode, 'raised');
 assert.equal(ctx.aggressorName, 'RaginRJ');
 assert.equal(ctx.aggressorCommitted, 0.06);
+
+const physicalSixWithVacancy = [
+  { seatIndex: 0, actorName: 'djulio94rike', stack: 2, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 1, actorName: 'RaginRJ', stack: 2, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 2, actorName: 'TSCardinals', stack: 2.88, committed: 0, dealer: true, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 3, actorName: 'wruckzinho', stack: .80, committed: .01, dealer: false, folded: false, hero: true, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 4, actorName: 'Lugar Vazio', stack: null, committed: null, dealer: false, folded: null, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 5, actorName: 'FRYMONY', stack: 1.98, committed: .02, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+];
+const positioned = assignPositions(physicalSixWithVacancy);
+assert.equal(positioned.find((s) => s.actorName === 'wruckzinho')?.position, 'SB', 'vacant physical slot must not steal the SB/BB ordering');
+assert.equal(positioned.find((s) => s.actorName === 'FRYMONY')?.position, 'BB', 'next occupied player after SB must be BB');
+assert.equal(positioned.find((s) => s.actorName === 'Lugar Vazio')?.position, null, 'vacant seat has no poker position');
+
+const microPrevRaw = [
+  { seatIndex: 0, actorName: 'BTN', stack: 2, committed: 0, dealer: true, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 1, actorName: 'Hero', stack: .99, committed: .01, dealer: false, folded: false, hero: true, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 2, actorName: 'BB', stack: 1.98, committed: .02, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 3, actorName: 'UTG', stack: 2, committed: 0, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+];
+const microNextRaw = microPrevRaw.map((s) => s.actorName === 'UTG' ? { ...s, stack: 1.94, committed: .06 } : s);
+const microEvents = inferEvents(
+  { handId: 12, street: 'preflop', seats: assignPositions(microPrevRaw) },
+  { handId: 12, street: 'preflop', seats: assignPositions(microNextRaw) },
+);
+assert.equal(microEvents.length, 1, '0.06 raise over 0.02 BB must be detectable at micro stakes');
+assert.equal(microEvents[0].action, 'raise');
+assert.equal(microEvents[0].amount, .06);
 
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
