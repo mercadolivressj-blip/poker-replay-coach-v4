@@ -68,7 +68,7 @@ function prompt() {
   return [
     'Poker REPLAY / post-game study screenshot. Read ONLY the current decision-critical public state. Never provide strategy.',
     'Inspect the whole image, but answer compactly and do not spend time cataloguing every seat.',
-    'Hero: return the two face-up hero cards only. Never read opponent hole cards.',
+    'Hero hole cards are MANUAL-ONLY in this coach. Do NOT inspect, infer or return Hero cards. Always return hero=[] and heroConfidence=0.',
     'Board: return the community cards left-to-right; valid lengths are 0, 3, 4 or 5.',
     'Pot: read ONLY the CENTRAL visible label beginning with "Pote:". It may be CASH (for example "Pote: US$ 0,17") or TOURNAMENT CHIPS (for example "Pote: 630" or "Pote: 2.508").',
     'For tournament chips, preserve the full chip magnitude: "Pote: 630" => 630; "Pote: 2.508" in pt-BR thousands formatting => 2508. Never turn 630 into 390/63/6.30 and never turn 2.508 into 2.508 chips.',
@@ -129,7 +129,6 @@ export default async function handler(req, res) {
     catch { return res.status(502).json({ error: 'invalid decision json' }); }
 
     const board = Array.isArray(parsed.board) && [0,3,4,5].includes(parsed.board.length) ? parsed.board : [];
-    const hero = Array.isArray(parsed.hero) && parsed.hero.length === 2 ? parsed.hero : [];
     const heroActions = Array.isArray(parsed.heroActions) ? parsed.heroActions
       .filter((a) => a && ACTIONS.includes(a.type))
       .map((a) => ({ type: a.type, amount: Number.isFinite(a.amount) ? a.amount : null })) : [];
@@ -138,7 +137,7 @@ export default async function handler(req, res) {
       handId,
       fingerprint,
       model: 'gpt-5.6-luna',
-      hero,
+      hero: [],
       board,
       pot: Number.isFinite(parsed.pot) && parsed.pot > 0 ? parsed.pot : null,
       heroToAct: typeof parsed.heroToAct === 'boolean' ? parsed.heroToAct : null,
@@ -147,7 +146,7 @@ export default async function handler(req, res) {
       aggressorCommitted: Number.isFinite(parsed.aggressorCommitted) ? parsed.aggressorCommitted : null,
       heroCommitted: Number.isFinite(parsed.heroCommitted) ? parsed.heroCommitted : null,
       confidence: Number(parsed.confidence) || 0,
-      heroConfidence: Number(parsed.heroConfidence) || 0,
+      heroConfidence: 0,
       boardConfidence: Number(parsed.boardConfidence) || 0,
       potConfidence: Number(parsed.potConfidence) || 0,
       actionsConfidence: Number(parsed.actionsConfidence) || 0,
