@@ -44,39 +44,16 @@ function observeCapacity(raw, confidence = 0) {
   return lockedCapacity;
 }
 
-function withPhysicalSlots(snapshot, capacity) {
-  if (!capacity || !Array.isArray(snapshot?.seats)) return snapshot;
-  const byIndex = new Map();
-  for (const seat of snapshot.seats) {
-    if (!Number.isInteger(seat?.seatIndex) || seat.seatIndex < 0 || seat.seatIndex >= capacity) continue;
-    byIndex.set(seat.seatIndex, seat);
-  }
-  for (let seatIndex = 0; seatIndex < capacity; seatIndex++) {
-    if (byIndex.has(seatIndex)) continue;
-    byIndex.set(seatIndex, {
-      seatIndex,
-      actorName: null,
-      stack: null,
-      committed: null,
-      dealer: false,
-      folded: true,
-      hero: false,
-      visibleAction: null,
-      visibleActionAmount: null,
-      confidence: 0.5,
-      emptyPhysicalSlot: true,
-    });
-  }
-  return { ...snapshot, tableSize: capacity, seats: [...byIndex.values()].sort((a, b) => a.seatIndex - b.seatIndex) };
-}
-
 const tracker = activeTableStateTracker;
 if (tracker && !tracker.__prcCapacityStabilizedR14) {
   const originalIngest = tracker.ingest.bind(tracker);
   tracker.ingest = (snapshot) => {
     const d = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
     const capacity = observeCapacity(d?.tableSize, Number(d?.seatsConfidence) || Number(snapshot?.confidence) || 0);
-    const result = originalIngest(withPhysicalSlots(snapshot, capacity));
+
+    // Important: physical capacity is only a display/layout fact. Do NOT inject empty
+    // physical slots into the tracker, because poker positions skip empty seats.
+    const result = originalIngest(snapshot);
     if (capacity && result?.state) {
       result.state.tableSize = capacity;
       if (tracker.latest) tracker.latest.tableSize = capacity;
