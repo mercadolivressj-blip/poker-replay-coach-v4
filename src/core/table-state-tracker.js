@@ -1,4 +1,3 @@
-const EPS = 0.5;
 const ACTIONS = new Set(['fold','check','call','bet','raise','allin']);
 
 export let activeTableStateTracker = null;
@@ -18,6 +17,19 @@ const POSITIONS = {
 function finite(v) { return Number.isFinite(v) ? v : null; }
 function seatKey(s) { return `seat:${Number.isInteger(s?.seatIndex) ? s.seatIndex : 'unknown'}`; }
 function byIndex(a, b) { return a.seatIndex - b.seatIndex; }
+function normalizedName(value) {
+  return String(value || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function isVacantSeat(seat) {
+  const name = normalizedName(seat?.actorName);
+  if (['lugar vazio','empty seat','seat open','assento vazio'].includes(name)) return true;
+  return !seat?.hero && !seat?.actorName && !Number.isFinite(seat?.stack) && !Number.isFinite(seat?.committed);
+}
+function epsFor(...values) {
+  const nums = values.map(Number).filter(Number.isFinite).map(Math.abs);
+  const scale = nums.length ? Math.max(...nums) : 0;
+  return scale >= 10 ? 0.5 : 0.0005;
+}
 
 function normalizeSeats(seats = []) {
   return seats
@@ -39,24 +51,25 @@ function normalizeSeats(seats = []) {
 
 export function assignPositions(seats = []) {
   const normalized = normalizeSeats(seats);
-  if (normalized.length < 2 || normalized.length > 10) return normalized.map((s) => ({ ...s, position: null }));
-  const dealerIndex = normalized.findIndex((s) => s.dealer);
+  const occupied = normalized.filter((s) => !isVacantSeat(s));
+  if (occupied.length < 2 || occupied.length > 10) return normalized.map((s) => ({ ...s, position: null }));
+  const dealerIndex = occupied.findIndex((s) => s.dealer);
   if (dealerIndex < 0) return normalized.map((s) => ({ ...s, position: null }));
-  const ordered = [...normalized.slice(dealerIndex), ...normalized.slice(0, dealerIndex)];
+  const ordered = [...occupied.slice(dealerIndex), ...occupied.slice(0, dealerIndex)];
   const labels = POSITIONS[ordered.length] || [];
   const positionByKey = new Map(ordered.map((s, i) => [seatKey(s), labels[i] || null]));
-  return normalized.map((s) => ({ ...s, position: positionByKey.get(seatKey(s)) || null }));
+  return normalized.map((s) => ({ ...s, position: isVacantSeat(s) ? null : (positionByKey.get(seatKey(s)) || null) }));
 }
 
 function mapSeats(seats) { return new Map(seats.map((s) => [seatKey(s), s])); }
 function maxCommitted(seats) {
-  const vals = seats.map((s) => finite(s.committed)).filter((v) => v !== null);
+  const vals = seats.filter((s) => !isVacantSeat(s)).map((s) => finite(s.committed)).filter((v) => v !== null);
   return vals.length ? Math.max(...vals) : null;
 }
 function actorName(curr, prev = null) { return curr?.actorName || prev?.actorName || null; }
 
 function eventFromVisibleAction(curr, street, confidence, prev = null) {
-  if (!ACTIONS.has(curr.visibleAction)) return null;
+  if (isVacantSeat(curr) || !ACTIONS.has(curr.visibleAction)) return null;
   return {
     street,
     actorName: actorName(curr, prev),
@@ -95,7 +108,7 @@ export class TableStateTracker {
       street: snapshot.street,
       confidence: Number.isFinite(snapshot.confidence) ? snapshot.confidence : 0,
       seats,
-      dealerSeat: seats.find((s) => s.dealer)?.seatIndex ?? null,
+      dealerSeat: seats.find((s) => s.dealer && !isVacantSeat(s))?.seatIndex ?? null,
       heroSeat: seats.find((s) => s.hero)?.seatIndex ?? null,
       heroPosition: seats.find((s) => s.hero)?.position ?? null,
       observedAt: performance.now(),
@@ -126,6 +139,7 @@ export class TableStateTracker {
 function visibleEvents(snapshot) {
   const events = [];
   for (const curr of snapshot?.seats || []) {
+    if (isVacantSeat(curr)) continue;
     const confidence = curr.confidence || 0;
     if (confidence < 0.62) continue;
     const explicit = eventFromVisibleAction(curr, snapshot.street, confidence);
@@ -143,7 +157,7 @@ export function inferEvents(previous, next) {
 
   for (const [key, curr] of newSeats) {
     const prev = oldSeats.get(key);
-    if (!prev) continue;
+    if (!prev || isVacantSeat(curr) || isVacantSeat(prev)) continue;
     const confidence = Math.min(prev.confidence || 0, curr.confidence || 0);
     if (confidence < 0.62) continue;
 
@@ -168,16 +182,18 @@ export function inferEvents(previous, next) {
 
     const prevCommitted = finite(prev.committed);
     const currCommitted = finite(curr.committed);
-    if (prevCommitted === null || currCommitted === null || currCommitted <= prevCommitted + EPS) continue;
+    if (prevCommitted === null || currCommitted === null) continue;
+    const eps = epsFor(prevCommitted, currCommitted, oldMax);
+    if (currCommitted <= prevCommitted + eps) continue;
     const delta = currCommitted - prevCommitted;
     const stackDropped = finite(prev.stack) !== null && finite(curr.stack) !== null ? prev.stack - curr.stack : null;
-    if (stackDropped !== null && Math.abs(stackDropped - delta) > Math.max(2, delta * 0.2)) continue;
+    if (stackDropped !== null && Math.abs(stackDropped - delta) > Math.max(eps * 4, delta * 0.2)) continue;
 
     let action = null;
-    if (finite(curr.stack) !== null && curr.stack <= EPS) action = 'allin';
-    else if (oldMax !== null && prevCommitted + EPS < oldMax && Math.abs(currCommitted - oldMax) <= EPS) action = 'call';
-    else if (oldMax !== null && currCommitted > oldMax + EPS) action = oldMax <= EPS ? 'bet' : 'raise';
-    else if (oldMax !== null && oldMax <= EPS && currCommitted > EPS) action = 'bet';
+    if (finite(curr.stack) !== null && curr.stack <= eps) action = 'allin';
+    else if (oldMax !== null && prevCommitted + eps < oldMax && Math.abs(currCommitted - oldMax) <= eps) action = 'call';
+    else if (oldMax !== null && currCommitted > oldMax + eps) action = oldMax <= eps ? 'bet' : 'raise';
+    else if (oldMax !== null && oldMax <= eps && currCommitted > eps) action = 'bet';
 
     if (!action) continue;
     events.push({
