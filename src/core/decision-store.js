@@ -5,6 +5,7 @@ let current = null;
 let decisionGate = null;
 let lockedFinal = null;
 let turnStartedAt = 0;
+let deadlineReached = false;
 
 const STRATEGIC = new Set(['PAGAR','DESISTIR','PASSAR','APOSTAR','AUMENTAR','ALL-IN']);
 const HARD_DEADLINE_MS = 7000;
@@ -29,14 +30,7 @@ function fastTurnSignal() {
   const machine = activeHandMachine;
   if (!d || !machine || machine.handId <= 0 || Number(d.handId) !== Number(machine.handId)) return false;
 
-  // startTurn() in the fast-vision runtime writes this lifecycle message before
-  // the first API response arrives. This lets the 7s clock begin even when the
-  // local action-button detector misses the turn completely.
   const lifecycle = String(d.trustReason || '').startsWith('Sua vez');
-
-  // After the first response, keep the signal alive only while the decision
-  // frame itself is fresh and still contains current Hero actions. endTurn()
-  // clears actions, which prevents a stale heroToAct=true from extending a turn.
   const age = Number.isFinite(Number(d.lastSeenAt)) && Number(d.lastSeenAt) > 0
     ? nowMs() - Number(d.lastSeenAt)
     : Infinity;
@@ -55,20 +49,17 @@ function heroTurnActive() {
 function resetTurnLock() {
   lockedFinal = null;
   turnStartedAt = 0;
+  deadlineReached = false;
 }
 
 function ensureTurnClock() {
   const active = heroTurnActive();
-  if (active && !turnStartedAt) turnStartedAt = nowMs();
+  if (active && !turnStartedAt) {
+    turnStartedAt = nowMs();
+    deadlineReached = false;
+  }
   if (!active && turnStartedAt) resetTurnLock();
   return active;
-}
-
-function availableActionTypes() {
-  const types = new Set((activeHandMachine?.state?.actions || []).map((a) => a?.type).filter(Boolean));
-  const fast = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
-  for (const action of fast?.actions || []) if (action?.type) types.add(action.type);
-  return types;
 }
 
 function currentStateKey() {
@@ -80,33 +71,22 @@ function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisã
   return {
     stateKey: currentStateKey(),
     decision: 'ANALISANDO',
-    reason: `${reason} Vou publicar uma ação final em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`,
-    details: 'Cartas, board, pote, ações e contexto da mesa estão sendo confirmados antes de congelar a recomendação.',
+    reason: `${reason} Vou tentar fechar uma leitura confiável em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`,
+    details: 'Cartas, board, pote, ações e contexto da mesa estão sendo confirmados antes de publicar estratégia.',
     confidence: 0,
     source: 'r14-decision-finalizer',
   };
 }
 
-function conservativeDeadlineDecision(entry, elapsed) {
-  const types = availableActionTypes();
-  // If the snapshot still has not closed by the hard deadline, never invent an
-  // investment. In an unopened/checkable spot, CHECK is the conservative legal
-  // action. When facing a wager (or when actions remain unreadable), FOLD is the
-  // fail-closed answer. This guarantees the 10-second study window ends with one
-  // actionable answer without teaching a speculative call/raise from incomplete evidence.
-  const noWagerSpot = types.has('check') || (types.has('bet') && !types.has('call'));
-  const decision = noWagerSpot ? 'PASSAR' : 'DESISTIR';
-
+function deadlineInsufficientDecision(entry, elapsed) {
   return {
     ...(entry || {}),
     stateKey: entry?.stateKey || currentStateKey(),
-    decision,
-    reason: decision === 'PASSAR'
-      ? 'Prazo de decisão atingido sem snapshot completo; linha conservadora: PASSAR sem investir fichas.'
-      : 'Prazo de decisão atingido sem snapshot completo; linha conservadora: DESISTIR em vez de investir com informação incompleta.',
-    details: `DECISÃO FINAL POR PRAZO · ${Math.round(elapsed)}ms · o Coach não muda esta ação até o Hero agir.`,
-    confidence: 25,
-    source: 'r14-decision-deadline-finalizer',
+    decision: 'LEITURA INSUFICIENTE',
+    reason: 'O prazo de leitura terminou sem um snapshot confiável. O Coach não vai transformar falta de informação em FOLD, CHECK, CALL ou RAISE.',
+    details: `SEM DECISÃO ESTRATÉGICA POR PRAZO · ${Math.round(elapsed)}ms · se uma leitura 2/2 confiável chegar enquanto ainda for sua vez, ela poderá substituir este aviso.`,
+    confidence: 0,
+    source: 'r14-decision-deadline-insufficient',
     deadlineFinal: true,
   };
 }
@@ -125,6 +105,9 @@ export function setDecisionGate(gate) {
 export function publishDecision(entry) {
   const activeTurn = ensureTurnClock();
 
+  // Only a validated STRATEGIC action can freeze the recommendation. A timeout
+  // warning is deliberately not a lock, so a later trustworthy 2/2 snapshot can
+  // still replace it while Hero is still to act.
   if (activeTurn && lockedFinal) {
     current = { ...lockedFinal };
     dispatchCurrent();
@@ -160,12 +143,11 @@ export function publishDecision(entry) {
       };
       next = { ...lockedFinal };
     } else if (next.decision === 'LEITURA INSUFICIENTE') {
-      if (elapsed < HARD_DEADLINE_MS) {
+      if (elapsed < HARD_DEADLINE_MS && !deadlineReached) {
         next = analyzingEntry(elapsed);
       } else {
-        lockedFinal = conservativeDeadlineDecision(next, elapsed);
-        next = { ...lockedFinal, finalDecision: true, lockedAt: nowMs(), turnStartedAt };
-        lockedFinal = { ...next };
+        deadlineReached = true;
+        next = deadlineInsufficientDecision(next, elapsed);
       }
     }
   }
@@ -182,14 +164,9 @@ export function clearDecision() {
       current = { ...lockedFinal };
     } else {
       const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
-      if (elapsed >= HARD_DEADLINE_MS) {
-        lockedFinal = {
-          ...conservativeDeadlineDecision(current, elapsed),
-          finalDecision: true,
-          lockedAt: nowMs(),
-          turnStartedAt,
-        };
-        current = { ...lockedFinal };
+      if (elapsed >= HARD_DEADLINE_MS || deadlineReached) {
+        deadlineReached = true;
+        current = deadlineInsufficientDecision(current, elapsed);
       } else {
         current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
       }
@@ -216,9 +193,7 @@ function decisionWatchdog() {
   const activeTurn = ensureTurnClock();
 
   if (!activeTurn) {
-    // If the Hero action has ended, do not leave an ANALISANDO/final fallback
-    // stranded in the store while the resolver waits for its next tick.
-    if (hadTurn && current && (current.decision === 'ANALISANDO' || current.finalDecision)) {
+    if (hadTurn && current && (current.decision === 'ANALISANDO' || current.deadlineFinal || current.finalDecision)) {
       current = null;
       dispatchCurrent();
     }
@@ -228,14 +203,11 @@ function decisionWatchdog() {
   if (lockedFinal) return;
   const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
   if (elapsed >= HARD_DEADLINE_MS) {
-    lockedFinal = {
-      ...conservativeDeadlineDecision(current, elapsed),
-      finalDecision: true,
-      lockedAt: nowMs(),
-      turnStartedAt,
-    };
-    current = { ...lockedFinal };
-    dispatchCurrent();
+    if (!deadlineReached || current?.decision !== 'LEITURA INSUFICIENTE' || !current?.deadlineFinal) {
+      deadlineReached = true;
+      current = deadlineInsufficientDecision(current, elapsed);
+      dispatchCurrent();
+    }
     return;
   }
 
@@ -250,7 +222,9 @@ if (typeof window !== 'undefined') {
     deadlineMs: HARD_DEADLINE_MS,
     watchdogMs: WATCHDOG_MS,
     fastTurnFallback: true,
+    strategicDeadlineFallback: false,
     get locked() { return lockedFinal ? { ...lockedFinal } : null; },
+    get deadlineReached() { return deadlineReached; },
     get elapsedMs() { return turnStartedAt ? nowMs() - turnStartedAt : 0; },
   };
   setInterval(decisionWatchdog, WATCHDOG_MS);
