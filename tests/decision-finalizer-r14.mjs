@@ -53,23 +53,34 @@ assert.equal(window.__prcDecisionFinalizerR14?.elapsedMs, 0);
 
 clock = 7099;
 watchdog();
-assert.equal(store.getDecision()?.decision, 'ANALISANDO', 'must not finalize before the 7s deadline');
+assert.equal(store.getDecision()?.decision, 'ANALISANDO', 'must not close before the 7s deadline');
 
 clock = 7200;
 watchdog();
 const deadline = store.getDecision();
-assert.equal(deadline?.decision, 'DESISTIR', 'unreadable decision at deadline must fail closed instead of staying silent');
-assert.equal(deadline?.finalDecision, true);
+assert.equal(deadline?.decision, 'LEITURA INSUFICIENTE', 'an incomplete snapshot must never be converted into a poker action at the deadline');
+assert.equal(deadline?.finalDecision, undefined, 'timeout warning is not a frozen strategic decision');
 assert.equal(deadline?.deadlineFinal, true);
+assert.equal(window.__prcDecisionFinalizerR14?.strategicDeadlineFallback, false);
+
+const lateTrusted = store.publishDecision({
+  stateKey: store.decisionStateKey(machine.handId, machine.state),
+  decision: 'AUMENTAR',
+  reason: 'trusted 2/2 result arrived after the warning',
+  details: 'validated strategy',
+  confidence: 91,
+});
+assert.equal(lateTrusted?.decision, 'AUMENTAR', 'a later trustworthy strategy may replace a deadline warning while Hero still acts');
+assert.equal(lateTrusted?.finalDecision, true);
 
 const attemptedChange = store.publishDecision({
   stateKey: store.decisionStateKey(machine.handId, machine.state),
-  decision: 'AUMENTAR',
+  decision: 'PAGAR',
   reason: 'late conflicting result',
   details: '',
   confidence: 99,
 });
-assert.equal(attemptedChange?.decision, 'DESISTIR', 'once final, the action must remain frozen until Hero acts');
+assert.equal(attemptedChange?.decision, 'AUMENTAR', 'once a real strategic decision is final, it must remain frozen until Hero acts');
 
 window.__prcAIDecisionR14.trustReason = 'Aguardando decisão do Hero.';
 window.__prcAIDecisionR14.heroToAct = false;
