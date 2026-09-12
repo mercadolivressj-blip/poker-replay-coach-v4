@@ -47,25 +47,22 @@ function availableActionTypes() {
 
 function conservativeDeadlineDecision(entry, elapsed) {
   const types = availableActionTypes();
-  let decision = null;
-  if (types.has('check')) decision = 'PASSAR';
-  else if (types.has('fold')) decision = 'DESISTIR';
-  else if (types.has('call')) decision = 'PAGAR';
-  else if (types.has('bet')) decision = 'APOSTAR';
-  else if (types.has('raise')) decision = 'AUMENTAR';
-  else if (types.has('allin')) decision = 'ALL-IN';
-  else decision = 'DESISTIR';
+  // If the snapshot still has not closed by the hard deadline, never invent an
+  // investment. In an unopened/checkable spot, CHECK is the conservative legal
+  // action. When facing a wager, FOLD is always legal. This guarantees that the
+  // 10-second study window ends with one actionable answer without teaching a
+  // speculative call/raise from incomplete evidence.
+  const noWagerSpot = types.has('check') || (types.has('bet') && !types.has('call'));
+  const decision = noWagerSpot ? 'PASSAR' : 'DESISTIR';
 
   return {
     ...entry,
     decision,
     reason: decision === 'PASSAR'
       ? 'Prazo de decisão atingido sem snapshot completo; linha conservadora: PASSAR sem investir fichas.'
-      : decision === 'DESISTIR'
-        ? 'Prazo de decisão atingido sem snapshot completo; linha conservadora: DESISTIR em vez de investir com informação incompleta.'
-        : `Prazo de decisão atingido; ${decision} é a única ação utilizável confirmada no estado atual.`,
+      : 'Prazo de decisão atingido sem snapshot completo; linha conservadora: DESISTIR em vez de investir com informação incompleta.',
     details: `DECISÃO FINAL POR PRAZO · ${Math.round(elapsed)}ms · o Coach não muda esta ação até o Hero agir.`,
-    confidence: Math.min(Number(entry?.confidence) || 0, 35) || 25,
+    confidence: 25,
     source: 'r14-decision-deadline-finalizer',
     deadlineFinal: true,
   };
