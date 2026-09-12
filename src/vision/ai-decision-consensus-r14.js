@@ -19,7 +19,6 @@ function snapshotKey() {
     .join('|');
   return [
     Number(d.handId) || 0,
-    cardKey(d.hero),
     cardKey(d.board),
     moneyKey(d.pot),
     actions,
