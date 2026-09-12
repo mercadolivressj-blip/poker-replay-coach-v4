@@ -46,6 +46,20 @@ function heroTurnActive() {
   return Boolean(activeHandMachine?.state?.heroToAct || uiHeroTurn() || fastTurnSignal());
 }
 
+function manualHeroReadyForDecision() {
+  const machine = activeHandMachine;
+  const authority = typeof window !== 'undefined' ? window.__prcManualHeroAuthorityR14 : null;
+  const hero = machine?.state?.hero || [];
+  return Boolean(
+    machine?.handId > 0
+    && authority?.manualOnly
+    && authority?.heroLocked
+    && Number(authority.handId) === Number(machine.handId)
+    && hero.length === 2
+    && hero.every((card) => card?.rank && card?.suit)
+  );
+}
+
 function resetTurnLock() {
   lockedFinal = null;
   turnStartedAt = 0;
@@ -54,11 +68,16 @@ function resetTurnLock() {
 
 function ensureTurnClock() {
   const active = heroTurnActive();
-  if (active && !turnStartedAt) {
+  const heroReady = manualHeroReadyForDecision();
+  // The user's 5-minute replay exposed that the old clock started while the
+  // manual card picker was still open. By the time Hero was entered, the 7s
+  // timer had already expired and the old fallback immediately said FOLD.
+  // The decision clock now starts only AFTER Hero's two manual cards are locked.
+  if (active && heroReady && !turnStartedAt) {
     turnStartedAt = nowMs();
     deadlineReached = false;
   }
-  if (!active && turnStartedAt) resetTurnLock();
+  if (!active && (turnStartedAt || lockedFinal || deadlineReached)) resetTurnLock();
   return active;
 }
 
@@ -68,11 +87,15 @@ function currentStateKey() {
 }
 
 function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisão.') {
+  const heroReady = manualHeroReadyForDecision();
+  const suffix = heroReady
+    ? ` Vou tentar fechar uma leitura confiável em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`
+    : ' O relógio estratégico só começa depois que suas duas cartas manuais forem confirmadas.';
   return {
     stateKey: currentStateKey(),
     decision: 'ANALISANDO',
-    reason: `${reason} Vou tentar fechar uma leitura confiável em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`,
-    details: 'Cartas, board, pote, ações e contexto da mesa estão sendo confirmados antes de publicar estratégia.',
+    reason: `${reason}${suffix}`,
+    details: 'Hero manual, board, pote, ações, posições e contexto da mesa precisam estar confirmados antes de publicar estratégia.',
     confidence: 0,
     source: 'r14-decision-finalizer',
   };
@@ -105,9 +128,6 @@ export function setDecisionGate(gate) {
 export function publishDecision(entry) {
   const activeTurn = ensureTurnClock();
 
-  // Only a validated STRATEGIC action can freeze the recommendation. A timeout
-  // warning is deliberately not a lock, so a later trustworthy 2/2 snapshot can
-  // still replace it while Hero is still to act.
   if (activeTurn && lockedFinal) {
     current = { ...lockedFinal };
     dispatchCurrent();
@@ -139,11 +159,11 @@ export function publishDecision(entry) {
         ...next,
         finalDecision: true,
         lockedAt: nowMs(),
-        turnStartedAt,
+        turnStartedAt: turnStartedAt || nowMs(),
       };
       next = { ...lockedFinal };
     } else if (next.decision === 'LEITURA INSUFICIENTE') {
-      if (elapsed < HARD_DEADLINE_MS && !deadlineReached) {
+      if (!manualHeroReadyForDecision() || (elapsed < HARD_DEADLINE_MS && !deadlineReached)) {
         next = analyzingEntry(elapsed);
       } else {
         deadlineReached = true;
@@ -164,11 +184,11 @@ export function clearDecision() {
       current = { ...lockedFinal };
     } else {
       const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
-      if (elapsed >= HARD_DEADLINE_MS || deadlineReached) {
+      if (manualHeroReadyForDecision() && (elapsed >= HARD_DEADLINE_MS || deadlineReached)) {
         deadlineReached = true;
         current = deadlineInsufficientDecision(current, elapsed);
       } else {
-        current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
+        current = analyzingEntry(elapsed, manualHeroReadyForDecision() ? 'Ainda estou fechando a ação atual.' : 'Aguardando suas duas cartas manuais.');
       }
     }
     dispatchCurrent();
@@ -189,11 +209,10 @@ export function getDecision(stateKey = null) {
 }
 
 function decisionWatchdog() {
-  const hadTurn = turnStartedAt > 0;
   const activeTurn = ensureTurnClock();
 
   if (!activeTurn) {
-    if (hadTurn && current && (current.decision === 'ANALISANDO' || current.deadlineFinal || current.finalDecision)) {
+    if (current) {
       current = null;
       dispatchCurrent();
     }
@@ -201,6 +220,14 @@ function decisionWatchdog() {
   }
 
   if (lockedFinal) return;
+  if (!manualHeroReadyForDecision()) {
+    if (!current || current.decision !== 'ANALISANDO') {
+      current = analyzingEntry(0, 'Aguardando suas duas cartas manuais.');
+      dispatchCurrent();
+    }
+    return;
+  }
+
   const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
   if (elapsed >= HARD_DEADLINE_MS) {
     if (!deadlineReached || current?.decision !== 'LEITURA INSUFICIENTE' || !current?.deadlineFinal) {
@@ -223,6 +250,7 @@ if (typeof window !== 'undefined') {
     watchdogMs: WATCHDOG_MS,
     fastTurnFallback: true,
     strategicDeadlineFallback: false,
+    clockStartsAfterManualHero: true,
     get locked() { return lockedFinal ? { ...lockedFinal } : null; },
     get deadlineReached() { return deadlineReached; },
     get elapsedMs() { return turnStartedAt ? nowMs() - turnStartedAt : 0; },
