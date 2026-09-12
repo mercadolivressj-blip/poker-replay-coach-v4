@@ -3,8 +3,8 @@ import { ActionTimeline } from '../core/action-timeline.js';
 import { TableStateTracker } from '../core/table-state-tracker.js';
 
 // R14 owns one public-state timeline and one table tracker per replay hand.
-// The primary evidence source is the PokerStars table itself. Chat OCR is not
-// required for the resolver path.
+// Primary evidence now comes from a whole-frame AI read of the replay. Local
+// OCR/seat geometry is no longer allowed to create strategic truth.
 const timeline = new ActionTimeline();
 const tableTracker = new TableStateTracker();
 
@@ -14,7 +14,7 @@ const diagnostics = {
   eventCount: 0,
   actors: [],
   lastEvent: null,
-  source: 'visual-table-r14b',
+  source: 'ai-full-frame-r14',
 };
 
 if (typeof window !== 'undefined') window.__prcReplayContextR14 = { timeline, tableTracker, diagnostics };
@@ -47,8 +47,6 @@ if (typeof window !== 'undefined') {
   setTimeout(syncHand, 0);
 }
 
-// The adaptive reader supports both 6-max and 9-max and publishes a hard
-// trust signal. No action is appended until the visual table is validated.
-await import('./visual-table-runtime-r14b.js');
+await import('./ai-full-state-runtime-r14.js');
 
 export { timeline as replayActionTimelineR14, tableTracker as replayTableTrackerR14 };
