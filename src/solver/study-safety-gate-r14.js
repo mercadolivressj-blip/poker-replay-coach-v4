@@ -52,32 +52,60 @@ function machineMatchesDecision(d) {
     && closeMoney(pot, Number(d?.pot));
 }
 
-function publicBoardTrust() {
+function publicBoardTrust(d = null) {
   const machine = activeHandMachine;
   const publicLifecycle = typeof window !== 'undefined' ? window.__prcPublicLifecycleR14 : null;
   const life = typeof publicLifecycle?.view === 'function' ? publicLifecycle.view() : publicLifecycle;
   const t = nowMs();
-  if (!machine || !life) return { trusted: false, reason: 'A leitura física do board ainda não iniciou.' };
+  if (!machine) return { trusted: false, reason: 'O estado atual da mão ainda não iniciou.' };
 
-  const age = Number.isFinite(Number(life.visualBoardUpdatedAt)) ? t - Number(life.visualBoardUpdatedAt) : Infinity;
-  const physicalCount = Number(life.visualBoardCount);
-  const physicalHits = Number(life.visualBoardHits) || 0;
-  const logicalCount = Array.isArray(machine.state?.board) ? machine.state.board.length : 0;
+  const logicalBoard = Array.isArray(machine.state?.board) ? machine.state.board : [];
+  const logicalCount = logicalBoard.length;
   const logicalStreet = String(machine.state?.street || 'preflop');
   const expectedStreet = streetForBoardCount(logicalCount);
-  const stable = [0,3,4,5].includes(physicalCount) && physicalHits >= 3 && age <= 1400;
-  const transitioning = Boolean(life.heroGapArmed || life.boardClearArmed);
-  const countMatches = stable && physicalCount === logicalCount;
   const streetMatches = logicalStreet === expectedStreet;
-  const trusted = stable && !transitioning && countMatches && streetMatches;
 
-  let reason = 'Board físico sincronizado.';
-  if (!stable) reason = 'Aguardando confirmação física do board.';
-  else if (transitioning) reason = 'Troca de mão detectada; invalidando o estado anterior.';
-  else if (!countMatches) reason = `Board físico tem ${physicalCount} cartas, mas o estado ainda tem ${logicalCount}.`;
+  const age = life && Number.isFinite(Number(life.visualBoardUpdatedAt)) ? t - Number(life.visualBoardUpdatedAt) : Infinity;
+  const physicalCount = life ? Number(life.visualBoardCount) : NaN;
+  const physicalHits = life ? Number(life.visualBoardHits) || 0 : 0;
+  const stablePhysical = Boolean(life) && [0,3,4,5].includes(physicalCount) && physicalHits >= 3 && age <= 1400;
+  const transitioning = Boolean(life?.heroGapArmed || life?.boardClearArmed);
+  const countMatches = stablePhysical && physicalCount === logicalCount;
+
+  // The 5-minute replay showed the local occupancy detector lagging while the
+  // fast lane had already confirmed the exact board twice. Exact 2/2 identity
+  // is stronger evidence than a count-only detector and still rejects a stale
+  // board because machine + fast cards must match card-for-card.
+  const fastBoard = Array.isArray(d?.board) ? d.board : [];
+  const fastIdentityConsensus = Number(d?.rawStableFrames) >= 2
+    && [0,3,4,5].includes(fastBoard.length)
+    && exactCards(logicalBoard, fastBoard)
+    && streetForBoardCount(fastBoard.length) === logicalStreet;
+
+  const trusted = !transitioning
+    && streetMatches
+    && ((stablePhysical && countMatches) || fastIdentityConsensus);
+
+  let reason = trusted
+    ? (fastIdentityConsensus && !(stablePhysical && countMatches)
+        ? 'Board confirmado por identidade exata na IA rápida 2/2.'
+        : 'Board físico sincronizado.')
+    : 'Aguardando confirmação do board atual.';
+  if (transitioning) reason = 'Troca de mão detectada; invalidando o estado anterior.';
   else if (!streetMatches) reason = `Street ${logicalStreet} não corresponde ao board atual.`;
+  else if (stablePhysical && !countMatches) reason = `Board físico tem ${physicalCount} cartas, mas o estado ainda tem ${logicalCount}.`;
+  else if (!stablePhysical && !fastIdentityConsensus) reason = 'Aguardando board físico ou identidade exata 2/2 da IA rápida.';
 
-  return { trusted, reason, age, physicalCount, physicalHits, logicalCount, transitioning };
+  return {
+    trusted,
+    reason,
+    age,
+    physicalCount,
+    physicalHits,
+    logicalCount,
+    transitioning,
+    fastIdentityConsensus,
+  };
 }
 
 function decisionTrust() {
@@ -94,7 +122,7 @@ function decisionTrust() {
   const rawStableFrames = Number(d?.rawStableFrames) || 0;
   const actions = Array.isArray(d?.actions) ? d.actions : [];
   const hasPricedCall = !actions.some((a) => a?.type === 'call') || actions.some((a) => a?.type === 'call' && Number.isFinite(a?.amount));
-  const publicBoard = publicBoardTrust();
+  const publicBoard = publicBoardTrust(d);
   const trusted = Boolean(d?.trusted)
     && heroReady
     && rawStableFrames >= 2
@@ -161,7 +189,7 @@ setDecisionGate((entry) => {
       ...entry,
       decision: 'LEITURA INSUFICIENTE',
       reason,
-      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · IA rápida ${fast.rawStableFrames}/2 (consenso ${fast.stableFrames}/2) · board físico ${Number.isFinite(board.physicalCount) ? board.physicalCount : '?'} / estado ${Number.isFinite(board.logicalCount) ? board.logicalCount : '?'} · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'sem agressor confirmado'} · ${age}.`,
+      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · IA rápida ${fast.rawStableFrames}/2 (consenso ${fast.stableFrames}/2) · board físico ${Number.isFinite(board.physicalCount) ? board.physicalCount : '?'} / estado ${Number.isFinite(board.logicalCount) ? board.logicalCount : '?'}${board.fastIdentityConsensus ? ' · identidade rápida OK' : ''} · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'sem agressor confirmado'} · ${age}.`,
       confidence: 0,
       source: 'study-safety-gate-ai-r14',
     };
@@ -184,10 +212,11 @@ setDecisionGate((entry) => {
 if (typeof window !== 'undefined') {
   window.__prcStudySafetyGateR14 = {
     enabled: true,
-    requires: ['manual-hero','ai-decision-raw-2of2','physical-board-match'],
+    requires: ['manual-hero','ai-decision-raw-2of2','physical-board-or-fast-identity'],
     stableDecisionFrames: 2,
     rawDecisionFrames: 2,
     physicalBoardConsensus: 3,
+    fastBoardIdentityConsensus: 2,
     unopenedPreflopPolicy: true,
     finalDecisionFrozenUntilHeroActs: true,
   };
