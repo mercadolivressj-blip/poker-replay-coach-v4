@@ -8,6 +8,7 @@ let turnStartedAt = 0;
 
 const STRATEGIC = new Set(['PAGAR','DESISTIR','PASSAR','APOSTAR','AUMENTAR','ALL-IN']);
 const HARD_DEADLINE_MS = 7000;
+const WATCHDOG_MS = 100;
 
 function nowMs() {
   return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
@@ -22,8 +23,33 @@ function uiHeroTurn() {
   return String(document.getElementById('turnChip')?.textContent || '').toUpperCase().includes('SUA VEZ');
 }
 
+function fastTurnSignal() {
+  if (typeof window === 'undefined') return false;
+  const d = window.__prcAIDecisionR14;
+  const machine = activeHandMachine;
+  if (!d || !machine || machine.handId <= 0 || Number(d.handId) !== Number(machine.handId)) return false;
+
+  // startTurn() in the fast-vision runtime writes this lifecycle message before
+  // the first API response arrives. This lets the 7s clock begin even when the
+  // local action-button detector misses the turn completely.
+  const lifecycle = String(d.trustReason || '').startsWith('Sua vez');
+
+  // After the first response, keep the signal alive only while the decision
+  // frame itself is fresh and still contains current Hero actions. endTurn()
+  // clears actions, which prevents a stale heroToAct=true from extending a turn.
+  const age = Number.isFinite(Number(d.lastSeenAt)) && Number(d.lastSeenAt) > 0
+    ? nowMs() - Number(d.lastSeenAt)
+    : Infinity;
+  const latency = Math.max(0, Number(d.lastLatencyMs) || 0);
+  const freshnessWindow = Math.max(4500, Math.min(9000, latency * 2 + 1800));
+  const actions = Array.isArray(d.actions) ? d.actions : [];
+  const freshDecisionFrame = d.heroToAct === true && actions.length >= 2 && age <= freshnessWindow;
+
+  return lifecycle || freshDecisionFrame;
+}
+
 function heroTurnActive() {
-  return Boolean(activeHandMachine?.state?.heroToAct || uiHeroTurn());
+  return Boolean(activeHandMachine?.state?.heroToAct || uiHeroTurn() || fastTurnSignal());
 }
 
 function resetTurnLock() {
@@ -55,7 +81,7 @@ function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisã
     stateKey: currentStateKey(),
     decision: 'ANALISANDO',
     reason: `${reason} Vou publicar uma ação final em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`,
-    details: 'Cartas, board, pote e ações estão sendo confirmados antes de congelar a recomendação.',
+    details: 'Cartas, board, pote, ações e contexto da mesa estão sendo confirmados antes de congelar a recomendação.',
     confidence: 0,
     source: 'r14-decision-finalizer',
   };
@@ -164,10 +190,7 @@ export function clearDecision() {
           turnStartedAt,
         };
         current = { ...lockedFinal };
-      } else if (!current || current.decision !== 'ANALISANDO') {
-        current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
       } else {
-        // Keep the countdown copy fresh even when the resolver has no actions yet.
         current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
       }
     }
@@ -188,10 +211,47 @@ export function getDecision(stateKey = null) {
   return current;
 }
 
+function decisionWatchdog() {
+  const hadTurn = turnStartedAt > 0;
+  const activeTurn = ensureTurnClock();
+
+  if (!activeTurn) {
+    // If the Hero action has ended, do not leave an ANALISANDO/final fallback
+    // stranded in the store while the resolver waits for its next tick.
+    if (hadTurn && current && (current.decision === 'ANALISANDO' || current.finalDecision)) {
+      current = null;
+      dispatchCurrent();
+    }
+    return;
+  }
+
+  if (lockedFinal) return;
+  const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
+  if (elapsed >= HARD_DEADLINE_MS) {
+    lockedFinal = {
+      ...conservativeDeadlineDecision(current, elapsed),
+      finalDecision: true,
+      lockedAt: nowMs(),
+      turnStartedAt,
+    };
+    current = { ...lockedFinal };
+    dispatchCurrent();
+    return;
+  }
+
+  if (!current || current.decision === 'LEITURA INSUFICIENTE') {
+    current = analyzingEntry(elapsed, 'Ainda estou fechando a ação atual.');
+    dispatchCurrent();
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.__prcDecisionFinalizerR14 = {
     deadlineMs: HARD_DEADLINE_MS,
+    watchdogMs: WATCHDOG_MS,
+    fastTurnFallback: true,
     get locked() { return lockedFinal ? { ...lockedFinal } : null; },
     get elapsedMs() { return turnStartedAt ? nowMs() - turnStartedAt : 0; },
   };
+  setInterval(decisionWatchdog, WATCHDOG_MS);
 }
