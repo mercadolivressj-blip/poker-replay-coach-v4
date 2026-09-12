@@ -31,6 +31,13 @@ function aggressionEv(equity, pot, risk, fe, actionType, evidenceQuality = 0) {
 
 export function estimateActionValues({ equity, pot, actions = [], rangeSummary = null, street = 'preflop', effectiveStack = null, evidenceQuality = 0, actorKnown = false } = {}) {
   if (!Number.isFinite(equity) || !Number.isFinite(pot) || pot < 0) return [];
+
+  // R14 safety gate: a CALL is a response to somebody else's wager. If we do
+  // not know which opponent created that price, a generic prior range is not
+  // enough evidence to recommend putting more chips in. Fail closed instead of
+  // producing a confident-looking call from incomplete replay context.
+  if (actions.some((action) => action?.type === 'call') && !actorKnown) return [];
+
   const out = [];
   for (const action of actions) {
     const type = action?.type;
