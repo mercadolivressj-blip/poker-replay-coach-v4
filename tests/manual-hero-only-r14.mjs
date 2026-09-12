@@ -40,10 +40,10 @@ assert.match(gate, /tableContextMaxAgeMs: 8500/);
 assert.match(store, /clockStartsAfterManualHero: true/);
 assert.match(store, /manualHeroReadyForDecision/);
 assert.match(decisionApi, /Hero hole cards are MANUAL-ONLY/);
-assert.match(decisionApi, /hero: \[\]/);
-assert.match(decisionApi, /heroConfidence: 0/);
+assert.match(decisionApi, /hero:\s*\[\]/);
+assert.match(decisionApi, /heroConfidence:\s*0/);
 assert.match(fullApi, /Hero hole cards are MANUAL-ONLY/);
-assert.match(fullApi, /hero: \[\]/);
-assert.match(fullApi, /heroConfidence: 0/);
+assert.match(fullApi, /hero:\s*\[\]/);
+assert.match(fullApi, /heroConfidence:\s*0/);
 
 console.log('MANUAL HERO ONLY R14 passed');
