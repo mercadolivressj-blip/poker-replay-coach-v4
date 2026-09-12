@@ -14,6 +14,7 @@ assert.ok(
   bootstrap.indexOf('manual-hero-authority-r14') < bootstrap.indexOf('suit-scanner-runtime-r9'),
   'manual-only Hero guard must install before legacy visual Hero readers',
 );
+assert.doesNotMatch(bootstrap, /hero-authority-runtime-r11/, 'manual-only R14 must not boot the legacy automatic Hero authority');
 assert.match(authority, /manualOnly: true/);
 assert.match(authority, /source !== 'manual'/);
 assert.match(authority, /full\.manual\.hero = true/);
@@ -24,7 +25,9 @@ assert.match(prefetch, /Mesa e ação já estavam pré-lidas/);
 assert.match(prefetch, /rawStableFrames\) >= 2/);
 assert.doesNotMatch(consensus, /cardKey\(d\.hero\)/, 'manual Hero must not reset table/action consensus');
 assert.match(gate, /manualHeroReady/);
-assert.match(gate, /requires: \['manual-hero','ai-decision-frame-consensus'\]/);
+assert.match(gate, /requires: \['manual-hero','ai-decision-raw-2of2','physical-board-match'\]/);
+assert.match(gate, /rawStableFrames >= 2/);
+assert.match(gate, /physicalBoardConsensus: 3/);
 assert.match(decisionApi, /Hero hole cards are MANUAL-ONLY/);
 assert.match(decisionApi, /hero: \[\]/);
 assert.match(decisionApi, /heroConfidence: 0/);
