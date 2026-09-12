@@ -1,5 +1,7 @@
 import { setDecisionGate } from '../core/decision-store.js';
 import { activeHandMachine } from '../core/state-machine.js';
+import { activeTableStateTracker } from '../core/table-state-tracker.js';
+import { classifyPreflopContext } from '../core/preflop-context-r14.js';
 
 const STRATEGIC = new Set(['PAGAR','DESISTIR','PASSAR','APOSTAR','AUMENTAR','ALL-IN']);
 
@@ -79,31 +81,61 @@ function decisionTrust() {
     actions: actions.length,
     stableFrames,
     aggressorName: d?.aggressorName || null,
+    aggressorCommitted: Number.isFinite(d?.aggressorCommitted) ? d.aggressorCommitted : null,
+    heroCommitted: Number.isFinite(d?.heroCommitted) ? d.heroCommitted : null,
     error: d?.lastError || null,
   };
+}
+
+function unopenedPreflopOwnedByPolicy(entry, fast) {
+  const machine = activeHandMachine;
+  if (!entry || entry.source === 'preflop-unopened-policy-r14') return false;
+  if (!machine || machine.state?.street !== 'preflop') return false;
+  const table = activeTableStateTracker?.latest;
+  if (!table || Number(table.handId) !== Number(machine.handId) || !Array.isArray(table.seats)) return false;
+  const context = classifyPreflopContext({
+    seats: table.seats,
+    heroCommitted: fast.heroCommitted,
+    proposedAggressorName: fast.aggressorName,
+    proposedAggressorCommitted: fast.aggressorCommitted,
+  });
+  return context.mode === 'unopened';
 }
 
 setDecisionGate((entry) => {
   if (!entry || !STRATEGIC.has(entry.decision)) return entry;
 
   const fast = decisionTrust();
-  if (fast.trusted) return entry;
+  if (!fast.trusted) {
+    const reason = !fast.heroReady
+      ? 'Informe suas duas cartas manualmente para liberar a decisão.'
+      : fast.error
+        ? `IA rápida indisponível: ${fast.error}`
+        : fast.reason || 'A decisão atual ainda não fechou duas leituras iguais.';
+    const age = Number.isFinite(fast.age) ? `${Math.round(fast.age)}ms atrás` : 'sem leitura rápida válida';
 
-  const reason = !fast.heroReady
-    ? 'Informe suas duas cartas manualmente para liberar a decisão.'
-    : fast.error
-      ? `IA rápida indisponível: ${fast.error}`
-      : fast.reason || 'A decisão atual ainda não fechou duas leituras iguais.';
-  const age = Number.isFinite(fast.age) ? `${Math.round(fast.age)}ms atrás` : 'sem leitura rápida válida';
+    return {
+      ...entry,
+      decision: 'LEITURA INSUFICIENTE',
+      reason,
+      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · snapshot rápido ${fast.stableFrames}/2 · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'agressor pendente'} · ${age}. A mesa pode ser pré-lida antes das cartas; a estratégia só sai depois das cartas manuais.`,
+      confidence: 0,
+      source: 'study-safety-gate-ai-r14',
+    };
+  }
 
-  return {
-    ...entry,
-    decision: 'LEITURA INSUFICIENTE',
-    reason,
-    details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · snapshot rápido ${fast.stableFrames}/2 · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'agressor pendente'} · ${age}. A mesa pode ser pré-lida antes das cartas; a estratégia só sai depois das cartas manuais.`,
-    confidence: 0,
-    source: 'study-safety-gate-ai-r14',
-  };
+  if (unopenedPreflopOwnedByPolicy(entry, fast)) {
+    return {
+      ...entry,
+      decision: 'LEITURA INSUFICIENTE',
+      reason: 'Pote pré-flop unopened confirmado; classificando posição e faixa de open antes de cravar a ação.',
+      details: 'Blinds obrigatórios não contam como agressão. Esta decisão será publicada somente pela política pré-flop de posição.',
+      confidence: 0,
+      source: 'study-safety-gate-preflop-policy-r14',
+    };
+  }
+
+  return entry;
 });
 
 if (typeof window !== 'undefined') {
@@ -111,6 +143,7 @@ if (typeof window !== 'undefined') {
     enabled: true,
     requires: ['manual-hero','ai-decision-frame-consensus'],
     stableDecisionFrames: 2,
+    unopenedPreflopPolicy: true,
     finalDecisionFrozenUntilHeroActs: true,
   };
 }
