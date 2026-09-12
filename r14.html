@@ -19,18 +19,22 @@
           <label class="file-btn">Abrir arquivo<input id="fileInput" type="file" accept="video/*,image/*" hidden /></label>
           <span class="toolbar-spacer"></span>
           <button id="recalibrateBtn" class="ghost" type="button" data-default-label="↻ Refresh leitura">↻ Refresh leitura</button>
-          <button id="manualBtn" class="manual-btn" type="button">✎ Manual</button>
           <button id="stopBtn">Parar</button>
           <button id="diagBtn" class="ghost">Diagnóstico</button>
         </div>
         <div id="stage" class="stage empty">
           <video id="video" autoplay muted playsinline></video><img id="image" alt="replay" /><canvas id="overlay"></canvas>
-          <div id="emptyState" class="empty-state"><div class="empty-icon">▶</div><h2>Abra ou compartilhe um replay</h2><p>R14: cartas confirmadas ficam travadas por generation. Use “Refresh leitura” para reler automaticamente ou “Manual” para corrigir Hero, board e pote diretamente.</p></div>
+          <div id="emptyState" class="empty-state"><div class="empty-icon">▶</div><h2>Abra ou compartilhe um replay</h2><p>R14: cartas confirmadas ficam travadas por generation. Use “Refresh leitura” para reler automaticamente; para corrigir manualmente, clique diretamente em Suas cartas, Board ou Pote.</p></div>
         </div>
       </section>
       <aside class="coach-card">
         <div class="coach-head"><div><span class="eyebrow">COACH</span><h1 id="coachTitle">Aguardando replay</h1></div><span id="turnChip" class="turn-chip">FORA DA VEZ</span></div>
-        <div class="hero-grid"><div class="metric"><span>SUAS CARTAS</span><strong id="heroCards">—</strong></div><div class="metric"><span>BOARD</span><strong id="boardCards">—</strong></div><div class="metric"><span>POTE</span><strong id="potValue">—</strong></div><div class="metric"><span>STREET</span><strong id="streetValue">—</strong></div></div>
+        <div class="hero-grid">
+          <div class="metric metric-editable" data-manual-target="hero" role="button" tabindex="0" aria-label="Corrigir manualmente suas cartas" title="Clique para corrigir suas cartas"><span>SUAS CARTAS <em>✎</em></span><strong id="heroCards">—</strong></div>
+          <div class="metric metric-editable" data-manual-target="board" role="button" tabindex="0" aria-label="Corrigir manualmente o board" title="Clique para corrigir o board"><span>BOARD <em>✎</em></span><strong id="boardCards">—</strong></div>
+          <div class="metric metric-editable" data-manual-target="pot" role="button" tabindex="0" aria-label="Corrigir manualmente o pote" title="Clique para corrigir o pote"><span>POTE <em>✎</em></span><strong id="potValue">—</strong></div>
+          <div class="metric"><span>STREET</span><strong id="streetValue">—</strong></div>
+        </div>
         <div class="decision-box"><span class="eyebrow">RECOMENDAÇÃO</span><div id="decisionText" class="decision">Esperando estado confiável.</div><div id="decisionReason" class="reason">R14 usa um único DealSnapshot: conflito de rank não troca a carta dentro da mesma generation.</div><div id="decisionDetails" class="decision-details"></div></div>
         <div class="actions" id="actions"></div><div class="confidence-row"><span>Confiança</span><strong id="confidence">—</strong></div>
       </aside>
@@ -41,18 +45,37 @@
   <div id="manualPanel" class="manual-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="manualTitle">
     <div class="manual-dialog">
       <div class="manual-head">
-        <div><span class="eyebrow">CORREÇÃO MANUAL · REPLAY</span><h2 id="manualTitle">Corrigir leitura atual</h2></div>
+        <div><span class="eyebrow">CORREÇÃO MANUAL · REPLAY</span><h2 id="manualTitle">Corrigir leitura</h2></div>
         <button id="manualCloseBtn" class="icon-btn" type="button" aria-label="Fechar">×</button>
       </div>
       <p id="manualCurrentState" class="manual-current">Atual: —</p>
-      <p class="manual-help">Preencha só o que estiver errado. Campos vazios não são alterados. A correção fica travada nesta mesma mão.</p>
-      <div class="manual-grid">
-        <label>Hero (2 cartas)<input id="manualHeroInput" type="text" autocomplete="off" placeholder="Ex.: J♥ 2♦  ou  Jh 2d" /></label>
-        <label>Pote<input id="manualPotInput" type="text" inputmode="decimal" autocomplete="off" placeholder="Ex.: 0,07" /></label>
-        <label class="manual-board-field">Board (3, 4 ou 5 cartas)<input id="manualBoardInput" type="text" autocomplete="off" placeholder="Ex.: A♠ 7♥ 3♦" /></label>
-        <label class="manual-check"><input id="manualBoardEmpty" type="checkbox" /> Forçar board vazio / preflop</label>
+      <p id="manualHelp" class="manual-help">Escolha a correção visualmente.</p>
+
+      <div id="manualBoardLength" class="manual-section hidden">
+        <span class="manual-section-label">QUANTAS CARTAS ESTÃO NO BOARD?</span>
+        <div class="board-count-grid">
+          <button type="button" data-board-count="0">0 · Preflop</button>
+          <button type="button" data-board-count="3">3 · Flop</button>
+          <button type="button" data-board-count="4">4 · Turn</button>
+          <button type="button" data-board-count="5">5 · River</button>
+        </div>
       </div>
-      <div id="manualMessage" class="manual-message">Preencha somente o que quiser corrigir.</div>
+
+      <div id="manualCardsEditor" class="manual-section hidden">
+        <span class="manual-section-label">CARTAS</span>
+        <div id="manualCardSlots" class="manual-card-slots"></div>
+        <span class="manual-section-label">VALOR</span>
+        <div id="manualRankGrid" class="manual-rank-grid"></div>
+        <span class="manual-section-label">NAIPE</span>
+        <div id="manualSuitGrid" class="manual-suit-grid"></div>
+      </div>
+
+      <div id="manualPotEditor" class="manual-section hidden">
+        <label class="manual-pot-label" for="manualPotInput">Pote atual</label>
+        <div class="manual-pot-row"><span>US$</span><input id="manualPotInput" type="text" inputmode="decimal" autocomplete="off" placeholder="0,07" /></div>
+      </div>
+
+      <div id="manualMessage" class="manual-message">—</div>
       <div class="manual-actions">
         <button id="manualCancelBtn" type="button">Cancelar</button>
         <button id="manualApplyBtn" class="primary" type="button">Aplicar correção</button>
