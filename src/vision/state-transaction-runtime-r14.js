@@ -13,6 +13,7 @@ const diagnostics = {
   lockedHeroConflicts: 0,
   lockedBoardConflicts: 0,
   manualRefreshes: 0,
+  manualOverrides: 0,
   manualRebinds: 0,
   lastHero: '—',
   lastBoard: '—',
@@ -37,6 +38,13 @@ function dispatchGeneration(machine, reason) {
   if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
   window.dispatchEvent(new CustomEvent('prc:generation-change', {
     detail: { generation: machine.handId, reason },
+  }));
+}
+
+function dispatchRecalibration(token, source = 'refresh') {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined' || !token) return;
+  window.dispatchEvent(new CustomEvent('prc:recalibrate', {
+    detail: { token, generation: arbiter?.generation, source },
   }));
 }
 
@@ -126,15 +134,55 @@ export function requestReadingRecalibration() {
   if (!arbiter) return null;
   const token = arbiter.beginManualRecalibration();
   diagnostics.manualRefreshes++;
-  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('prc:recalibrate', {
-      detail: { token, generation: arbiter.generation },
-    }));
-  }
+  dispatchRecalibration(token, 'automatic-refresh');
   return token;
 }
 
-if (typeof window !== 'undefined') window.__prcRecalibrateReading = requestReadingRecalibration;
+export function applyManualReplayState({ hero, board, pot } = {}) {
+  if (!arbiter || !activeHandMachine) return { accepted: false, reason: 'unavailable' };
+  const hasHero = Array.isArray(hero);
+  const hasBoard = Array.isArray(board);
+  const hasPot = Number.isFinite(Number(pot)) && Number(pot) > 0;
+  if (!hasHero && !hasBoard && !hasPot) return { accepted: false, reason: 'empty' };
+
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const token = arbiter.beginManualRecalibration(now);
+  const generation = arbiter.generation;
+  const result = { accepted: true, generation, hero: null, board: null, pot: null };
+
+  if (hasHero) {
+    result.hero = activeHandMachine.setHero(hero, generation, { rebindToken: token, now });
+    result.accepted = result.accepted && result.hero;
+  }
+  if (hasBoard) {
+    result.board = activeHandMachine.setBoard(board, generation, { rebindToken: token, now });
+    result.accepted = result.accepted && result.board;
+  }
+  if (hasPot) {
+    result.pot = activeHandMachine.setPot(Number(pot), generation, { now });
+    result.accepted = result.accepted && result.pot;
+  }
+
+  // Burn both one-shot rebind lanes before waking sensors. This makes Manual
+  // deterministic: omitted fields stay untouched, and a stale detector cannot
+  // consume the same token immediately after the user's correction.
+  arbiter.consumeManualRebind(token, 'hero', now);
+  arbiter.consumeManualRebind(token, 'board', now);
+  diagnostics.manualOverrides++;
+  dispatchRecalibration(token, 'manual-override');
+
+  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('prc:manual-state-applied', {
+      detail: { generation, hero: hasHero, board: hasBoard, pot: hasPot },
+    }));
+  }
+  return result;
+}
+
+if (typeof window !== 'undefined') {
+  window.__prcRecalibrateReading = requestReadingRecalibration;
+  window.__prcApplyManualReplayStateR14 = applyManualReplayState;
+}
 
 let syncing = false;
 function syncStableState() {
@@ -179,8 +227,9 @@ function syncStableState() {
       const wanted = snapshot.pot !== null ? formatAmount(snapshot.pot) : '—';
       if (potEl.textContent !== wanted) potEl.textContent = wanted;
     }
-    if (streetEl && snapshot.board.length) {
-      if (streetEl.textContent !== snapshot.street) streetEl.textContent = snapshot.street;
+    if (streetEl) {
+      const wanted = snapshot.street || 'preflop';
+      if (streetEl.textContent !== wanted) streetEl.textContent = wanted;
     }
   } finally {
     syncing = false;
