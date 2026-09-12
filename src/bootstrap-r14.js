@@ -8,6 +8,5 @@ await import('./vision/hero-authority-runtime-r11.js');
 await import('./vision/recalibrate-runtime-r14.js');
 await import('./vision/manual-controls-runtime-r14.js');
 await import('./vision/replay-context-runtime-r14.js');
-await import('./vision/pot-validation-runtime-r14.js');
 await import('./solver/study-safety-gate-r14.js');
 await import('./solver/resolver-runtime.js');
