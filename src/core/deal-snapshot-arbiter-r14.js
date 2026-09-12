@@ -99,7 +99,7 @@ export class DealSnapshotArbiter {
     return true;
   }
 
-  commitHero(cards, { generation = this.machine?.handId, rebindToken = null, now = nowMs() } = {}) {
+  commitHero(cards, { generation = this.machine?.handId, rebindToken = null, forceRebind = false, now = nowMs() } = {}) {
     this.syncGeneration(now);
     if (generation !== this.generation || !validCards(cards, [2])) return { accepted: false, reason: 'invalid-or-stale' };
     const incoming = cloneCards(cards);
@@ -108,7 +108,14 @@ export class DealSnapshotArbiter {
     let rebound = false;
 
     if (validCards(current, [2])) {
-      if (!sameRanks(current, incoming)) {
+      if (forceRebind) {
+        if (!this.consumeManualRebind(rebindToken, 'hero', now)) {
+          this.diagnostics.heroLocks++;
+          return { accepted: false, reason: 'hero-generation-lock' };
+        }
+        rebound = true;
+        next = incoming;
+      } else if (!sameRanks(current, incoming)) {
         if (!this.consumeManualRebind(rebindToken, 'hero', now)) {
           this.diagnostics.heroLocks++;
           return { accepted: false, reason: 'hero-generation-lock' };
@@ -125,7 +132,7 @@ export class DealSnapshotArbiter {
     return { accepted: true, rebound, cards: cloneCards(next) };
   }
 
-  commitBoard(cards, { generation = this.machine?.handId, rebindToken = null, now = nowMs() } = {}) {
+  commitBoard(cards, { generation = this.machine?.handId, rebindToken = null, forceRebind = false, now = nowMs() } = {}) {
     this.syncGeneration(now);
     if (generation !== this.generation || !Array.isArray(cards) || ![0, 3, 4, 5].includes(cards.length)) return { accepted: false, reason: 'invalid-or-stale' };
     if (cards.length && !validCards(cards, [3, 4, 5])) return { accepted: false, reason: 'invalid-or-stale' };
@@ -140,12 +147,13 @@ export class DealSnapshotArbiter {
       const currentPrefix = current.slice(0, prefix.length);
       const rankConflict = !sameRanks(currentPrefix, prefix);
       const shrink = incoming.length < current.length;
-      if (rankConflict || shrink || incoming.length === 0) {
+      if (forceRebind || rankConflict || shrink || incoming.length === 0) {
         if (!this.consumeManualRebind(rebindToken, 'board', now)) {
           this.diagnostics.boardLocks++;
           return { accepted: false, reason: 'board-generation-lock' };
         }
         rebound = true;
+        next = incoming;
       } else {
         next = [
           ...mergeLockedCards(current, incoming.slice(0, current.length)),
