@@ -70,10 +70,12 @@ function prompt() {
     'Inspect the whole image, but answer compactly and do not spend time cataloguing every seat.',
     'Hero hole cards are MANUAL-ONLY in this coach. Do NOT inspect, infer or return Hero cards. Always return hero=[] and heroConfidence=0.',
     'Board: return the community cards left-to-right; valid lengths are 0, 3, 4 or 5.',
-    'Pot: read ONLY the CENTRAL visible label beginning with "Pote:". It may be CASH (for example "Pote: US$ 0,17") or TOURNAMENT CHIPS (for example "Pote: 630" or "Pote: 2.508").',
+    'Pot: read ONLY the CENTRAL visible text label beginning with "Pote:". It may be CASH (for example "Pote: US$ 0,17") or TOURNAMENT CHIPS (for example "Pote: 630" or "Pote: 2.508").',
+    'CRITICAL POT DISAMBIGUATION: PokerStars can show a separate chip-stack amount directly UNDER the board, such as "US$ 0,31" or "US$ 0,67". That number is a live wager/committed amount, NOT the pot. Never use it for pot unless the same number is explicitly printed after the word "Pote:".',
+    'Example from the replay: if the screen says "Pote: US$ 0,50" above the board and a chip stack below it says "US$ 0,31", return pot=0.50, not 0.31.',
     'For tournament chips, preserve the full chip magnitude: "Pote: 630" => 630; "Pote: 2.508" in pt-BR thousands formatting => 2508. Never turn 630 into 390/63/6.30 and never turn 2.508 into 2.508 chips.',
-    'For cash, Portuguese decimal comma is decimal: "US$ 0,08" => 0.08. Re-read the central pot digits once before answering.',
-    'Cross-check the pot against visible committed chips: the central pot cannot be smaller than the sum of clearly visible live contributions already in the pot. If this conflicts with your first read, re-read the central Pote label and lower potConfidence instead of guessing.',
+    'For cash, Portuguese decimal comma is decimal: "US$ 0,08" => 0.08. Re-read the literal Pote: label once before answering.',
+    'Cross-check the pot against visible committed chips: the central pot cannot be smaller than the sum of clearly visible live contributions already in the pot. If this conflicts with your first read, re-read the literal Pote: label and lower potConfidence instead of guessing.',
     'heroToAct=true only if the bottom hero controls clearly show an active decision.',
     'heroActions: read the CURRENT visible hero decision buttons. Include exact numeric amounts when printed.',
     'Cash examples: "Pago US$ 0,04" => call 0.04; "Aumento para US$ 0,10" => raise 0.10.',
@@ -87,77 +89,23 @@ function prompt() {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
-  const key = process.env.OPENAI_API_KEY || process.env.CHATGPT;
-  if (!key) return res.status(501).json({ error: 'OpenAI API key not configured' });
-  const accessToken = process.env.VISION_ACCESS_TOKEN;
-  if (process.env.VERCEL_ENV === 'production' && accessToken) {
-    const provided = req.headers?.['x-coach-token'] ?? req.headers?.['X-Coach-Token'];
-    if (!tokenMatches(accessToken, provided)) return res.status(401).json({ error: 'coach auth required' });
-  }
-
-  const { mode, image, handId, fingerprint = null } = req.body || {};
-  if (mode !== 'replay') return res.status(400).json({ error: 'replay mode required' });
-  if (!Number.isInteger(handId) || handId < 1) return res.status(400).json({ error: 'invalid handId' });
-  if (typeof image !== 'string' || !image.startsWith('data:image/')) return res.status(400).json({ error: 'image required' });
-  if (image.length > 2_000_000) return res.status(413).json({ error: 'image too large' });
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 7000);
-  const t0 = Date.now();
-  try {
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-5.6-luna',
-        reasoning: { effort: 'none' },
-        store: false,
-        max_output_tokens: 520,
-        input: [{ role: 'user', content: [
-          { type: 'input_text', text: prompt() },
-          { type: 'input_image', image_url: image, detail: 'high' },
-        ]}],
-        text: { format: { type: 'json_schema', name: 'poker_replay_decision_state', strict: true, schema: schema() } },
-      }),
-      signal: controller.signal,
-    });
-    const j = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: j?.error?.message || 'decision vision failed' });
-    let parsed;
-    try { parsed = JSON.parse(extractOutputText(j) || '{}'); }
-    catch { return res.status(502).json({ error: 'invalid decision json' }); }
-
-    const board = Array.isArray(parsed.board) && [0,3,4,5].includes(parsed.board.length) ? parsed.board : [];
-    const heroActions = Array.isArray(parsed.heroActions) ? parsed.heroActions
-      .filter((a) => a && ACTIONS.includes(a.type))
-      .map((a) => ({ type: a.type, amount: Number.isFinite(a.amount) ? a.amount : null })) : [];
-
-    return res.status(200).json({
-      handId,
-      fingerprint,
-      model: 'gpt-5.6-luna',
-      hero: [],
-      board,
-      pot: Number.isFinite(parsed.pot) && parsed.pot > 0 ? parsed.pot : null,
-      heroToAct: typeof parsed.heroToAct === 'boolean' ? parsed.heroToAct : null,
-      heroActions,
-      aggressorName: typeof parsed.aggressorName === 'string' && parsed.aggressorName.trim() ? parsed.aggressorName.trim().slice(0,64) : null,
-      aggressorCommitted: Number.isFinite(parsed.aggressorCommitted) ? parsed.aggressorCommitted : null,
-      heroCommitted: Number.isFinite(parsed.heroCommitted) ? parsed.heroCommitted : null,
-      confidence: Number(parsed.confidence) || 0,
-      heroConfidence: 0,
-      boardConfidence: Number(parsed.boardConfidence) || 0,
-      potConfidence: Number(parsed.potConfidence) || 0,
-      actionsConfidence: Number(parsed.actionsConfidence) || 0,
-      aggressorConfidence: Number(parsed.aggressorConfidence) || 0,
-      ms: Date.now() - t0,
-    });
-  } catch (e) {
-    if (e?.name === 'AbortError') return res.status(504).json({ error: 'decision vision timeout' });
-    return res.status(502).json({ error: 'decision vision request failed' });
-  } finally {
-    clearTimeout(timer);
-  }
+  res.setHeader('Cache-Control','no-store');
+  if(req.method!=='POST') return res.status(405).json({error:'method'});
+  const key=process.env.OPENAI_API_KEY||process.env.CHATGPT; if(!key) return res.status(501).json({error:'OpenAI API key not configured'});
+  const accessToken=process.env.VISION_ACCESS_TOKEN;
+  if(process.env.VERCEL_ENV==='production'&&accessToken){ const provided=req.headers?.['x-coach-token']??req.headers?.['X-Coach-Token']; if(!tokenMatches(accessToken,provided)) return res.status(401).json({error:'coach auth required'}); }
+  const {mode,image,handId,fingerprint=null}=req.body||{};
+  if(mode!=='replay') return res.status(400).json({error:'replay mode required'});
+  if(!Number.isInteger(handId)||handId<1) return res.status(400).json({error:'invalid handId'});
+  if(typeof image!=='string'||!image.startsWith('data:image/')) return res.status(400).json({error:'image required'});
+  if(image.length>2_000_000) return res.status(413).json({error:'image too large'});
+  const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000); const t0=Date.now();
+  try{
+    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-5.6-luna',reasoning:{effort:'none'},store:false,max_output_tokens:520,input:[{role:'user',content:[{type:'input_text',text:prompt()},{type:'input_image',image_url:image,detail:'high'}]}],text:{format:{type:'json_schema',name:'poker_replay_decision_state',strict:true,schema:schema()}}}),signal:controller.signal});
+    const j=await r.json(); if(!r.ok) return res.status(r.status).json({error:j?.error?.message||'decision vision failed'});
+    let parsed; try{parsed=JSON.parse(extractOutputText(j)||'{}');}catch{return res.status(502).json({error:'invalid decision json'});}
+    const board=Array.isArray(parsed.board)&&[0,3,4,5].includes(parsed.board.length)?parsed.board:[];
+    const heroActions=Array.isArray(parsed.heroActions)?parsed.heroActions.filter(a=>a&&ACTIONS.includes(a.type)).map(a=>({type:a.type,amount:Number.isFinite(a.amount)?a.amount:null})):[];
+    return res.status(200).json({handId,fingerprint,model:'gpt-5.6-luna',hero:[],board,pot:Number.isFinite(parsed.pot)&&parsed.pot>0?parsed.pot:null,heroToAct:typeof parsed.heroToAct==='boolean'?parsed.heroToAct:null,heroActions,aggressorName:typeof parsed.aggressorName==='string'&&parsed.aggressorName.trim()?parsed.aggressorName.trim().slice(0,64):null,aggressorCommitted:Number.isFinite(parsed.aggressorCommitted)?parsed.aggressorCommitted:null,heroCommitted:Number.isFinite(parsed.heroCommitted)?parsed.heroCommitted:null,confidence:Number(parsed.confidence)||0,heroConfidence:0,boardConfidence:Number(parsed.boardConfidence)||0,potConfidence:Number(parsed.potConfidence)||0,actionsConfidence:Number(parsed.actionsConfidence)||0,aggressorConfidence:Number(parsed.aggressorConfidence)||0,ms:Date.now()-t0});
+  }catch(e){ if(e?.name==='AbortError') return res.status(504).json({error:'decision vision timeout'}); return res.status(502).json({error:'decision vision request failed'}); } finally{ clearTimeout(timer); }
 }
