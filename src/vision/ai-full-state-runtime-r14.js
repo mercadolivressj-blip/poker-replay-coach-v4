@@ -45,13 +45,13 @@ let accessToken = '';
 try { accessToken = sessionStorage.getItem('prc.vision-token') || ''; } catch {}
 
 function now() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
-function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 function actorKey(v) { return String(v || '').trim().toLowerCase(); }
-function cardId(c) { return c?.rank && c?.suit ? `${String(c.rank).toUpperCase()}${String(c.suit)[0]}` : '?'; }
+function cardId(c) { return c?.rank && c?.suit ? `${String(c.rank).toUpperCase()}${String(c.suit)}` : '?'; }
 function cardsKey(cards) { return (cards || []).map(cardId).join(','); }
-function sameCards(a, b) { return cardsKey(a) === cardsKey(b) && (a || []).length === (b || []).length; }
+function exactCards(a, b) { return Array.isArray(a) && Array.isArray(b) && a.length === b.length && cardsKey(a) === cardsKey(b); }
 function fmt(n) { return Number.isFinite(n) ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(n) : '—'; }
 function cardLabel(cards) { return (cards || []).map((c) => `${c.rank || '?'}${SUIT_SYMBOL[c.suit] || '?'}`).join(' '); }
+function closeMoney(a, b) { return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= Math.max(0.005, Math.abs(b) * 0.018); }
 
 function visibleSource() {
   const video = document.getElementById('video');
@@ -97,18 +97,19 @@ function resetForHand(handId) {
   structuralSignature = '';
 }
 
-function bumpCardCandidate(current, cards, confidence, minConfidence) {
-  if (!Array.isArray(cards) || confidence < minConfidence) return null;
+function bumpCardCandidate(current, cards, confidence, minConfidence, validLengths) {
+  if (!Array.isArray(cards) || !validLengths.includes(cards.length) || confidence < minConfidence) return null;
+  if (cards.length === 0) return { key: 'empty', cards: [], hits: (current?.key === 'empty' ? current.hits + 1 : 1), confidence };
   const key = cardsKey(cards);
   if (!key || key.includes('?')) return null;
-  if (current?.key === key) return { key, cards, hits: current.hits + 1, confidence };
-  return { key, cards, hits: 1, confidence };
+  return current?.key === key ? { key, cards, hits: current.hits + 1, confidence } : { key, cards, hits: 1, confidence };
 }
 
 function bumpPotCandidate(current, value, confidence) {
-  if (!Number.isFinite(value) || value <= 0 || confidence < 0.78) return null;
-  const close = current && Math.abs(current.value - value) <= Math.max(0.005, value * 0.018);
-  return close ? { value, hits: current.hits + 1, confidence } : { value, hits: 1, confidence };
+  if (!Number.isFinite(value) || value <= 0 || confidence < 0.80) return null;
+  return current && closeMoney(current.value, value)
+    ? { value, hits: current.hits + 1, confidence }
+    : { value, hits: 1, confidence };
 }
 
 function structuralKey(out) {
@@ -117,40 +118,36 @@ function structuralKey(out) {
   return `${out.tableSize || '-'}#${heroSeat?.seatIndex ?? '-'}#${names}`;
 }
 
-function updateTrust(out) {
+function authoritativeToken() {
+  const arbiter = typeof window !== 'undefined' ? window.__prcDealArbiterR14 : null;
+  return arbiter?.beginManualRecalibration?.(now()) || null;
+}
+
+function commitAIHero(cards) {
   const machine = activeHandMachine;
-  const seats = out.seats || [];
-  const heroSeats = seats.filter((s) => s.hero);
-  const visiblePlayers = seats.filter((s) => s.folded !== true && Number.isFinite(s.stack));
-  const boardLengthOk = [0,3,4,5].includes((out.board || []).length);
-  const streetOk = boardLengthOk && out.street === ((out.board || []).length === 5 ? 'river' : (out.board || []).length === 4 ? 'turn' : (out.board || []).length === 3 ? 'flop' : 'preflop');
-  const heroOk = diagnostics.manual.hero || ((out.hero || []).length === 2 && out.heroConfidence >= 0.82);
-  const boardOk = diagnostics.manual.board || (streetOk && out.boardConfidence >= ((out.board || []).length ? 0.78 : 0.68));
-  const potOk = diagnostics.manual.pot || (Number.isFinite(out.pot) && out.pot > 0 && out.potConfidence >= 0.80);
-  const seatsOk = out.seatsConfidence >= 0.76 && seats.length >= 2 && heroSeats.length === 1 && visiblePlayers.length >= 2;
-  const overallOk = out.confidence >= 0.74;
+  if (!machine || diagnostics.manual.hero || !Array.isArray(cards) || cards.length !== 2) return false;
+  const current = machine.state.hero || [];
+  if (exactCards(current, cards)) return true;
+  if (!current.length) return machine.setHero(cards, machine.handId, { source: 'ai-full-frame', now: now() });
+  const token = authoritativeToken();
+  return machine.setHero(cards, machine.handId, { source: 'ai-full-frame', rebindToken: token, forceRebind: true, now: now() });
+}
 
-  const sig = structuralKey(out);
-  if (sig && sig === structuralSignature && seatsOk && overallOk) diagnostics.stableFrames++;
-  else diagnostics.stableFrames = seatsOk && overallOk ? 1 : 0;
-  structuralSignature = sig;
+function commitAIBoard(cards) {
+  const machine = activeHandMachine;
+  if (!machine || diagnostics.manual.board || !Array.isArray(cards) || ![0,3,4,5].includes(cards.length)) return false;
+  const current = machine.state.board || [];
+  if (exactCards(current, cards)) return true;
+  if (!current.length && cards.length) return machine.setBoard(cards, machine.handId, { source: 'ai-full-frame', now: now() });
+  if (!cards.length) return current.length === 0;
+  const token = authoritativeToken();
+  return machine.setBoard(cards, machine.handId, { source: 'ai-full-frame', rebindToken: token, forceRebind: true, now: now() });
+}
 
-  const fresh = now() - diagnostics.lastSeenAt <= 4500;
-  diagnostics.trusted = Boolean(heroOk && boardOk && potOk && seatsOk && overallOk && diagnostics.stableFrames >= 2 && fresh);
-
-  if (diagnostics.trusted) diagnostics.trustReason = '✓ IA confirmou cartas, board, pote e jogadores no frame inteiro.';
-  else if (!overallOk) diagnostics.trustReason = `IA com baixa confiança geral (${Math.round((out.confidence || 0) * 100)}%).`;
-  else if (!heroOk) diagnostics.trustReason = 'IA ainda não confirmou suas duas cartas.';
-  else if (!boardOk) diagnostics.trustReason = 'IA ainda não confirmou o board/street.';
-  else if (!potOk) diagnostics.trustReason = 'IA ainda não confirmou o pote central.';
-  else if (!seatsOk) diagnostics.trustReason = 'IA ainda não confirmou os jogadores/assentos suficientes.';
-  else diagnostics.trustReason = `Aguardando segunda confirmação da IA (${diagnostics.stableFrames}/2).`;
-
-  // If Hero is manually corrected, manual truth remains authoritative. The AI may
-  // keep observing the rest of the table without being allowed to overwrite it.
-  if (machine?.state && diagnostics.manual.hero) diagnostics.hero = (machine.state.hero || []).map((c) => ({ ...c }));
-  if (machine?.state && diagnostics.manual.board) diagnostics.board = (machine.state.board || []).map((c) => ({ ...c }));
-  if (machine?.state && diagnostics.manual.pot) diagnostics.pot = Number(machine.state.pot) || diagnostics.pot;
+function commitAIPot(value) {
+  const machine = activeHandMachine;
+  if (!machine || diagnostics.manual.pot || !Number.isFinite(value) || value <= 0) return false;
+  return machine.setPot(value, machine.handId, { source: 'ai-full-frame', now: now() });
 }
 
 function appendTimeline(events, handId) {
@@ -167,6 +164,45 @@ function appendTimeline(events, handId) {
       observedAt: now(),
     });
   }
+}
+
+function updateTrust(out) {
+  const machine = activeHandMachine;
+  const seats = out.seats || [];
+  const heroSeats = seats.filter((s) => s.hero);
+  const visiblePlayers = seats.filter((s) => s.folded !== true && (s.actorName || Number.isFinite(s.stack)));
+  const boardLengthOk = [0,3,4,5].includes((out.board || []).length);
+  const expectedStreet = (out.board || []).length === 5 ? 'river' : (out.board || []).length === 4 ? 'turn' : (out.board || []).length === 3 ? 'flop' : 'preflop';
+  const streetOk = boardLengthOk && out.street === expectedStreet;
+
+  const stateHero = machine?.state?.hero || [];
+  const stateBoard = machine?.state?.board || [];
+  const statePot = Number(machine?.state?.pot);
+  const heroOk = diagnostics.manual.hero || (diagnostics.hero.length === 2 && exactCards(stateHero, diagnostics.hero));
+  const boardOk = diagnostics.manual.board || (streetOk && exactCards(stateBoard, diagnostics.board));
+  const potOk = diagnostics.manual.pot || (Number.isFinite(diagnostics.pot) && closeMoney(statePot, diagnostics.pot));
+  const seatsOk = out.seatsConfidence >= 0.76 && seats.length >= 2 && heroSeats.length === 1 && visiblePlayers.length >= 2;
+  const overallOk = out.confidence >= 0.74;
+
+  const sig = structuralKey(out);
+  if (sig && sig === structuralSignature && seatsOk && overallOk) diagnostics.stableFrames++;
+  else diagnostics.stableFrames = seatsOk && overallOk ? 1 : 0;
+  structuralSignature = sig;
+
+  const fresh = now() - diagnostics.lastSeenAt <= 4500;
+  diagnostics.trusted = Boolean(heroOk && boardOk && potOk && seatsOk && overallOk && diagnostics.stableFrames >= 2 && fresh);
+
+  if (diagnostics.trusted) diagnostics.trustReason = '✓ IA confirmou cartas, board, pote e jogadores no frame inteiro.';
+  else if (!overallOk) diagnostics.trustReason = `IA com baixa confiança geral (${Math.round((out.confidence || 0) * 100)}%).`;
+  else if (!heroOk) diagnostics.trustReason = 'IA ainda não sincronizou suas cartas com o estado do Coach.';
+  else if (!boardOk) diagnostics.trustReason = 'IA ainda não sincronizou o board/street.';
+  else if (!potOk) diagnostics.trustReason = 'IA ainda não sincronizou o pote central.';
+  else if (!seatsOk) diagnostics.trustReason = 'IA ainda não confirmou jogadores/assentos suficientes.';
+  else diagnostics.trustReason = `Aguardando segunda confirmação da IA (${diagnostics.stableFrames}/2).`;
+
+  if (diagnostics.manual.hero) diagnostics.hero = (machine.state.hero || []).map((c) => ({ ...c }));
+  if (diagnostics.manual.board) diagnostics.board = (machine.state.board || []).map((c) => ({ ...c }));
+  if (diagnostics.manual.pot) diagnostics.pot = Number(machine.state.pot) || diagnostics.pot;
 }
 
 function applyState(out) {
@@ -188,27 +224,20 @@ function applyState(out) {
   diagnostics.lastError = null;
 
   if (!diagnostics.manual.hero) {
-    heroCandidate = bumpCardCandidate(heroCandidate, out.hero, diagnostics.heroConfidence, 0.82);
-    if (heroCandidate?.hits >= 2) {
-      machine.setHero(heroCandidate.cards, machine.handId);
-      diagnostics.hero = heroCandidate.cards.map((c) => ({ ...c }));
-    }
+    heroCandidate = bumpCardCandidate(heroCandidate, out.hero, diagnostics.heroConfidence, 0.82, [2]);
+    if (heroCandidate?.hits >= 2 && commitAIHero(heroCandidate.cards)) diagnostics.hero = heroCandidate.cards.map((c) => ({ ...c }));
   }
 
   if (!diagnostics.manual.board) {
-    boardCandidate = bumpCardCandidate(boardCandidate, out.board, diagnostics.boardConfidence, out.board?.length ? 0.78 : 0.68);
-    if (boardCandidate?.hits >= 2 || (Array.isArray(out.board) && out.board.length === 0 && diagnostics.boardConfidence >= 0.82)) {
-      if (out.board.length) machine.setBoard(out.board, machine.handId);
-      diagnostics.board = (out.board || []).map((c) => ({ ...c }));
+    boardCandidate = bumpCardCandidate(boardCandidate, out.board, diagnostics.boardConfidence, out.board?.length ? 0.78 : 0.68, [0,3,4,5]);
+    if (boardCandidate?.hits >= 2) {
+      if (commitAIBoard(boardCandidate.cards) || boardCandidate.cards.length === 0) diagnostics.board = boardCandidate.cards.map((c) => ({ ...c }));
     }
   }
 
   if (!diagnostics.manual.pot) {
     potCandidate = bumpPotCandidate(potCandidate, out.pot, diagnostics.potConfidence);
-    if (potCandidate?.hits >= 2) {
-      machine.setPot(potCandidate.value, machine.handId, { now: now() });
-      diagnostics.pot = potCandidate.value;
-    }
+    if (potCandidate?.hits >= 2 && commitAIPot(potCandidate.value)) diagnostics.pot = potCandidate.value;
   }
 
   const snapshot = {
@@ -218,9 +247,7 @@ function applyState(out) {
     seats: diagnostics.seats,
   };
   const tracked = tracker.ingest(snapshot);
-  if (tracked.accepted && diagnostics.seatsConfidence >= 0.76 && diagnostics.confidence >= 0.74) {
-    appendTimeline(tracked.events, machine.handId);
-  }
+  if (tracked.accepted && diagnostics.seatsConfidence >= 0.76 && diagnostics.confidence >= 0.74) appendTimeline(tracked.events, machine.handId);
 
   updateTrust(out);
   renderReadout();
@@ -300,7 +327,7 @@ async function requestFrame(seq, canvas, handId, localGeneration) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 13000);
   try {
-    const image = canvas.toDataURL('image/jpeg', 0.80);
+    const image = canvas.toDataURL('image/jpeg', 0.82);
     const r = await fetch('/api/full-state', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(accessToken ? { 'x-coach-token': accessToken } : {}) },
@@ -315,8 +342,7 @@ async function requestFrame(seq, canvas, handId, localGeneration) {
       diagnostics.lastError = reason;
       responses.set(seq, null);
     } else {
-      const out = await r.json();
-      responses.set(seq, out);
+      responses.set(seq, await r.json());
     }
   } catch (e) {
     if (localGeneration !== generation) return;
