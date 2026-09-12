@@ -78,18 +78,16 @@ function schema() {
 
 function prompt() {
   return [
-    'This is a poker REPLAY / post-game study screenshot. Read ONLY the visible public state in this single frame. Never provide strategy.',
-    'Treat the full screenshot like a human visual inspection, not OCR fragments. Use the whole table geometry and labels together.',
-    'Return the HERO hole cards only when the two bottom/hero cards are clearly face-up. Never return opponent hole cards, even if exposed at showdown.',
-    'Return community cards left-to-right. Board length must be exactly 0, 3, 4, or 5. Street must agree with board length: 0=preflop, 3=flop, 4=turn, 5=river.',
-    'Read the central pot label exactly. Portuguese decimal comma means decimal: "US$ 0,12" = 0.12. A thousands separator like "1.497" in tournament chips means 1497. Do not confuse a player bet/stack with the central pot.',
-    'Read every physical seat visible around the table, including occupied, folded/inactive, sitting-out/away and hero. Use stable screen-position seat indexes clockwise starting at the top-most physical seat as seatIndex 0. Do not renumber when seats are empty.',
-    'For each seat read visible nickname, current visible stack, chips visibly committed in front of that seat on the CURRENT street, dealer/button marker, fold/inactive state, hero flag, and any explicit action text currently visible.',
-    'PokerStars action text may be Portuguese or English. Map visible text to fold/check/call/bet/raise/allin. visibleAction must be null when no explicit action label is visible; do not invent prior action history.',
-    'heroToAct=true only when the Hero action controls/timer clearly show it is Hero turn. false only when clearly not Hero turn. null when uncertain.',
-    'tableSize is the physical table format/seat capacity if clear from visible seat layout or title; otherwise null.',
-    'Precision over coverage: if a nickname, stack, committed amount, pot, dealer marker, action or state is not genuinely readable, return null/false as appropriate and lower confidence. Never fabricate.',
-    'Do not infer hidden information, opponent cards, strategic ranges, or earlier actions that are no longer visible.',
+    'Poker REPLAY / post-game study screenshot. Read visible public state only. Never provide strategy.',
+    'Inspect the whole table image directly. Precision over coverage: use null/low confidence instead of guessing.',
+    'Hero: return exactly the two clearly face-up hero cards only. Never return opponent hole cards.',
+    'Board: return community cards left-to-right; length 0, 3, 4 or 5. Street must match board length.',
+    'Pot: read only the central pot label. Portuguese decimal comma is decimal, e.g. US$ 0,12 = 0.12.',
+    'Seats: read every visible physical seat clockwise from the top-most slot as seatIndex 0. Keep empty physical slots in the indexing.',
+    'For occupied seats read nickname, stack, current-street committed chips, dealer marker, fold/inactive state, hero flag and explicit visible action text.',
+    'Map visible Portuguese/English action text to fold/check/call/bet/raise/allin. If no explicit action text is visible, visibleAction=null.',
+    'heroToAct=true only when hero controls/timer clearly show it is hero turn; false only when clearly not; otherwise null.',
+    'Do not infer hidden cards, ranges or earlier action history.',
   ].join('\n');
 }
 
@@ -101,9 +99,10 @@ export default async function handler(req, res) {
   if (!key) return res.status(501).json({ error: 'OpenAI API key not configured (OPENAI_API_KEY or CHATGPT)' });
   const accessToken = process.env.VISION_ACCESS_TOKEN;
   const production = process.env.VERCEL_ENV === 'production';
-  if (production && !accessToken) return res.status(501).json({ error: 'VISION_ACCESS_TOKEN not configured' });
-  const providedToken = req.headers?.['x-coach-token'] ?? req.headers?.['X-Coach-Token'];
-  if (production && !tokenMatches(accessToken, providedToken)) return res.status(401).json({ error: 'coach auth required' });
+  if (production && accessToken) {
+    const providedToken = req.headers?.['x-coach-token'] ?? req.headers?.['X-Coach-Token'];
+    if (!tokenMatches(accessToken, providedToken)) return res.status(401).json({ error: 'coach auth required' });
+  }
 
   const { mode, image, handId, fingerprint = null } = req.body || {};
   if (mode !== 'replay') return res.status(400).json({ error: 'replay mode required' });
@@ -117,10 +116,10 @@ export default async function handler(req, res) {
   const t0 = Date.now();
   try {
     const body = {
-      model: 'gpt-5.6-sol',
-      reasoning: { effort: 'low' },
+      model: 'gpt-5.6-luna',
+      reasoning: { effort: 'none' },
       store: false,
-      max_output_tokens: 2200,
+      max_output_tokens: 1200,
       input: [{ role: 'user', content: [
         { type: 'input_text', text: prompt() },
         { type: 'input_image', image_url: image, detail: 'high' },
@@ -162,6 +161,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       handId,
       fingerprint,
+      model: 'gpt-5.6-luna',
       tableSize: Number.isInteger(parsed.tableSize) ? parsed.tableSize : null,
       hero,
       board,
