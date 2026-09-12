@@ -5,6 +5,7 @@ legacyUiIsolation.restoreR14DecisionUi();
 await import('./vision/money-runtime-r13.js');
 await import('./vision/state-transaction-runtime-r14.js');
 await import('./vision/manual-hero-authority-r14.js');
+await import('./vision/manual-hero-boundary-r14.js');
 await import('./vision/board-refiner-runtime-r14.js');
 await import('./vision/suit-scanner-runtime-r9.js');
 await import('./vision/recalibrate-runtime-r14.js');
