@@ -58,6 +58,25 @@ assert.equal(strongDecision.decision, 'call');
 const weakPrepared = { ...prepared, pot: 1000, equity: { equity: .12, stderr: .01 }, evidenceQuality: .9, activeOpponents: 1 };
 const weakDecision = decidePrepared(weakPrepared, [{ type: 'fold' }, { type: 'call', amount: 700 }]);
 assert.equal(weakDecision.decision, 'fold');
+
+// Real R14 safety regression: if the runtime has not reconstructed the
+// opponent/aggressor, a generic prior range must never authorize a CALL.
+const unknownOpponentPrepared = {
+  ...strongPrepared,
+  actorName: null,
+  actorKnown: false,
+  actorEventCount: 0,
+  eventCount: 0,
+  table: null,
+};
+const unsafeUnknownCall = decidePrepared(unknownOpponentPrepared, [
+  { type: 'fold' },
+  { type: 'call', amount: 1497 },
+  { type: 'raise', amount: 1497 },
+]);
+assert.equal(unsafeUnknownCall.decision, 'insufficient');
+assert.equal(unsafeUnknownCall.confidence, 0);
+
 assert(strongDecision.ms < 20, `final action comparison should be tiny, got ${strongDecision.ms.toFixed(2)}ms`);
 
 console.log(`CONTINUAL RESOLVER V1 regressions passed · prepare ${elapsed.toFixed(1)}ms · decide ${strongDecision.ms.toFixed(2)}ms`);
