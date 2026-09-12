@@ -12,6 +12,7 @@ await import('./vision/table-capacity-stabilizer-r14.js');
 await import('./vision/ai-decision-pot-bridge-r14.js');
 await import('./vision/ai-decision-runtime-r14.js');
 await import('./vision/manual-hero-authority-r14.js');
+await import('./vision/ai-decision-consensus-r14.js');
 await import('./vision/ai-decision-evidence-guard-r14.js');
 await import('./solver/study-safety-gate-r14.js');
 await import('./solver/resolver-runtime.js');
