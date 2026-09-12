@@ -10,11 +10,13 @@ const diagnostics = {
   requests: 0,
   responses: 0,
   failures: 0,
+  consecutiveFailures: 0,
   inFlight: 0,
   trusted: false,
   trustReason: 'Aguardando a primeira leitura da IA.',
   stableFrames: 0,
   lastSeenAt: 0,
+  lastSuccessAt: 0,
   lastLatencyMs: null,
   confidence: 0,
   heroConfidence: 0,
@@ -36,6 +38,8 @@ let generation = 0;
 let captureSeq = 0;
 let lastAppliedSeq = 0;
 let lastCaptureAt = 0;
+let lastRequestedStateKey = '';
+let nextRetryAt = 0;
 let heroCandidate = null;
 let boardCandidate = null;
 let potCandidate = null;
@@ -75,6 +79,12 @@ function snapshotSource(source, maxWidth = 1280) {
   return c;
 }
 
+function machineStateKey(machine) {
+  const s = machine?.state || {};
+  const actions = (s.actions || []).map((a) => `${a?.type || '-'}:${Number.isFinite(a?.amount) ? a.amount : '-'}`).join('|');
+  return [machine?.handId || 0, s.street || '-', cardsKey(s.hero || []), cardsKey(s.board || []), Number.isFinite(s.pot) ? s.pot : '-', s.heroToAct ? 1 : 0, actions].join('#');
+}
+
 function resetForHand(handId) {
   generation++;
   diagnostics.handId = handId;
@@ -82,14 +92,23 @@ function resetForHand(handId) {
   diagnostics.trustReason = 'IA confirmando a nova mão.';
   diagnostics.stableFrames = 0;
   diagnostics.lastSeenAt = 0;
+  diagnostics.lastSuccessAt = 0;
+  diagnostics.confidence = 0;
+  diagnostics.heroConfidence = 0;
+  diagnostics.boardConfidence = 0;
+  diagnostics.potConfidence = 0;
   diagnostics.hero = [];
   diagnostics.board = [];
   diagnostics.pot = null;
-  diagnostics.seats = [];
+  diagnostics.heroToAct = null;
   diagnostics.lastError = null;
+  diagnostics.consecutiveFailures = 0;
   diagnostics.manual = { hero: false, board: false, pot: false };
   captureSeq = 0;
   lastAppliedSeq = 0;
+  lastCaptureAt = 0;
+  lastRequestedStateKey = '';
+  nextRetryAt = 0;
   heroCandidate = null;
   boardCandidate = null;
   potCandidate = null;
@@ -98,7 +117,7 @@ function resetForHand(handId) {
 
 function bumpCardCandidate(current, cards, confidence, minConfidence, validLengths) {
   if (!Array.isArray(cards) || !validLengths.includes(cards.length) || confidence < minConfidence) return null;
-  if (cards.length === 0) return { key: 'empty', cards: [], hits: (current?.key === 'empty' ? current.hits + 1 : 1), confidence };
+  if (cards.length === 0) return { key: 'empty', cards: [], hits: current?.key === 'empty' ? current.hits + 1 : 1, confidence };
   const key = cardsKey(cards);
   if (!key || key.includes('?')) return null;
   return current?.key === key ? { key, cards, hits: current.hits + 1, confidence } : { key, cards, hits: 1, confidence };
@@ -118,8 +137,7 @@ function structuralKey(out) {
 }
 
 function authoritativeToken() {
-  const arbiter = typeof window !== 'undefined' ? window.__prcDealArbiterR14 : null;
-  return arbiter?.beginManualRecalibration?.(now()) || null;
+  return window.__prcDealArbiterR14?.beginManualRecalibration?.(now()) || null;
 }
 
 function commitAIHero(cards) {
@@ -134,7 +152,7 @@ function commitAIHero(cards) {
 
 function commitAIBoard(cards) {
   const machine = activeHandMachine;
-  if (!machine || diagnostics.manual.board || !Array.isArray(cards) || ![0,3,4,5].includes(cards.length)) return false;
+  if (!machine || diagnostics.manual.board || !Array.isArray(cards) || ![0, 3, 4, 5].includes(cards.length)) return false;
   const current = machine.state.board || [];
   if (exactCards(current, cards)) return true;
   if (!current.length && cards.length) return machine.setBoard(cards, machine.handId, { source: 'ai-full-frame', now: now() });
@@ -170,7 +188,7 @@ function updateTrust(out) {
   const seats = out.seats || [];
   const heroSeats = seats.filter((s) => s.hero);
   const visiblePlayers = seats.filter((s) => s.folded !== true && (s.actorName || Number.isFinite(s.stack)));
-  const boardLengthOk = [0,3,4,5].includes((out.board || []).length);
+  const boardLengthOk = [0, 3, 4, 5].includes((out.board || []).length);
   const expectedStreet = (out.board || []).length === 5 ? 'river' : (out.board || []).length === 4 ? 'turn' : (out.board || []).length === 3 ? 'flop' : 'preflop';
   const streetOk = boardLengthOk && out.street === expectedStreet;
 
@@ -188,9 +206,7 @@ function updateTrust(out) {
   else diagnostics.stableFrames = seatsOk && overallOk ? 1 : 0;
   structuralSignature = sig;
 
-  const fresh = now() - diagnostics.lastSeenAt <= 4500;
-  diagnostics.trusted = Boolean(heroOk && boardOk && potOk && seatsOk && overallOk && diagnostics.stableFrames >= 2 && fresh);
-
+  diagnostics.trusted = Boolean(heroOk && boardOk && potOk && seatsOk && overallOk && diagnostics.stableFrames >= 2);
   if (diagnostics.trusted) diagnostics.trustReason = '✓ IA confirmou cartas, board, pote e jogadores no frame inteiro.';
   else if (!overallOk) diagnostics.trustReason = `IA com baixa confiança geral (${Math.round((out.confidence || 0) * 100)}%).`;
   else if (!heroOk) diagnostics.trustReason = 'IA ainda não sincronizou suas cartas com o estado do Coach.';
@@ -211,6 +227,7 @@ function applyState(out) {
 
   diagnostics.responses++;
   diagnostics.lastSeenAt = now();
+  diagnostics.lastSuccessAt = diagnostics.lastSeenAt;
   diagnostics.lastLatencyMs = Number(out.ms) || null;
   diagnostics.confidence = Number(out.confidence) || 0;
   diagnostics.heroConfidence = Number(out.heroConfidence) || 0;
@@ -221,35 +238,54 @@ function applyState(out) {
   diagnostics.heroToAct = typeof out.heroToAct === 'boolean' ? out.heroToAct : null;
   diagnostics.seats = Array.isArray(out.seats) ? out.seats.map((s) => ({ ...s })) : [];
   diagnostics.lastError = null;
+  diagnostics.consecutiveFailures = 0;
+  nextRetryAt = 0;
 
   if (!diagnostics.manual.hero) {
     heroCandidate = bumpCardCandidate(heroCandidate, out.hero, diagnostics.heroConfidence, 0.82, [2]);
     if (heroCandidate?.hits >= 2 && commitAIHero(heroCandidate.cards)) diagnostics.hero = heroCandidate.cards.map((c) => ({ ...c }));
   }
-
   if (!diagnostics.manual.board) {
-    boardCandidate = bumpCardCandidate(boardCandidate, out.board, diagnostics.boardConfidence, out.board?.length ? 0.78 : 0.68, [0,3,4,5]);
-    if (boardCandidate?.hits >= 2) {
-      if (commitAIBoard(boardCandidate.cards) || boardCandidate.cards.length === 0) diagnostics.board = boardCandidate.cards.map((c) => ({ ...c }));
-    }
+    boardCandidate = bumpCardCandidate(boardCandidate, out.board, diagnostics.boardConfidence, out.board?.length ? 0.78 : 0.68, [0, 3, 4, 5]);
+    if (boardCandidate?.hits >= 2 && (commitAIBoard(boardCandidate.cards) || boardCandidate.cards.length === 0)) diagnostics.board = boardCandidate.cards.map((c) => ({ ...c }));
   }
-
   if (!diagnostics.manual.pot) {
     potCandidate = bumpPotCandidate(potCandidate, out.pot, diagnostics.potConfidence);
     if (potCandidate?.hits >= 2 && commitAIPot(potCandidate.value)) diagnostics.pot = potCandidate.value;
   }
 
-  const snapshot = {
+  const tracked = tracker.ingest({
     handId: machine.handId,
     street: out.street || machine.state.street,
     confidence: Math.min(Number(out.confidence) || 0, Number(out.seatsConfidence) || 0),
     seats: diagnostics.seats,
-  };
-  const tracked = tracker.ingest(snapshot);
+  });
   if (tracked.accepted && diagnostics.seatsConfidence >= 0.76 && diagnostics.confidence >= 0.74) appendTimeline(tracked.events, machine.handId);
 
   updateTrust(out);
   renderReadout();
+}
+
+function noteFailure(reason) {
+  const t = now();
+  diagnostics.failures++;
+  diagnostics.consecutiveFailures++;
+  const recentGood = diagnostics.lastSuccessAt > 0 && t - diagnostics.lastSuccessAt <= 15000;
+  const persistent = recentGood ? diagnostics.consecutiveFailures >= 4 : diagnostics.consecutiveFailures >= 2;
+  if (persistent) {
+    diagnostics.lastError = reason;
+    if (!recentGood) diagnostics.trusted = false;
+    diagnostics.trustReason = recentGood
+      ? 'Oscilação persistente de rede; mantendo a última leitura válida enquanto reconecta.'
+      : 'A IA não conseguiu concluir duas leituras seguidas; reconectando.';
+  } else {
+    diagnostics.lastError = null;
+    diagnostics.trustReason = recentGood
+      ? 'Oscilação rápida de rede; a última leitura válida continua preservada.'
+      : 'Conectando visão novamente…';
+  }
+  const step = Math.min(4, Math.max(0, diagnostics.consecutiveFailures - 1));
+  nextRetryAt = t + Math.min(8000, 700 * (2 ** step));
 }
 
 function ensureReadout() {
@@ -281,9 +317,10 @@ function renderReadout() {
   if (!title || !trust || !rows) return;
 
   const latency = Number.isFinite(diagnostics.lastLatencyMs) ? ` · ${diagnostics.lastLatencyMs}ms` : '';
-  title.textContent = diagnostics.responses
-    ? `IA ${Math.round(diagnostics.confidence * 100)}%${latency} · ${diagnostics.seats.length} assentos${diagnostics.tableSize ? ` · ${diagnostics.tableSize}-max` : ''}`
-    : diagnostics.lastError ? `IA indisponível · ${diagnostics.lastError}` : 'IA lendo o frame inteiro…';
+  const reconnecting = diagnostics.consecutiveFailures > 0 && !diagnostics.lastError ? ' · reconectando' : '';
+  if (!diagnostics.lastSeenAt) title.textContent = diagnostics.lastError ? `IA indisponível · ${diagnostics.lastError}` : 'IA preparando a leitura da mão…';
+  else title.textContent = `IA ${Math.round(diagnostics.confidence * 100)}%${latency} · ${diagnostics.seats.length} assentos${diagnostics.tableSize ? ` · ${diagnostics.tableSize}-max` : ''}${reconnecting}`;
+
   trust.className = `table-vision-trust${diagnostics.trusted ? ' ok' : ''}`;
   trust.textContent = diagnostics.trustReason;
   rows.replaceChildren();
@@ -314,9 +351,9 @@ async function requestFrame(seq, canvas, handId, localGeneration) {
   diagnostics.inFlight++;
   diagnostics.requests++;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  const timer = setTimeout(() => controller.abort(), 11000);
   try {
-    const image = canvas.toDataURL('image/jpeg', 0.78);
+    const image = canvas.toDataURL('image/jpeg', 0.76);
     const r = await fetch('/api/full-state', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(accessToken ? { 'x-coach-token': accessToken } : {}) },
@@ -324,23 +361,19 @@ async function requestFrame(seq, canvas, handId, localGeneration) {
       signal: controller.signal,
     });
     if (localGeneration !== generation) return;
-
     if (!r.ok) {
       let reason = `HTTP ${r.status}`;
       try { const j = await r.json(); if (j?.error) reason += ` · ${j.error}`; } catch {}
-      diagnostics.failures++;
-      if (seq > lastAppliedSeq) diagnostics.lastError = reason;
+      noteFailure(reason);
       return;
     }
-
     const out = await r.json();
     if (localGeneration !== generation || seq <= lastAppliedSeq) return;
     lastAppliedSeq = seq;
     applyState(out);
   } catch (e) {
     if (localGeneration !== generation) return;
-    diagnostics.failures++;
-    if (seq > lastAppliedSeq) diagnostics.lastError = e?.name === 'AbortError' ? 'timeout da IA' : 'falha de rede da IA';
+    noteFailure(e?.name === 'AbortError' ? 'timeout da IA' : 'falha transitória de rede');
   } finally {
     clearTimeout(timer);
     diagnostics.inFlight = Math.max(0, diagnostics.inFlight - 1);
@@ -355,11 +388,23 @@ function captureTick() {
   if (diagnostics.handId !== machine.handId) resetForHand(machine.handId);
 
   const t = now();
-  const interval = diagnostics.trusted ? 900 : (machine.state.heroToAct ? 450 : 700);
-  if (t - lastCaptureAt < interval || diagnostics.inFlight >= 2) return;
+  if (t < nextRetryAt) return;
+
+  const stateKey = machineStateKey(machine);
+  const stateChanged = stateKey !== lastRequestedStateKey;
+  const initialBurst = diagnostics.lastSeenAt <= 0 || diagnostics.stableFrames < 2;
+  const fast = window.__prcAIDecisionR14;
+  const fastTrusted = Boolean(fast?.trusted && Number(fast.handId) === machine.handId);
+  const interval = initialBurst ? 700 : machine.state.heroToAct ? (fastTrusted ? 4500 : 2600) : diagnostics.trusted ? 4500 : 2800;
+  const maxInFlight = initialBurst ? 2 : 1;
+
+  if (diagnostics.inFlight >= maxInFlight) return;
+  if (!stateChanged && t - lastCaptureAt < interval) return;
+
   const canvas = snapshotSource(source);
   if (!canvas) return;
   lastCaptureAt = t;
+  lastRequestedStateKey = stateKey;
   const seq = ++captureSeq;
   void requestFrame(seq, canvas, machine.handId, generation);
 }
@@ -378,13 +423,16 @@ if (typeof window !== 'undefined') {
   });
   window.__prcAIRefreshR14 = () => {
     lastCaptureAt = 0;
+    lastRequestedStateKey = '';
+    nextRetryAt = 0;
     diagnostics.stableFrames = 0;
     diagnostics.trusted = false;
     diagnostics.lastError = null;
+    diagnostics.consecutiveFailures = 0;
     diagnostics.trustReason = 'Refresh solicitado · IA relendo o frame inteiro.';
     captureTick();
   };
 }
 
-setInterval(captureTick, 160);
+setInterval(captureTick, 180);
 setTimeout(() => { ensureReadout(); captureTick(); }, 300);
