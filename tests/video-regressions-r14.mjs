@@ -89,4 +89,14 @@ assert.match(safety, /visualBoardCount/);
 assert.match(decisionStore, /strategicDeadlineFallback: false/);
 assert.match(decisionStore, /clockStartsAfterManualHero: true/);
 
+// VIDEO REGRESSION 6: once a real postflop board was seen, a stable physical
+// clear is itself a valid end-of-hand boundary. This specifically prevents the
+// old flop/turn/river and old pot from remaining stuck while the replay has
+// already moved to the next deal because Hero's disappearance animation was
+// too short for the presence detector.
+assert.match(transaction, /boardClearRedeals/);
+assert.match(transaction, /hadLogicalBoard/);
+assert.match(transaction, /count === 0 && hadLogicalBoard && lifecycle\.boardClearArmed/);
+assert.match(transaction, /r14-board-cleared-postflop/);
+
 console.log('VIDEO REGRESSIONS R14 passed');
