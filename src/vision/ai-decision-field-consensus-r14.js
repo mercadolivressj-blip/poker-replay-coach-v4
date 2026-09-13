@@ -9,9 +9,9 @@ const diagnostics = {
   boardHits: 0,
   potHits: 0,
   actionsHits: 0,
+  aggressorHits: 0,
   prepared: false,
   potCommits: 0,
-  boardCommits: 0,
   lastReason: 'boot',
 };
 
@@ -20,12 +20,15 @@ let handId = 0;
 let boardCandidate = null;
 let potCandidate = null;
 let actionsCandidate = null;
+let aggressorCandidate = null;
 let confirmedBoard = null;
 let confirmedPot = null;
 let confirmedActions = null;
 let confirmedAggressorName = null;
 let confirmedAggressorCommitted = null;
 let confirmedHeroCommitted = null;
+let actionsBacking = Array.isArray(d?.actions) ? d.actions : [];
+let writingConfirmedActions = false;
 
 function now() {
   return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
@@ -61,6 +64,7 @@ function reset(reason = 'reset') {
   boardCandidate = null;
   potCandidate = null;
   actionsCandidate = null;
+  aggressorCandidate = null;
   confirmedBoard = null;
   confirmedPot = null;
   confirmedActions = null;
@@ -72,10 +76,11 @@ function reset(reason = 'reset') {
   diagnostics.boardHits = 0;
   diagnostics.potHits = 0;
   diagnostics.actionsHits = 0;
+  diagnostics.aggressorHits = 0;
   diagnostics.prepared = false;
   diagnostics.lastReason = reason;
   if (d) {
-    d.publicFieldConsensus = { board: 0, pot: 0, actions: 0 };
+    d.publicFieldConsensus = { board: 0, pot: 0, actions: 0, aggressor: 0 };
   }
 }
 
@@ -118,7 +123,7 @@ function observePot() {
 }
 
 function observeActions() {
-  const actions = Array.isArray(d?.actions) ? d.actions : [];
+  const actions = Array.isArray(actionsBacking) ? actionsBacking : [];
   const confidence = Number(d?.actionsConfidence) || 0;
   const call = actions.find((action) => action?.type === 'call');
   const pricedCall = !call || Number.isFinite(call.amount);
@@ -138,44 +143,52 @@ function observeActions() {
     actionsCandidate = { key, hits: 1, actions: actions.map((action) => ({ ...action })) };
   }
   diagnostics.actionsHits = Math.min(2, actionsCandidate.hits);
+  if (actionsCandidate.hits >= 2) confirmedActions = actionsCandidate.actions.map((action) => ({ ...action }));
+}
 
-  if (actionsCandidate.hits >= 2) {
-    confirmedActions = actionsCandidate.actions.map((action) => ({ ...action }));
-    confirmedAggressorName = d.aggressorName || null;
-    confirmedAggressorCommitted = Number.isFinite(d.aggressorCommitted) ? d.aggressorCommitted : null;
-    confirmedHeroCommitted = Number.isFinite(d.heroCommitted) ? d.heroCommitted : null;
+function observeAggressor() {
+  const name = String(d?.aggressorName || '').trim();
+  const committed = Number.isFinite(d?.aggressorCommitted) ? Number(d.aggressorCommitted) : null;
+  const heroCommitted = Number.isFinite(d?.heroCommitted) ? Number(d.heroCommitted) : null;
+  const confidence = Number(d?.aggressorConfidence) || 0;
+  const key = name
+    ? `${name.toLowerCase()}#${Number.isFinite(committed) ? Math.round(committed * 1000) / 1000 : '-'}`
+    : 'none';
+
+  if (name && confidence < 0.68) {
+    aggressorCandidate = null;
+    diagnostics.aggressorHits = 0;
+    return;
+  }
+
+  if (aggressorCandidate?.key === key) {
+    aggressorCandidate.hits++;
+    aggressorCandidate.name = name || null;
+    aggressorCandidate.committed = committed;
+    aggressorCandidate.heroCommitted = heroCommitted;
+  } else {
+    aggressorCandidate = { key, hits: 1, name: name || null, committed, heroCommitted };
+  }
+  diagnostics.aggressorHits = Math.min(2, aggressorCandidate.hits);
+
+  if (aggressorCandidate.hits >= 2) {
+    confirmedAggressorName = aggressorCandidate.name;
+    confirmedAggressorCommitted = aggressorCandidate.committed;
+    confirmedHeroCommitted = aggressorCandidate.heroCommitted;
   }
 }
 
-function commitConfirmedPublicState() {
+function commitConfirmedPot() {
   const machine = activeHandMachine;
   if (!machine || Number(machine.handId) !== handId) return;
-  const t = now();
+  if (!Number.isFinite(confirmedPot) || diagnostics.potHits < 2) return;
 
-  if (confirmedBoard && diagnostics.boardHits >= 2) {
-    const current = Array.isArray(machine.state?.board) ? machine.state.board : [];
-    const currentKey = boardKey(current);
-    const confirmedKey = boardKey(confirmedBoard);
-    if (confirmedKey && confirmedKey !== currentKey && (confirmedBoard.length || current.length === 0)) {
-      const token = window.__prcDealArbiterR14?.beginManualRecalibration?.(t) || null;
-      if (machine.setBoard(confirmedBoard, machine.handId, {
-        source: 'ai-decision-field-consensus',
-        rebindToken: token,
-        forceRebind: true,
-        now: t,
-      })) diagnostics.boardCommits++;
-    }
-  }
-
-  if (Number.isFinite(confirmedPot) && diagnostics.potHits >= 2) {
-    const currentPot = Number(machine.state?.pot);
-    if (!closePot(currentPot, confirmedPot)) {
-      if (machine.setPot(confirmedPot, machine.handId, {
-        source: 'ai-decision',
-        now: t,
-      })) diagnostics.potCommits++;
-    }
-  }
+  const currentPot = Number(machine.state?.pot);
+  if (closePot(currentPot, confirmedPot)) return;
+  if (machine.setPot(confirmedPot, machine.handId, {
+    source: 'ai-decision',
+    now: now(),
+  })) diagnostics.potCommits++;
 }
 
 function publishConsensus() {
@@ -189,17 +202,28 @@ function publishConsensus() {
     board: diagnostics.boardHits,
     pot: diagnostics.potHits,
     actions: diagnostics.actionsHits,
+    aggressor: diagnostics.aggressorHits,
   };
 
-  if (confirmedBoard) d.board = confirmedBoard.map((card) => ({ ...card }));
+  if (confirmedBoard !== null) d.board = confirmedBoard.map((card) => ({ ...card }));
   if (Number.isFinite(confirmedPot)) d.pot = confirmedPot;
-  if (confirmedActions) d.actions = confirmedActions.map((action) => ({ ...action }));
-  if (confirmedAggressorName !== null) d.aggressorName = confirmedAggressorName;
-  if (Number.isFinite(confirmedAggressorCommitted)) d.aggressorCommitted = confirmedAggressorCommitted;
-  if (Number.isFinite(confirmedHeroCommitted)) d.heroCommitted = confirmedHeroCommitted;
+  if (confirmedActions) {
+    writingConfirmedActions = true;
+    try {
+      d.actions = confirmedActions.map((action) => ({ ...action }));
+    } finally {
+      writingConfirmedActions = false;
+    }
+  }
+  if (diagnostics.aggressorHits >= 2) {
+    d.aggressorName = confirmedAggressorName;
+    d.aggressorCommitted = confirmedAggressorCommitted;
+    d.heroCommitted = confirmedHeroCommitted;
+  }
 
   if (ready) {
     d.rawStableFrames = Math.max(2, Number(d.rawStableFrames) || 0);
+    d.stableDecisionFrames = Math.max(2, Number(d.stableDecisionFrames) || 0);
     d.publicPrepared = true;
     if (!d.publicPreparedAt) d.publicPreparedAt = d.lastSeenAt || now();
     diagnostics.prepared = true;
@@ -210,7 +234,7 @@ function publishConsensus() {
   }
 }
 
-function processLatestResponse() {
+function processAppliedResponse() {
   if (!d || !activeHandMachine || activeHandMachine.handId <= 0) return;
   const currentHand = Number(activeHandMachine.handId);
   if (currentHand !== handId) reset('hand-change');
@@ -223,14 +247,32 @@ function processLatestResponse() {
   observeBoard();
   observePot();
   observeActions();
-  commitConfirmedPublicState();
+  observeAggressor();
+  commitConfirmedPot();
   publishConsensus();
+}
+
+function installResponseHook() {
+  if (!d || d.__prcFieldConsensusActionsHook) return;
+  const initial = Array.isArray(d.actions) ? d.actions : [];
+  actionsBacking = initial;
+  Object.defineProperty(d, 'actions', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      return actionsBacking;
+    },
+    set(value) {
+      actionsBacking = Array.isArray(value) ? value : [];
+      if (!writingConfirmedActions) processAppliedResponse();
+    },
+  });
+  d.__prcFieldConsensusActionsHook = true;
 }
 
 if (typeof window !== 'undefined' && d) {
   window.__prcAIDecisionFieldConsensusR14 = diagnostics;
+  installResponseHook();
   reset('boot');
   window.addEventListener('prc:generation-change', () => reset('generation-change'));
-  setInterval(processLatestResponse, 12);
-  setTimeout(processLatestResponse, 0);
 }
