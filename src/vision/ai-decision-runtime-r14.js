@@ -43,6 +43,7 @@ let lastHeroTurn = false;
 let turnSignalStartedAt = 0;
 let candidateKey = '';
 let candidateHits = 0;
+const settledResponses = new Map();
 let accessToken = '';
 try { accessToken = sessionStorage.getItem('prc.vision-token') || ''; } catch {}
 
@@ -54,6 +55,20 @@ function closeMoney(a, b) { return Number.isFinite(a) && Number.isFinite(b) && M
 function fmt(n) { return Number.isFinite(n) ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(n) : '—'; }
 function actionKey(actions) { return (actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).sort().join('|'); }
 function moneyKey(value) { return Number.isFinite(value) ? String(Math.round(value * 1000) / 1000) : '-'; }
+
+function manualHeroCards(machine = activeHandMachine) {
+  if (typeof window === 'undefined' || !machine || machine.handId <= 0) return [];
+  const authority = window.__prcManualHeroAuthorityR14;
+  const hero = Array.isArray(machine.state?.hero) ? machine.state.hero : [];
+  const ready = Boolean(
+    authority?.manualOnly
+    && authority?.heroLocked
+    && Number(authority.handId) === Number(machine.handId)
+    && hero.length === 2
+    && hero.every((card) => card?.rank && card?.suit)
+  );
+  return ready ? hero.map((card) => ({ ...card })) : [];
+}
 
 function visibleSource() {
   const video = document.getElementById('video');
@@ -121,9 +136,7 @@ function commitCritical(out) {
   if (!machine || out.handId !== machine.handId || candidateHits < 2) return;
   const t = now();
   const token = authoritativeToken();
-  if (Array.isArray(out.hero) && out.hero.length === 2 && out.heroConfidence >= 0.88 && !exactCards(machine.state.hero || [], diagnostics.hero)) {
-    machine.setHero(out.hero, machine.handId, { source: 'ai-decision', rebindToken: token, forceRebind: true, now: t });
-  }
+  // Hero is manual-only in R14. Fast vision may update only public state.
   if (Array.isArray(out.board) && [0, 3, 4, 5].includes(out.board.length) && out.boardConfidence >= 0.84 && !exactCards(machine.state.board || [], diagnostics.board)) {
     if (out.board.length || !(machine.state.board || []).length) machine.setBoard(out.board, machine.handId, { source: 'ai-decision', rebindToken: token, forceRebind: true, now: t });
   }
@@ -171,6 +184,7 @@ function resetCandidate() {
   candidateKey = '';
   candidateHits = 0;
   diagnostics.rawStableFrames = 0;
+  settledResponses.clear();
 }
 
 function startTurn() {
@@ -262,6 +276,7 @@ function apply(out) {
   if (!machine || out.handId !== machine.handId) return;
   const hadTrusted = diagnostics.trusted;
   const oldActionsKey = actionKey(diagnostics.actions);
+  const manualHero = manualHeroCards(machine);
 
   diagnostics.responses++;
   diagnostics.handId = out.handId;
@@ -269,12 +284,14 @@ function apply(out) {
   diagnostics.lastSuccessAt = diagnostics.lastSeenAt;
   diagnostics.lastLatencyMs = Number(out.ms) || null;
   diagnostics.confidence = Number(out.confidence) || 0;
-  diagnostics.heroConfidence = Number(out.heroConfidence) || 0;
+  // Hero is deliberately never read by the vision endpoint. Manual authority
+  // is bridged into the fast snapshot so the trust gate can actually close.
+  diagnostics.heroConfidence = manualHero.length === 2 ? 1 : 0;
   diagnostics.boardConfidence = Number(out.boardConfidence) || 0;
   diagnostics.potConfidence = Number(out.potConfidence) || 0;
   diagnostics.actionsConfidence = Number(out.actionsConfidence) || 0;
   diagnostics.aggressorConfidence = Number(out.aggressorConfidence) || 0;
-  diagnostics.hero = Array.isArray(out.hero) ? out.hero.map((c) => ({ ...c })) : [];
+  diagnostics.hero = manualHero;
   diagnostics.board = Array.isArray(out.board) ? out.board.map((c) => ({ ...c })) : [];
   diagnostics.pot = Number.isFinite(out.pot) ? out.pot : null;
   diagnostics.heroToAct = typeof out.heroToAct === 'boolean' ? out.heroToAct : null;
@@ -299,14 +316,14 @@ function apply(out) {
   const actionAmountsOk = !call || Number.isFinite(call.amount);
   const turnConfirmed = diagnostics.heroToAct === true || diagnostics.actions.length >= 2;
   const actionsOk = turnConfirmed && diagnostics.actions.length >= 2 && diagnostics.actionsConfidence >= 0.78 && actionAmountsOk;
-  const confidenceOk = diagnostics.confidence >= 0.84 && diagnostics.heroConfidence >= 0.86 && diagnostics.boardConfidence >= 0.78 && diagnostics.potConfidence >= 0.84;
+  const confidenceOk = diagnostics.confidence >= 0.84 && diagnostics.heroConfidence >= 0.99 && diagnostics.boardConfidence >= 0.78 && diagnostics.potConfidence >= 0.84;
   const trustedNow = Boolean(stableFrames >= 2 && heroOk && boardOk && potOk && actionsOk && confidenceOk);
   const sameActions = oldActionsKey && oldActionsKey === actionKey(diagnostics.actions);
 
   diagnostics.trusted = trustedNow || Boolean(hadTrusted && heroOk && boardOk && potOk && stableFrames >= 2 && (sameActions || diagnostics.actionsConfidence < 0.78));
-  if (diagnostics.trusted) diagnostics.trustReason = '✓ Decisão atual confirmada em duas leituras iguais.';
+  if (diagnostics.trusted) diagnostics.trustReason = '✓ Decisão atual confirmada em duas leituras iguais + Hero manual.';
   else if (stableFrames < 2) diagnostics.trustReason = `Confirmando o mesmo snapshot da decisão (${stableFrames}/2).`;
-  else if (!heroOk) diagnostics.trustReason = 'IA rápida ainda confirmando suas cartas.';
+  else if (!heroOk) diagnostics.trustReason = 'Aguardando suas duas cartas manuais desta mão.';
   else if (!boardOk) diagnostics.trustReason = 'IA rápida ainda confirmando board/street.';
   else if (!potOk) diagnostics.trustReason = 'IA rápida ainda confirmando o pote atual.';
   else if (!actionsOk) diagnostics.trustReason = 'IA rápida ainda confirmando CHECK/CALL/RAISE e valores.';
@@ -365,6 +382,17 @@ function renderDecisionReadout() {
   detail.textContent = `${actions || 'ações pendentes'}${diagnostics.aggressorName ? ` · agressor ${diagnostics.aggressorName}` : ''}${diagnostics.consecutiveFailures ? ' · reconectando' : ''}`;
 }
 
+function flushSettledResponses(localGeneration) {
+  if (localGeneration !== generation) return;
+  while (settledResponses.has(lastAppliedSeq + 1)) {
+    const nextSeq = lastAppliedSeq + 1;
+    const out = settledResponses.get(nextSeq);
+    settledResponses.delete(nextSeq);
+    lastAppliedSeq = nextSeq;
+    if (out) apply(out);
+  }
+}
+
 async function requestFrame(localSeq, canvas, handId, localGeneration) {
   diagnostics.inFlight++;
   diagnostics.requests++;
@@ -383,15 +411,19 @@ async function requestFrame(localSeq, canvas, handId, localGeneration) {
       let reason = `HTTP ${r.status}`;
       try { const j = await r.json(); if (j?.error) reason += ` · ${j.error}`; } catch {}
       noteFailure(reason);
+      settledResponses.set(localSeq, null);
+      flushSettledResponses(localGeneration);
       return;
     }
     const out = await r.json();
     if (localGeneration !== generation || localSeq <= lastAppliedSeq) return;
-    lastAppliedSeq = localSeq;
-    apply(out);
+    settledResponses.set(localSeq, out);
+    flushSettledResponses(localGeneration);
   } catch (e) {
     if (localGeneration !== generation) return;
     noteFailure(e?.name === 'AbortError' ? 'timeout da IA rápida' : 'falha transitória de rede');
+    settledResponses.set(localSeq, null);
+    flushSettledResponses(localGeneration);
   } finally {
     clearTimeout(timer);
     diagnostics.inFlight = Math.max(0, diagnostics.inFlight - 1);
@@ -418,7 +450,7 @@ function tick() {
   const t = now();
   if (t < nextRetryAt) return;
   const initialBurst = burstRemaining > 0;
-  const maxInFlight = 1;
+  const maxInFlight = initialBurst ? 2 : 1;
   const interval = initialBurst ? 120 : diagnostics.trusted ? 2600 : 450;
   if (diagnostics.inFlight >= maxInFlight || t - lastCaptureAt < interval) return;
 
