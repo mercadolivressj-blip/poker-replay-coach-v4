@@ -12,6 +12,7 @@ const diagnostics = {
   potRestores: 0,
   lifecycleBlocks: 0,
   physicalRedeals: 0,
+  boardClearRedeals: 0,
   lockedHeroConflicts: 0,
   lockedBoardConflicts: 0,
   potRegressionBlocks: 0,
@@ -24,6 +25,7 @@ const diagnostics = {
   heroGapArmed: false,
   boardClearArmed: false,
   lastLifecycleReason: 'boot',
+  lastGenerationReason: 'boot',
   lastHero: '—',
   lastBoard: '—',
   lastPot: null,
@@ -95,6 +97,7 @@ function install(machine) {
     arbiter.syncGeneration(now);
     lifecycle.reset(machine.handId, now);
     diagnostics.handId = machine.handId;
+    diagnostics.lastGenerationReason = reason || 'unknown';
     syncLifecycleDiagnostics();
     dispatchGeneration(machine, reason);
   };
@@ -149,7 +152,7 @@ function install(machine) {
     return accepted;
   };
 
-  // Physical Hero presence is the authoritative generation boundary. Ranks are
+  // Physical Hero presence is the primary generation boundary. Ranks are
   // deliberately ignored here because Hero cards are manual-only and a noisy
   // rank must never decide whether a new deal exists.
   machine.observeHero = (fp, present, now = performance.now()) => {
@@ -183,23 +186,36 @@ function install(machine) {
     return { newHand: false, reason: `r14-${observed.reason || 'hero-observed'}` };
   };
 
-  // Board occupancy is a second, independent public signal. It never rotates a
-  // hand by itself (a bad crop must not reset state), but a stable old-board -> 0
-  // transition arms the physical Hero reappearance boundary and blocks strategy
-  // while the deal is between generations.
+  // Board occupancy is an independent public lifecycle signal. A single zero
+  // frame never rotates the hand. But once a board that really existed becomes
+  // stably empty (3 confirmed zero observations + the lifecycle time guard),
+  // the postflop hand is over. Rotate the generation immediately so the old
+  // board, pot and actions cannot leak into the next deal even if Hero's card
+  // disappearance animation is too fast for the local presence detector.
   machine.observeBoardCount = (count, now = performance.now()) => {
     if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
+    const hadLogicalBoard = Array.isArray(machine.state?.board) && machine.state.board.length > 0;
     lifecycle.observeBoardCount(count, now);
     machine.lastBoardCountVisual = count;
     if (count === 0) machine.boardZeroHits = lifecycle.visualBoardHits;
     else machine.boardZeroHits = 0;
     syncLifecycleDiagnostics();
     diagnostics.lifecycleBlocks++;
+
+    if (count === 0 && hadLogicalBoard && lifecycle.boardClearArmed) {
+      const reason = 'r14-board-cleared-postflop';
+      diagnostics.boardClearRedeals++;
+      machine.newHand(reason, now);
+      syncLifecycleDiagnostics();
+      return { newHand: true, reason };
+    }
+
     return { newHand: false, reason: lifecycle.boardClearArmed ? 'r14-board-clear-armed' : 'r14-board-observation' };
   };
 
   // Pot drops are useful diagnostics but never define a hand boundary. Physical
-  // redeal owns lifecycle, preventing one bad decimal read from rotating state.
+  // redeal or a stable postflop board clear owns lifecycle, preventing one bad
+  // decimal read from rotating state.
   machine.observePotValue = () => {
     diagnostics.lifecycleBlocks++;
     return { newHand: false, reason: 'r14-pot-observation-only' };
