@@ -14,6 +14,8 @@ const diagnostics = {
   physicalRedeals: 0,
   deferredHeroRedeals: 0,
   suppressedHeroRedeals: 0,
+  deferredBoardClears: 0,
+  suppressedBoardClears: 0,
   boardClearRedeals: 0,
   lockedHeroConflicts: 0,
   lockedBoardConflicts: 0,
@@ -37,6 +39,7 @@ if (typeof window !== 'undefined') window.__prcStateTransactionR14 = diagnostics
 const SUIT_SYMBOL = Object.freeze({ clubs: '♣', diamonds: '♦', hearts: '♥', spades: '♠' });
 const cardLabel = (cards) => (cards || []).map((c) => `${c?.rank || '?'}${c?.suit ? (SUIT_SYMBOL[c.suit] || '?') : '?'}`).join(' ');
 const heroComplete = (cards) => Array.isArray(cards) && cards.length === 2 && cards.every((c) => c?.rank);
+const BOARD_CLEAR_GRACE_MS = 500;
 
 PotConsensus.prototype.observe = function observeR14(value) {
   return observeStablePot(this, value);
@@ -94,9 +97,11 @@ function install(machine) {
   const rawObserveHero = machine.observeHero.bind(machine);
   const rawNewHand = machine.newHand.bind(machine);
   let pendingHeroRedeal = null;
+  let pendingBoardClear = null;
 
   machine.newHand = (reason, now = performance.now()) => {
     pendingHeroRedeal = null;
+    pendingBoardClear = null;
     rawNewHand(reason, now);
     arbiter.syncGeneration(now);
     lifecycle.reset(machine.handId, now);
@@ -139,9 +144,6 @@ function install(machine) {
     const full = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
     const fast = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
 
-    // Once AI perception is active, local OCR is no longer allowed to replace
-    // the authoritative pot. Full-frame owns context; fast-decision owns the
-    // exact Hero decision window after it has produced a current snapshot.
     if (full?.enabled && Number(full.responses) > 0 && !['ai-full-frame', 'ai-decision', 'manual'].includes(source)) return false;
 
     const fastOwnsCurrentTurn = fastDecisionOwnsPot(machine, fast);
@@ -156,10 +158,9 @@ function install(machine) {
     return accepted;
   };
 
-  // Physical Hero presence is a useful generation boundary, but PokerStars can
-  // briefly hide/move Hero cards while dealing the flop. Therefore a preflop
-  // Hero gap is deferred for one observation cycle so the board lane can prove
-  // whether this is actually the SAME hand advancing to flop.
+  // Hero animation can briefly disappear between streets. A postflop hand is
+  // therefore never rotated only because Hero disappeared/reappeared while the
+  // logical board is still alive. The board lane owns that boundary.
   machine.observeHero = (fp, present, now = performance.now()) => {
     if (machine.handId <= 0) {
       const out = rawObserveHero(fp, present, now);
@@ -198,7 +199,24 @@ function install(machine) {
 
     if (observed.newDeal) {
       const reason = `r14-${observed.reason}`;
-      const boardLive = Boolean((machine.state?.board || []).length > 0 || Number(lifecycle.visualBoardCount) > 0);
+      const logicalBoardCount = Array.isArray(machine.state?.board) ? machine.state.board.length : 0;
+      const boardLive = Boolean(logicalBoardCount > 0 || Number(lifecycle.visualBoardCount) > 0);
+
+      if (logicalBoardCount > 0) {
+        if (lifecycle.boardClearArmed && !pendingBoardClear) {
+          pendingBoardClear = {
+            handId: machine.handId,
+            previousCount: logicalBoardCount,
+            armedAt: now,
+            heroRedealReason: reason,
+          };
+          diagnostics.deferredBoardClears++;
+        }
+        diagnostics.suppressedHeroRedeals++;
+        lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        return { newHand: false, reason: 'r14-hero-redeal-suppressed-postflop' };
+      }
 
       if (boardLive && !lifecycle.boardClearArmed) {
         diagnostics.suppressedHeroRedeals++;
@@ -226,15 +244,16 @@ function install(machine) {
     return { newHand: false, reason: `r14-${observed.reason || 'hero-observed'}` };
   };
 
-  // Board occupancy is an independent public lifecycle signal. A single zero
-  // frame never rotates the hand. But once a board that really existed becomes
-  // stably empty (3 confirmed zero observations + the lifecycle time guard),
-  // the postflop hand is over. Rotate the generation immediately so the old
-  // board, pot and actions cannot leak into the next deal even if Hero's card
-  // disappearance animation is too fast for the local presence detector.
+  // A physical board clear is first treated as a candidate boundary. PokerStars
+  // can momentarily make the board detector read zero while dealing turn/river.
+  // Keep the current generation for a short grace window; a board that returns
+  // with the same or larger count proves this is the SAME hand. A genuinely
+  // empty board that survives the grace window still rotates the generation so
+  // stale river/pot/actions cannot leak into the next deal.
   machine.observeBoardCount = (count, now = performance.now()) => {
     if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
-    const hadLogicalBoard = Array.isArray(machine.state?.board) && machine.state.board.length > 0;
+    const logicalBoardCount = Array.isArray(machine.state?.board) ? machine.state.board.length : 0;
+    const hadLogicalBoard = logicalBoardCount > 0;
     lifecycle.observeBoardCount(count, now);
     machine.lastBoardCountVisual = count;
     if (count === 0) machine.boardZeroHits = lifecycle.visualBoardHits;
@@ -246,10 +265,44 @@ function install(machine) {
       lifecycle.seedHeroPresence(true, now);
     }
 
+    if (count > 0 && pendingBoardClear && pendingBoardClear.handId === machine.handId) {
+      const previousCount = Number(pendingBoardClear.previousCount) || logicalBoardCount;
+      if (count >= previousCount) {
+        pendingBoardClear = null;
+        diagnostics.suppressedBoardClears++;
+        lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        diagnostics.lifecycleBlocks++;
+        return { newHand: false, reason: 'r14-board-clear-cancelled-street-continues' };
+      }
+
+      const reason = 'r14-board-redeal-after-clear';
+      diagnostics.boardClearRedeals++;
+      machine.newHand(reason, now);
+      lifecycle.observeBoardCount(count, now);
+      syncLifecycleDiagnostics();
+      return { newHand: true, reason };
+    }
+
     syncLifecycleDiagnostics();
     diagnostics.lifecycleBlocks++;
 
     if (count === 0 && hadLogicalBoard && lifecycle.boardClearArmed) {
+      if (!pendingBoardClear || pendingBoardClear.handId !== machine.handId) {
+        pendingBoardClear = {
+          handId: machine.handId,
+          previousCount: logicalBoardCount,
+          armedAt: now,
+          heroRedealReason: null,
+        };
+        diagnostics.deferredBoardClears++;
+        return { newHand: false, reason: 'r14-board-clear-pending-grace' };
+      }
+
+      if (now - pendingBoardClear.armedAt < BOARD_CLEAR_GRACE_MS) {
+        return { newHand: false, reason: 'r14-board-clear-pending-grace' };
+      }
+
       const reason = 'r14-board-cleared-postflop';
       diagnostics.boardClearRedeals++;
       machine.newHand(reason, now);
@@ -260,9 +313,6 @@ function install(machine) {
     return { newHand: false, reason: lifecycle.boardClearArmed ? 'r14-board-clear-armed' : 'r14-board-observation' };
   };
 
-  // Pot drops are useful diagnostics but never define a hand boundary. Physical
-  // redeal or a stable postflop board clear owns lifecycle, preventing one bad
-  // decimal read from rotating state.
   machine.observePotValue = () => {
     diagnostics.lifecycleBlocks++;
     return { newHand: false, reason: 'r14-pot-observation-only' };
