@@ -5,6 +5,7 @@ import { estimateActionValues } from '../src/solver/value-engine.js';
 const api = fs.readFileSync(new URL('../api/decision-state.js', import.meta.url), 'utf8');
 const runtime = fs.readFileSync(new URL('../src/vision/ai-decision-runtime-r14.js', import.meta.url), 'utf8');
 const fieldConsensus = fs.readFileSync(new URL('../src/vision/ai-decision-field-consensus-r14.js', import.meta.url), 'utf8');
+const legalActionGuard = fs.readFileSync(new URL('../src/vision/legal-action-guard-r14.js', import.meta.url), 'utf8');
 const consensus = fs.readFileSync(new URL('../src/vision/ai-decision-consensus-r14.js', import.meta.url), 'utf8');
 const resolver = fs.readFileSync(new URL('../src/solver/resolver-runtime.js', import.meta.url), 'utf8');
 const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
@@ -91,6 +92,14 @@ assert.match(money, /Number\(fast\.potConfidence\) < 0\.92/);
 assert.match(money, /fast\.heroToAct === true \|\| actions\.length >= 2/);
 assert.match(money, /potEl\.dataset\.fastProvisional/);
 assert.match(money, /setInterval\(syncMoneyUi, 45\)/);
+
+// Legal-action contract: fast vision may misread buttons, but the resolver-facing
+// action list must be constrained by the locally visible PokerStars buttons.
+assert.match(bootstrap, /legal-action-guard-r14/);
+assert.match(legalActionGuard, /facingBet = types\.includes\('fold'\) && types\.includes\('call'\)/);
+assert.match(legalActionGuard, /unopened = types\.includes\('check'\) && types\.includes\('bet'\)/);
+assert.match(legalActionGuard, /safeRaw\.filter\(\(action\) => legal\.has/);
+assert.match(legalActionGuard, /Object\.defineProperty\(d, 'actions'/);
 
 assert.match(consensus, /stableHits >= 2/);
 assert.match(consensus, /rawStableFrames/);
