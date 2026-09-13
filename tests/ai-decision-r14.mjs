@@ -51,6 +51,20 @@ assert.match(runtime, /Hero is manual-only in R14/);
 assert.doesNotMatch(runtime, /machine\.setHero\(out\.hero/);
 assert.match(runtime, /settledResponses/);
 assert.match(runtime, /flushSettledResponses/);
+
+// Late Hero entry contract: public state must reach 2/2 without Hero, and
+// clicking the second manual card must bind to that prepared snapshot without
+// another vision request/consensus reset.
+assert.match(runtime, /Hero is manual-only and therefore MUST NOT participate in public/);
+assert.doesNotMatch(runtime, /diagnostics\.handId,\s*cardsKey\(diagnostics\.hero\)/);
+assert.match(runtime, /diagnostics\.publicPrepared/);
+assert.match(runtime, /diagnostics\.publicPreparedAt/);
+assert.match(runtime, /diagnostics\.heroLateBindings/);
+assert.match(runtime, /bindManualHeroToPreparedSnapshot/);
+assert.match(runtime, /prc:manual-state-applied/);
+assert.match(runtime, /No new network round-trip/);
+assert.match(runtime, /Mesa pública pronta 2\/2/);
+
 assert.match(consensus, /stableHits >= 2/);
 assert.match(consensus, /rawStableFrames/);
 assert.match(consensus, /stableDecisionFrames/);
