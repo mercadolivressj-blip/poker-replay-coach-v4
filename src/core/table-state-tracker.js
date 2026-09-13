@@ -14,6 +14,8 @@ const POSITIONS = {
   10: ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'UTG+2', 'MP', 'LJ', 'HJ', 'CO'],
 };
 
+const MEMORY_MISS_FRAMES = 2;
+
 function finite(v) { return Number.isFinite(v) ? v : null; }
 function seatKey(s) { return `seat:${Number.isInteger(s?.seatIndex) ? s.seatIndex : 'unknown'}`; }
 function byIndex(a, b) { return a.seatIndex - b.seatIndex; }
@@ -45,6 +47,8 @@ function normalizeSeats(seats = []) {
       visibleAction: ACTIONS.has(s.visibleAction) ? s.visibleAction : null,
       visibleActionAmount: finite(s.visibleActionAmount),
       confidence: s.confidence,
+      memoryOnly: Boolean(s.memoryOnly),
+      memoryMisses: Number.isInteger(s.memoryMisses) ? s.memoryMisses : 0,
     }))
     .sort(byIndex);
 }
@@ -81,6 +85,76 @@ function eventFromVisibleAction(curr, street, confidence, prev = null) {
   };
 }
 
+function carrySeat(prev, curr, { sameStreet = true } = {}) {
+  if (!prev) return { ...curr, memoryOnly: false, memoryMisses: 0 };
+  return {
+    ...curr,
+    actorName: curr.actorName || prev.actorName || null,
+    stack: finite(curr.stack) ?? finite(prev.stack),
+    committed: finite(curr.committed) ?? (sameStreet ? finite(prev.committed) : null),
+    dealer: Boolean(curr.dealer || prev.dealer),
+    folded: prev.folded === true ? true : curr.folded,
+    hero: Boolean(curr.hero || prev.hero),
+    // Never carry action text. An action must be observed in the current frame
+    // or inferred from a fresh chip/stack transition.
+    visibleAction: curr.visibleAction,
+    visibleActionAmount: curr.visibleActionAmount,
+    confidence: Math.max(curr.confidence, Math.min(prev.confidence || 0, curr.confidence + 0.08)),
+    memoryOnly: false,
+    memoryMisses: 0,
+  };
+}
+
+export function stabilizeSeatEvidence(currentSeats = [], previousSeats = [], { sameStreet = true, heroSeatIndex = null, dealerSeatIndex = null } = {}) {
+  const current = normalizeSeats(currentSeats);
+  const previous = normalizeSeats(previousSeats);
+  const prevByKey = mapSeats(previous);
+  const currentKeys = new Set(current.map(seatKey));
+  const out = current.map((seat) => carrySeat(prevByKey.get(seatKey(seat)), seat, { sameStreet }));
+
+  for (const prev of previous) {
+    const key = seatKey(prev);
+    if (currentKeys.has(key) || isVacantSeat(prev)) continue;
+    const misses = (prev.memoryMisses || 0) + 1;
+    if (misses > MEMORY_MISS_FRAMES) continue;
+    out.push({
+      ...prev,
+      committed: sameStreet ? finite(prev.committed) : null,
+      // Missing from the current frame is not evidence of fold or action.
+      folded: prev.folded === true ? true : null,
+      visibleAction: null,
+      visibleActionAmount: null,
+      confidence: Math.max(0.5, Math.min(0.74, (prev.confidence || 0.6) * 0.84)),
+      memoryOnly: true,
+      memoryMisses: misses,
+    });
+  }
+
+  let resolvedHero = Number.isInteger(heroSeatIndex) ? heroSeatIndex : null;
+  if (resolvedHero === null) {
+    const freshHero = out.filter((s) => !s.memoryOnly && s.hero && s.confidence >= 0.7);
+    if (freshHero.length === 1) resolvedHero = freshHero[0].seatIndex;
+  }
+  if (resolvedHero !== null) {
+    for (const seat of out) seat.hero = seat.seatIndex === resolvedHero;
+  }
+
+  let resolvedDealer = Number.isInteger(dealerSeatIndex) ? dealerSeatIndex : null;
+  if (resolvedDealer === null) {
+    const freshDealer = out.filter((s) => !s.memoryOnly && s.dealer && s.confidence >= 0.72);
+    if (freshDealer.length === 1) resolvedDealer = freshDealer[0].seatIndex;
+  }
+  if (resolvedDealer !== null) {
+    for (const seat of out) seat.dealer = seat.seatIndex === resolvedDealer;
+  }
+
+  return {
+    seats: out.sort(byIndex),
+    heroSeatIndex: resolvedHero,
+    dealerSeatIndex: resolvedDealer,
+  };
+}
+
 export class TableStateTracker {
   constructor() { activeTableStateTracker = this; this.resetSession(); }
 
@@ -90,6 +164,9 @@ export class TableStateTracker {
     this.previous = null;
     this.latest = null;
     this.readyForDiff = false;
+    this.seatMemory = [];
+    this.heroSeatIndex = null;
+    this.dealerSeatIndex = null;
   }
 
   resetHand(handId) {
@@ -98,11 +175,23 @@ export class TableStateTracker {
     this.previous = null;
     this.latest = null;
     this.readyForDiff = false;
+    this.seatMemory = [];
+    this.heroSeatIndex = null;
+    this.dealerSeatIndex = null;
   }
 
   ingest(snapshot) {
     if (!snapshot || snapshot.handId !== this.handId) return { accepted: false, events: [], state: this.latest };
-    const seats = assignPositions(snapshot.seats || []);
+    const sameStreet = this.street === null || this.street === snapshot.street;
+    const stabilized = stabilizeSeatEvidence(snapshot.seats || [], this.seatMemory, {
+      sameStreet,
+      heroSeatIndex: this.heroSeatIndex,
+      dealerSeatIndex: this.dealerSeatIndex,
+    });
+    this.heroSeatIndex = stabilized.heroSeatIndex;
+    this.dealerSeatIndex = stabilized.dealerSeatIndex;
+    this.seatMemory = stabilized.seats.map((s) => ({ ...s }));
+    const seats = assignPositions(stabilized.seats);
     const next = {
       handId: snapshot.handId,
       street: snapshot.street,
@@ -111,6 +200,8 @@ export class TableStateTracker {
       dealerSeat: seats.find((s) => s.dealer && !isVacantSeat(s))?.seatIndex ?? null,
       heroSeat: seats.find((s) => s.hero)?.seatIndex ?? null,
       heroPosition: seats.find((s) => s.hero)?.position ?? null,
+      freshSeatCount: seats.filter((s) => !s.memoryOnly).length,
+      memorySeatCount: seats.filter((s) => s.memoryOnly).length,
       observedAt: performance.now(),
     };
 
@@ -139,7 +230,7 @@ export class TableStateTracker {
 function visibleEvents(snapshot) {
   const events = [];
   for (const curr of snapshot?.seats || []) {
-    if (isVacantSeat(curr)) continue;
+    if (curr.memoryOnly || isVacantSeat(curr)) continue;
     const confidence = curr.confidence || 0;
     if (confidence < 0.62) continue;
     const explicit = eventFromVisibleAction(curr, snapshot.street, confidence);
@@ -157,7 +248,7 @@ export function inferEvents(previous, next) {
 
   for (const [key, curr] of newSeats) {
     const prev = oldSeats.get(key);
-    if (!prev || isVacantSeat(curr) || isVacantSeat(prev)) continue;
+    if (!prev || curr.memoryOnly || isVacantSeat(curr) || isVacantSeat(prev)) continue;
     const confidence = Math.min(prev.confidence || 0, curr.confidence || 0);
     if (confidence < 0.62) continue;
 
