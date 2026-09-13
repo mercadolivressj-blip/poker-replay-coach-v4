@@ -99,4 +99,16 @@ assert.match(transaction, /hadLogicalBoard/);
 assert.match(transaction, /count === 0 && hadLogicalBoard && lifecycle\.boardClearArmed/);
 assert.match(transaction, /r14-board-cleared-postflop/);
 
+// VIDEO REGRESSION 7: PokerStars may briefly hide/move Hero cards while dealing
+// the flop. A preflop Hero gap therefore cannot rotate immediately. The R14
+// transaction layer must defer it for one cycle and cancel the pending redeal
+// as soon as a live flop/turn/river board is observed.
+assert.match(transaction, /pendingHeroRedeal/);
+assert.match(transaction, /deferredHeroRedeals/);
+assert.match(transaction, /suppressedHeroRedeals/);
+assert.match(transaction, /r14-hero-redeal-pending-board-check/);
+assert.match(transaction, /r14-hero-redeal-suppressed-board-live/);
+assert.match(transaction, /count > 0 && pendingHeroRedeal/);
+assert.match(transaction, /Number\(lifecycle\.visualBoardCount\) > 0/);
+
 console.log('VIDEO REGRESSIONS R14 passed');
