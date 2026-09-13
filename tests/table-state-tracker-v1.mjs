@@ -68,6 +68,48 @@ explicitOnBaseline.resetHand(9);
 const baselineCheck = explicitOnBaseline.ingest({ handId: 9, street: 'flop', confidence: .9, seats: explicitCheck });
 assert.equal(baselineCheck.events[0]?.action, 'check', 'explicit visible action is evidence even on first snapshot');
 
+// R14 replay continuity: once seat identity / Hero / dealer are known inside one
+// hand, a weak frame may omit those fields without erasing table context.
+const memoryTracker = new TableStateTracker();
+memoryTracker.resetHand(10);
+const memoryBase = [
+  { seatIndex: 0, actorName: 'DealerGuy', stack: 100, committed: 0, dealer: true, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 1, actorName: 'Hero', stack: 99, committed: 1, dealer: false, folded: false, hero: true, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+  { seatIndex: 2, actorName: 'Villain', stack: 98, committed: 2, dealer: false, folded: false, hero: false, visibleAction: null, visibleActionAmount: null, confidence: .95 },
+];
+let memoryState = memoryTracker.ingest({ handId: 10, street: 'preflop', confidence: .92, seats: memoryBase });
+assert.equal(memoryState.state.heroPosition, 'SB');
+assert.equal(memoryState.state.dealerSeat, 0);
+
+const degradedIdentity = memoryBase.map((s) => {
+  if (s.seatIndex === 0) return { ...s, dealer: false };
+  if (s.seatIndex === 1) return { ...s, actorName: null, hero: false };
+  return s;
+});
+memoryState = memoryTracker.ingest({ handId: 10, street: 'preflop', confidence: .9, seats: degradedIdentity });
+assert.equal(memoryState.state.seats.find((s) => s.seatIndex === 1)?.actorName, 'Hero', 'same-hand memory must restore a temporarily unreadable nickname');
+assert.equal(memoryState.state.heroSeat, 1, 'Hero seat must remain stable through one weak frame');
+assert.equal(memoryState.state.dealerSeat, 0, 'dealer marker must remain stable during the same hand');
+assert.equal(memoryState.events.length, 0, 'identity recovery must never fabricate a poker action');
+
+const oneSeatMissing = degradedIdentity.filter((s) => s.seatIndex !== 2);
+memoryState = memoryTracker.ingest({ handId: 10, street: 'preflop', confidence: .88, seats: oneSeatMissing });
+const rememberedVillain = memoryState.state.seats.find((s) => s.seatIndex === 2);
+assert.equal(rememberedVillain?.actorName, 'Villain');
+assert.equal(rememberedVillain?.memoryOnly, true, 'one missing frame may preserve seat identity as memory-only evidence');
+assert.equal(rememberedVillain?.visibleAction, null, 'memory-only evidence must never carry stale action text');
+
+const flopWithMissingSeat = oneSeatMissing.map((s) => ({ ...s, committed: null, visibleAction: null, visibleActionAmount: null }));
+memoryState = memoryTracker.ingest({ handId: 10, street: 'flop', confidence: .9, seats: flopWithMissingSeat });
+assert.equal(memoryState.state.seats.find((s) => s.seatIndex === 2)?.committed, null, 'current-street commitment must not leak across streets');
+
+const foldTracker = new TableStateTracker();
+foldTracker.resetHand(11);
+foldTracker.ingest({ handId: 11, street: 'flop', confidence: .9, seats: memoryBase });
+foldTracker.ingest({ handId: 11, street: 'flop', confidence: .9, seats: memoryBase.map((s) => s.seatIndex === 2 ? { ...s, folded: true } : s) });
+const afterFoldNoise = foldTracker.ingest({ handId: 11, street: 'flop', confidence: .9, seats: memoryBase.map((s) => s.seatIndex === 2 ? { ...s, folded: null } : s) });
+assert.equal(afterFoldNoise.state.seats.find((s) => s.seatIndex === 2)?.folded, true, 'confirmed fold is irreversible inside the same hand');
+
 const endpoint = fs.readFileSync(new URL('../api/table-state.js', import.meta.url), 'utf8');
 assert.match(endpoint, /replay mode required/i);
 assert.match(endpoint, /Do NOT infer hidden cards/i);
