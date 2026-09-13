@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 
+const { decisionEvidence } = await import('../src/vision/manual-hero-fast-trust-r14.js');
+
 globalThis.window = {
   __prcManualHeroAuthorityR14: {
     manualOnly: true,
     heroLocked: true,
     handId: 7,
   },
-  addEventListener() {},
 };
-
-const { decisionEvidence } = await import('../src/vision/manual-hero-fast-trust-r14.js');
 
 const hero = [
   { rank: 'A', suit: 'spades' },
@@ -57,4 +56,5 @@ const oneFrame = { ...fast, rawStableFrames: 1 };
 assert.equal(decisionEvidence(machine, oneFrame).trusted, false, '1/2 fast reading must never unlock strategy');
 
 globalThis.performance = originalPerformance;
+delete globalThis.window;
 console.log('MANUAL HERO FAST TRUST R14 passed');
