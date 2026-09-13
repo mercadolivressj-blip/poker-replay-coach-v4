@@ -89,14 +89,17 @@ assert.match(safety, /visualBoardCount/);
 assert.match(decisionStore, /strategicDeadlineFallback: false/);
 assert.match(decisionStore, /clockStartsAfterManualHero: true/);
 
-// VIDEO REGRESSION 6: once a real postflop board was seen, a stable physical
-// clear is itself a valid end-of-hand boundary. This specifically prevents the
-// old flop/turn/river and old pot from remaining stuck while the replay has
-// already moved to the next deal because Hero's disappearance animation was
-// too short for the presence detector.
-assert.match(transaction, /boardClearRedeals/);
-assert.match(transaction, /hadLogicalBoard/);
-assert.match(transaction, /count === 0 && hadLogicalBoard && lifecycle\.boardClearArmed/);
+// VIDEO REGRESSION 6: postflop board clear is now DEFERRED instead of rotating
+// instantly. This prevents brief zero-board frames during flop->turn / turn->river
+// animation from deleting the manual Hero and pot. If board remains truly empty
+// beyond the grace window, the old hand still rotates and cannot leak forward.
+assert.match(transaction, /BOARD_CLEAR_GRACE_MS = 500/);
+assert.match(transaction, /pendingBoardClear/);
+assert.match(transaction, /deferredBoardClears/);
+assert.match(transaction, /suppressedBoardClears/);
+assert.match(transaction, /r14-board-clear-pending-grace/);
+assert.match(transaction, /r14-board-clear-cancelled-street-continues/);
+assert.match(transaction, /now - pendingBoardClear\.armedAt < BOARD_CLEAR_GRACE_MS/);
 assert.match(transaction, /r14-board-cleared-postflop/);
 
 // VIDEO REGRESSION 7: PokerStars may briefly hide/move Hero cards while dealing
@@ -110,5 +113,13 @@ assert.match(transaction, /r14-hero-redeal-pending-board-check/);
 assert.match(transaction, /r14-hero-redeal-suppressed-board-live/);
 assert.match(transaction, /count > 0 && pendingHeroRedeal/);
 assert.match(transaction, /Number\(lifecycle\.visualBoardCount\) > 0/);
+
+// VIDEO REGRESSION 8: once there is a logical postflop board, Hero disappearance
+// alone is never allowed to rotate the deal. Board continuity owns the boundary,
+// so the manually entered Hero survives flop->turn->river.
+assert.match(transaction, /logicalBoardCount > 0/);
+assert.match(transaction, /r14-hero-redeal-suppressed-postflop/);
+assert.match(transaction, /count >= previousCount/);
+assert.match(transaction, /r14-board-redeal-after-clear/);
 
 console.log('VIDEO REGRESSIONS R14 passed');
