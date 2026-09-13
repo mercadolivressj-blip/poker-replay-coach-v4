@@ -12,6 +12,8 @@ const diagnostics = {
   potRestores: 0,
   lifecycleBlocks: 0,
   physicalRedeals: 0,
+  deferredHeroRedeals: 0,
+  suppressedHeroRedeals: 0,
   boardClearRedeals: 0,
   lockedHeroConflicts: 0,
   lockedBoardConflicts: 0,
@@ -91,8 +93,10 @@ function install(machine) {
 
   const rawObserveHero = machine.observeHero.bind(machine);
   const rawNewHand = machine.newHand.bind(machine);
+  let pendingHeroRedeal = null;
 
   machine.newHand = (reason, now = performance.now()) => {
+    pendingHeroRedeal = null;
     rawNewHand(reason, now);
     arbiter.syncGeneration(now);
     lifecycle.reset(machine.handId, now);
@@ -152,15 +156,37 @@ function install(machine) {
     return accepted;
   };
 
-  // Physical Hero presence is the primary generation boundary. Ranks are
-  // deliberately ignored here because Hero cards are manual-only and a noisy
-  // rank must never decide whether a new deal exists.
+  // Physical Hero presence is a useful generation boundary, but PokerStars can
+  // briefly hide/move Hero cards while dealing the flop. Therefore a preflop
+  // Hero gap is deferred for one observation cycle so the board lane can prove
+  // whether this is actually the SAME hand advancing to flop.
   machine.observeHero = (fp, present, now = performance.now()) => {
     if (machine.handId <= 0) {
       const out = rawObserveHero(fp, present, now);
       if (out?.newHand && present) lifecycle.seedHeroPresence(true, now);
       syncLifecycleDiagnostics();
       return out;
+    }
+
+    if (pendingHeroRedeal && pendingHeroRedeal.handId !== machine.handId) pendingHeroRedeal = null;
+    if (pendingHeroRedeal) {
+      const boardLive = Boolean((machine.state?.board || []).length > 0 || Number(lifecycle.visualBoardCount) > 0);
+      if (boardLive) {
+        pendingHeroRedeal = null;
+        diagnostics.suppressedHeroRedeals++;
+        if (present) lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        return { newHand: false, reason: 'r14-hero-redeal-suppressed-board-live' };
+      }
+      if (present && now > pendingHeroRedeal.armedAt) {
+        const reason = pendingHeroRedeal.reason;
+        pendingHeroRedeal = null;
+        diagnostics.physicalRedeals++;
+        machine.newHand(reason, now);
+        lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        return { newHand: true, reason };
+      }
     }
 
     const observed = lifecycle.observeHero(Boolean(present), now);
@@ -172,11 +198,25 @@ function install(machine) {
 
     if (observed.newDeal) {
       const reason = `r14-${observed.reason}`;
+      const boardLive = Boolean((machine.state?.board || []).length > 0 || Number(lifecycle.visualBoardCount) > 0);
+
+      if (boardLive && !lifecycle.boardClearArmed) {
+        diagnostics.suppressedHeroRedeals++;
+        lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        return { newHand: false, reason: 'r14-hero-redeal-suppressed-board-live' };
+      }
+
+      if (!lifecycle.boardClearArmed) {
+        pendingHeroRedeal = { handId: machine.handId, reason, armedAt: now };
+        diagnostics.deferredHeroRedeals++;
+        lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        return { newHand: false, reason: 'r14-hero-redeal-pending-board-check' };
+      }
+
       diagnostics.physicalRedeals++;
       machine.newHand(reason, now);
-      // The frame that proved the new generation already contains physical Hero
-      // cards, so seed the fresh lifecycle immediately instead of waiting for a
-      // later frame to establish initial presence.
       lifecycle.seedHeroPresence(true, now);
       syncLifecycleDiagnostics();
       return { newHand: true, reason };
@@ -199,6 +239,13 @@ function install(machine) {
     machine.lastBoardCountVisual = count;
     if (count === 0) machine.boardZeroHits = lifecycle.visualBoardHits;
     else machine.boardZeroHits = 0;
+
+    if (count > 0 && pendingHeroRedeal && pendingHeroRedeal.handId === machine.handId) {
+      pendingHeroRedeal = null;
+      diagnostics.suppressedHeroRedeals++;
+      lifecycle.seedHeroPresence(true, now);
+    }
+
     syncLifecycleDiagnostics();
     diagnostics.lifecycleBlocks++;
 
