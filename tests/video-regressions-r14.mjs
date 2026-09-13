@@ -73,6 +73,7 @@ assert.equal(fresh.street, 'preflop');
 // board identity 2/2 when the local count-only detector lags.
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
+const heroContinuity = fs.readFileSync(new URL('../src/vision/hero-continuity-guard-r14.js', import.meta.url), 'utf8');
 const lifecycleSource = fs.readFileSync(new URL('../src/core/deal-lifecycle-r14.js', import.meta.url), 'utf8');
 const safety = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
 const decisionStore = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
@@ -121,5 +122,18 @@ assert.match(transaction, /logicalBoardCount > 0/);
 assert.match(transaction, /r14-hero-redeal-suppressed-postflop/);
 assert.match(transaction, /count >= previousCount/);
 assert.match(transaction, /r14-board-redeal-after-clear/);
+
+// VIDEO REGRESSION 9: the observed real replay can keep Hero cards physically
+// visible while the board detector reads zero for >500ms during turn->river.
+// A board-only boundary must therefore be vetoed while physical Hero was seen
+// recently; otherwise generation change deletes the manual Hero mid-hand.
+assert.match(bootstrap, /hero-continuity-guard-r14/);
+assert.match(heroContinuity, /HERO_RECENT_MS = 1000/);
+assert.match(heroContinuity, /r14-board-cleared-postflop/);
+assert.match(heroContinuity, /r14-board-redeal-after-clear/);
+assert.match(heroContinuity, /heroRecentlyPhysical/);
+assert.match(heroContinuity, /postflopAlive/);
+assert.match(heroContinuity, /machine\.handId === beforeHandId/);
+assert.match(heroContinuity, /r14-hero-continuity-protected/);
 
 console.log('VIDEO REGRESSIONS R14 passed');
