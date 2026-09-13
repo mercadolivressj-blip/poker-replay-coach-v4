@@ -28,6 +28,9 @@ const diagnostics = {
   aggressorCommitted: null,
   heroCommitted: null,
   rawStableFrames: 0,
+  publicPrepared: false,
+  publicPreparedAt: 0,
+  heroLateBindings: 0,
   lastError: null,
   trustReason: 'Aguardando decisão do Hero.',
 };
@@ -107,10 +110,12 @@ function fillDerivedCall(actions, aggressorCommitted, heroCommitted) {
   return out;
 }
 
+// IMPORTANT: Hero is manual-only and therefore MUST NOT participate in public
+// 2/2 consensus. This lets the Coach pre-read the complete public decision while
+// the user is still entering Hero cards, then bind Hero instantly afterwards.
 function decisionSnapshotKey() {
   return [
     diagnostics.handId,
-    cardsKey(diagnostics.hero),
     cardsKey(diagnostics.board),
     moneyKey(diagnostics.pot),
     actionKey(diagnostics.actions),
@@ -184,6 +189,8 @@ function resetCandidate() {
   candidateKey = '';
   candidateHits = 0;
   diagnostics.rawStableFrames = 0;
+  diagnostics.publicPrepared = false;
+  diagnostics.publicPreparedAt = 0;
   settledResponses.clear();
 }
 
@@ -206,7 +213,7 @@ function startTurn() {
   diagnostics.aggressorName = null;
   diagnostics.aggressorCommitted = null;
   diagnostics.heroCommitted = null;
-  diagnostics.trustReason = 'Sua vez · IA rápida lendo a decisão atual.';
+  diagnostics.trustReason = 'Sua vez · IA rápida pré-lendo a mesa pública.';
   renderDecisionReadout();
 }
 
@@ -271,40 +278,13 @@ function noteFailure(reason) {
   renderDecisionReadout();
 }
 
-function apply(out) {
+function evaluateTrust({ hadTrusted = false, oldActionsKey = '' } = {}) {
   const machine = activeHandMachine;
-  if (!machine || out.handId !== machine.handId) return;
-  const hadTrusted = diagnostics.trusted;
-  const oldActionsKey = actionKey(diagnostics.actions);
+  if (!machine || Number(diagnostics.handId) !== Number(machine.handId)) return false;
+
   const manualHero = manualHeroCards(machine);
-
-  diagnostics.responses++;
-  diagnostics.handId = out.handId;
-  diagnostics.lastSeenAt = now();
-  diagnostics.lastSuccessAt = diagnostics.lastSeenAt;
-  diagnostics.lastLatencyMs = Number(out.ms) || null;
-  diagnostics.confidence = Number(out.confidence) || 0;
-  // Hero is deliberately never read by the vision endpoint. Manual authority
-  // is bridged into the fast snapshot so the trust gate can actually close.
-  diagnostics.heroConfidence = manualHero.length === 2 ? 1 : 0;
-  diagnostics.boardConfidence = Number(out.boardConfidence) || 0;
-  diagnostics.potConfidence = Number(out.potConfidence) || 0;
-  diagnostics.actionsConfidence = Number(out.actionsConfidence) || 0;
-  diagnostics.aggressorConfidence = Number(out.aggressorConfidence) || 0;
   diagnostics.hero = manualHero;
-  diagnostics.board = Array.isArray(out.board) ? out.board.map((c) => ({ ...c })) : [];
-  diagnostics.pot = Number.isFinite(out.pot) ? out.pot : null;
-  diagnostics.heroToAct = typeof out.heroToAct === 'boolean' ? out.heroToAct : null;
-  diagnostics.aggressorName = out.aggressorName || null;
-  diagnostics.aggressorCommitted = Number.isFinite(out.aggressorCommitted) ? out.aggressorCommitted : null;
-  diagnostics.heroCommitted = Number.isFinite(out.heroCommitted) ? out.heroCommitted : null;
-  diagnostics.actions = fillDerivedCall(out.heroActions, diagnostics.aggressorCommitted, diagnostics.heroCommitted);
-  diagnostics.lastError = null;
-  diagnostics.consecutiveFailures = 0;
-  nextRetryAt = 0;
-
-  const stableFrames = observeCandidate();
-  commitCritical(out);
+  diagnostics.heroConfidence = manualHero.length === 2 ? 1 : 0;
 
   const stateHero = machine.state.hero || [];
   const stateBoard = machine.state.board || [];
@@ -316,19 +296,71 @@ function apply(out) {
   const actionAmountsOk = !call || Number.isFinite(call.amount);
   const turnConfirmed = diagnostics.heroToAct === true || diagnostics.actions.length >= 2;
   const actionsOk = turnConfirmed && diagnostics.actions.length >= 2 && diagnostics.actionsConfidence >= 0.78 && actionAmountsOk;
-  const confidenceOk = diagnostics.confidence >= 0.84 && diagnostics.heroConfidence >= 0.99 && diagnostics.boardConfidence >= 0.78 && diagnostics.potConfidence >= 0.84;
-  const trustedNow = Boolean(stableFrames >= 2 && heroOk && boardOk && potOk && actionsOk && confidenceOk);
+  const publicConfidenceOk = diagnostics.confidence >= 0.84 && diagnostics.boardConfidence >= 0.78 && diagnostics.potConfidence >= 0.84;
+  const stableFrames = Number(diagnostics.rawStableFrames) || 0;
+  const trustedNow = Boolean(stableFrames >= 2 && heroOk && boardOk && potOk && actionsOk && publicConfidenceOk);
   const sameActions = oldActionsKey && oldActionsKey === actionKey(diagnostics.actions);
 
+  diagnostics.publicPrepared = Boolean(stableFrames >= 2 && boardOk && potOk && actionsOk && publicConfidenceOk);
+  if (diagnostics.publicPrepared && !diagnostics.publicPreparedAt) diagnostics.publicPreparedAt = diagnostics.lastSeenAt || now();
+
   diagnostics.trusted = trustedNow || Boolean(hadTrusted && heroOk && boardOk && potOk && stableFrames >= 2 && (sameActions || diagnostics.actionsConfidence < 0.78));
-  if (diagnostics.trusted) diagnostics.trustReason = '✓ Decisão atual confirmada em duas leituras iguais + Hero manual.';
-  else if (stableFrames < 2) diagnostics.trustReason = `Confirmando o mesmo snapshot da decisão (${stableFrames}/2).`;
-  else if (!heroOk) diagnostics.trustReason = 'Aguardando suas duas cartas manuais desta mão.';
+  if (diagnostics.trusted) diagnostics.trustReason = diagnostics.publicPrepared
+    ? '✓ Mesa pública já estava pronta 2/2; Hero manual encaixado.'
+    : '✓ Decisão atual confirmada em duas leituras iguais + Hero manual.';
+  else if (stableFrames < 2) diagnostics.trustReason = `Pré-lendo a mesa pública (${stableFrames}/2).`;
+  else if (!heroOk) diagnostics.trustReason = '✓ Mesa pública pronta 2/2 · aguardando somente suas duas cartas manuais.';
   else if (!boardOk) diagnostics.trustReason = 'IA rápida ainda confirmando board/street.';
   else if (!potOk) diagnostics.trustReason = 'IA rápida ainda confirmando o pote atual.';
   else if (!actionsOk) diagnostics.trustReason = 'IA rápida ainda confirmando CHECK/CALL/RAISE e valores.';
-  else diagnostics.trustReason = 'IA rápida com confiança abaixo do limite.';
+  else diagnostics.trustReason = 'IA rápida com confiança pública abaixo do limite.';
 
+  return diagnostics.trusted;
+}
+
+function bindManualHeroToPreparedSnapshot() {
+  const machine = activeHandMachine;
+  if (!machine || machine.handId <= 0) return false;
+  const manualHero = manualHeroCards(machine);
+  if (manualHero.length !== 2) return false;
+
+  const wasTrusted = Boolean(diagnostics.trusted);
+  const ready = evaluateTrust({ hadTrusted: wasTrusted, oldActionsKey: actionKey(diagnostics.actions) });
+  if (ready && !wasTrusted) diagnostics.heroLateBindings++;
+  renderDecisionReadout();
+  return ready;
+}
+
+function apply(out) {
+  const machine = activeHandMachine;
+  if (!machine || out.handId !== machine.handId) return;
+  const hadTrusted = diagnostics.trusted;
+  const oldActionsKey = actionKey(diagnostics.actions);
+
+  diagnostics.responses++;
+  diagnostics.handId = out.handId;
+  diagnostics.lastSeenAt = now();
+  diagnostics.lastSuccessAt = diagnostics.lastSeenAt;
+  diagnostics.lastLatencyMs = Number(out.ms) || null;
+  diagnostics.confidence = Number(out.confidence) || 0;
+  diagnostics.boardConfidence = Number(out.boardConfidence) || 0;
+  diagnostics.potConfidence = Number(out.potConfidence) || 0;
+  diagnostics.actionsConfidence = Number(out.actionsConfidence) || 0;
+  diagnostics.aggressorConfidence = Number(out.aggressorConfidence) || 0;
+  diagnostics.board = Array.isArray(out.board) ? out.board.map((c) => ({ ...c })) : [];
+  diagnostics.pot = Number.isFinite(out.pot) ? out.pot : null;
+  diagnostics.heroToAct = typeof out.heroToAct === 'boolean' ? out.heroToAct : null;
+  diagnostics.aggressorName = out.aggressorName || null;
+  diagnostics.aggressorCommitted = Number.isFinite(out.aggressorCommitted) ? out.aggressorCommitted : null;
+  diagnostics.heroCommitted = Number.isFinite(out.heroCommitted) ? out.heroCommitted : null;
+  diagnostics.actions = fillDerivedCall(out.heroActions, diagnostics.aggressorCommitted, diagnostics.heroCommitted);
+  diagnostics.lastError = null;
+  diagnostics.consecutiveFailures = 0;
+  nextRetryAt = 0;
+
+  observeCandidate();
+  commitCritical(out);
+  evaluateTrust({ hadTrusted, oldActionsKey });
   renderDecisionReadout();
 }
 
@@ -372,13 +404,14 @@ function renderDecisionReadout() {
     return;
   }
   if (!diagnostics.lastSeenAt) {
-    title.textContent = diagnostics.lastError ? `Reconectando · ${diagnostics.lastError}` : 'Lendo a decisão atual…';
+    title.textContent = diagnostics.lastError ? `Reconectando · ${diagnostics.lastError}` : 'Pré-lendo a decisão atual…';
     detail.textContent = diagnostics.trustReason;
     return;
   }
 
   const actions = diagnostics.actions.map((a) => `${String(a.type).toUpperCase()}${Number.isFinite(a.amount) ? ` ${fmt(a.amount)}` : ''}`).join(' · ');
-  title.textContent = `${diagnostics.trusted ? '✓ ' : ''}IA rápida ${Math.round(diagnostics.confidence * 100)}%${Number.isFinite(diagnostics.lastLatencyMs) ? ` · ${diagnostics.lastLatencyMs}ms` : ''} · ${diagnostics.rawStableFrames}/2`;
+  const prepared = diagnostics.publicPrepared && manualHeroCards(machine).length !== 2 ? ' · MESA PRONTA' : '';
+  title.textContent = `${diagnostics.trusted ? '✓ ' : ''}IA rápida ${Math.round(diagnostics.confidence * 100)}%${Number.isFinite(diagnostics.lastLatencyMs) ? ` · ${diagnostics.lastLatencyMs}ms` : ''} · ${diagnostics.rawStableFrames}/2${prepared}`;
   detail.textContent = `${actions || 'ações pendentes'}${diagnostics.aggressorName ? ` · agressor ${diagnostics.aggressorName}` : ''}${diagnostics.consecutiveFailures ? ' · reconectando' : ''}`;
 }
 
@@ -451,7 +484,7 @@ function tick() {
   if (t < nextRetryAt) return;
   const initialBurst = burstRemaining > 0;
   const maxInFlight = initialBurst ? 2 : 1;
-  const interval = initialBurst ? 120 : diagnostics.trusted ? 2600 : 450;
+  const interval = initialBurst ? 120 : diagnostics.trusted ? 2600 : diagnostics.publicPrepared ? 1200 : 450;
   if (diagnostics.inFlight >= maxInFlight || t - lastCaptureAt < interval) return;
 
   const canvas = snapshot(source);
@@ -464,6 +497,12 @@ function tick() {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('prc:generation-change', (e) => resetHand(Number(e.detail?.generation) || activeHandMachine?.handId || 0));
+  window.addEventListener('prc:manual-state-applied', (e) => {
+    if (!e.detail?.hero || Number(e.detail.generation) !== Number(activeHandMachine?.handId)) return;
+    // No new network round-trip: attach Hero to the already prepared public
+    // snapshot and let resolver-runtime publish on its next 45ms tick.
+    bindManualHeroToPreparedSnapshot();
+  });
   window.__prcAIDecisionRefreshR14 = () => {
     lastCaptureAt = 0;
     nextRetryAt = 0;
