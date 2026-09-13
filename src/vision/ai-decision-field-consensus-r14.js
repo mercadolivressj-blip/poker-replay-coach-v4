@@ -12,6 +12,7 @@ const diagnostics = {
   aggressorHits: 0,
   prepared: false,
   potCommits: 0,
+  postApplyReasserts: 0,
   lastReason: 'boot',
 };
 
@@ -235,12 +236,12 @@ function publishConsensus() {
 }
 
 function processAppliedResponse() {
-  if (!d || !activeHandMachine || activeHandMachine.handId <= 0) return;
+  if (!d || !activeHandMachine || activeHandMachine.handId <= 0) return false;
   const currentHand = Number(activeHandMachine.handId);
   if (currentHand !== handId) reset('hand-change');
 
   const responses = Number(d.responses) || 0;
-  if (responses <= lastProcessedResponses) return;
+  if (responses <= lastProcessedResponses) return false;
   lastProcessedResponses = responses;
   diagnostics.processedResponses = responses;
 
@@ -250,6 +251,18 @@ function processAppliedResponse() {
   observeAggressor();
   commitConfirmedPot();
   publishConsensus();
+  return true;
+}
+
+function schedulePostApplyConsensus() {
+  const reassert = () => {
+    if (!d || Number(activeHandMachine?.handId) !== handId) return;
+    commitConfirmedPot();
+    publishConsensus();
+    if (diagnostics.prepared) diagnostics.postApplyReasserts++;
+  };
+  if (typeof queueMicrotask === 'function') queueMicrotask(reassert);
+  else Promise.resolve().then(reassert);
 }
 
 function installResponseHook() {
@@ -264,7 +277,7 @@ function installResponseHook() {
     },
     set(value) {
       actionsBacking = Array.isArray(value) ? value : [];
-      if (!writingConfirmedActions) processAppliedResponse();
+      if (!writingConfirmedActions && processAppliedResponse()) schedulePostApplyConsensus();
     },
   });
   d.__prcFieldConsensusActionsHook = true;
