@@ -136,4 +136,20 @@ assert.match(heroContinuity, /postflopAlive/);
 assert.match(heroContinuity, /machine\.handId === beforeHandId/);
 assert.match(heroContinuity, /r14-hero-continuity-protected/);
 
+// VIDEO REGRESSION 10: real replay preflop->flop can produce a false Hero gap
+// before the board detector has registered the flop. A physical reappearance may
+// therefore only become a new hand after a grace window with every public board
+// source still empty. If any board source sees the flop, cancel the boundary and
+// keep the manually-entered Hero in the same generation.
+assert.match(heroContinuity, /PREFLOP_REDEAL_GRACE_MS = 1000/);
+assert.match(heroContinuity, /PREFLOP_HERO_REDEAL_REASON = 'r14-physical-hero-redeal'/);
+assert.match(heroContinuity, /pendingPreflopHeroBoundary/);
+assert.match(heroContinuity, /anyPublicBoardVisible/);
+assert.match(heroContinuity, /fast\.board/);
+assert.match(heroContinuity, /full\.board/);
+assert.match(heroContinuity, /preflop-hero-boundary-pending-board-check/);
+assert.match(heroContinuity, /preflop-hero-boundary-cancelled/);
+assert.match(heroContinuity, /r14-preflop-redeal-pending-board-check/);
+assert.match(heroContinuity, /at - pendingPreflopHeroBoundary\.armedAt >= PREFLOP_REDEAL_GRACE_MS/);
+
 console.log('VIDEO REGRESSIONS R14 passed');
