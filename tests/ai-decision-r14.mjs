@@ -4,12 +4,14 @@ import { estimateActionValues } from '../src/solver/value-engine.js';
 
 const api = fs.readFileSync(new URL('../api/decision-state.js', import.meta.url), 'utf8');
 const runtime = fs.readFileSync(new URL('../src/vision/ai-decision-runtime-r14.js', import.meta.url), 'utf8');
+const fieldConsensus = fs.readFileSync(new URL('../src/vision/ai-decision-field-consensus-r14.js', import.meta.url), 'utf8');
 const consensus = fs.readFileSync(new URL('../src/vision/ai-decision-consensus-r14.js', import.meta.url), 'utf8');
 const resolver = fs.readFileSync(new URL('../src/solver/resolver-runtime.js', import.meta.url), 'utf8');
 const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
 const store = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const fullApi = fs.readFileSync(new URL('../api/full-state.js', import.meta.url), 'utf8');
+const money = fs.readFileSync(new URL('../src/vision/money-runtime-r13.js', import.meta.url), 'utf8');
 
 assert.match(api, /gpt-5\.6-luna/);
 assert.match(api, /poker_replay_decision_state/);
@@ -64,6 +66,31 @@ assert.match(runtime, /bindManualHeroToPreparedSnapshot/);
 assert.match(runtime, /prc:manual-state-applied/);
 assert.match(runtime, /No new network round-trip/);
 assert.match(runtime, /Mesa pública pronta 2\/2/);
+
+// Public evidence is now stabilized independently. A noisy aggressor/commitment
+// must not erase a confirmed board, pot or action-button consensus.
+assert.match(bootstrap, /ai-decision-field-consensus-r14/);
+assert.match(fieldConsensus, /boardHits/);
+assert.match(fieldConsensus, /potHits/);
+assert.match(fieldConsensus, /actionsHits/);
+assert.match(fieldConsensus, /aggressorHits/);
+assert.match(fieldConsensus, /const ready = boardReady && potReady && actionsReady/);
+assert.match(fieldConsensus, /Object\.defineProperty\(d, 'actions'/);
+assert.match(fieldConsensus, /processAppliedResponse/);
+assert.match(fieldConsensus, /schedulePostApplyConsensus/);
+assert.match(fieldConsensus, /queueMicrotask/);
+assert.match(fieldConsensus, /d\.rawStableFrames = Math\.max\(2/);
+assert.match(fieldConsensus, /d\.stableDecisionFrames = Math\.max\(2/);
+assert.match(fieldConsensus, /source: 'ai-decision'/);
+assert.doesNotMatch(fieldConsensus, /cardsKey\(.*hero/);
+
+// Pot UX: one fresh, high-confidence fast read can update only the DISPLAY.
+// Canonical/strategic pot still requires the field consensus above.
+assert.match(money, /fastProvisionalPot/);
+assert.match(money, /Number\(fast\.potConfidence\) < 0\.92/);
+assert.match(money, /fast\.heroToAct === true \|\| actions\.length >= 2/);
+assert.match(money, /potEl\.dataset\.fastProvisional/);
+assert.match(money, /setInterval\(syncMoneyUi, 45\)/);
 
 assert.match(consensus, /stableHits >= 2/);
 assert.match(consensus, /rawStableFrames/);
