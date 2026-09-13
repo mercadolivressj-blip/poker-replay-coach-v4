@@ -2,6 +2,7 @@ import './core/runtime-guards.js';
 const legacyUiIsolation = await import('./solver/legacy-strategy-ui-isolation-r14.js');
 await import('./main.js');
 legacyUiIsolation.restoreR14DecisionUi();
+await import('./vision/replay-only-guard-r14.js');
 await import('./vision/money-runtime-r13.js');
 await import('./vision/state-transaction-runtime-r14.js');
 await import('./vision/manual-hero-authority-r14.js');
