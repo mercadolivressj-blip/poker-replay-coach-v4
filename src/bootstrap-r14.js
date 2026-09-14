@@ -21,6 +21,7 @@ await import('./vision/ai-decision-field-consensus-r14.js');
 await import('./vision/legal-action-guard-r14.js');
 await import('./vision/ai-decision-consensus-r14.js');
 await import('./vision/manual-hero-fast-trust-r14.js');
+await import('./vision/ai-cross-source-consensus-r14.js');
 await import('./vision/manual-hero-prefetch-r14.js');
 await import('./vision/ai-decision-evidence-guard-r14.js');
 await import('./solver/study-safety-gate-r14.js');
