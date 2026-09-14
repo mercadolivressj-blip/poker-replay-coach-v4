@@ -15,12 +15,14 @@ const diagnostics = {
   reads: 0,
   bootstraps: 0,
   commits: 0,
+  directLocks: 0,
   locatedReads: 0,
   geometryReads: 0,
   ocrFallbacks: 0,
   rankConsensus: '0/2',
   suitConsensus: '0/2',
   pairConsensus: '0/2',
+  directConsensus: '0/2',
   status: 'boot',
   lastSlots: '—',
   lastError: null,
@@ -34,7 +36,7 @@ const rankScratch = [document.createElement('canvas'), document.createElement('c
 const suitScratch = [document.createElement('canvas'), document.createElement('canvas')];
 const probeScratch = [document.createElement('canvas'), document.createElement('canvas')];
 const ocr = new OcrService();
-const rankConsensus = new BoardCardConsensus({ slots: 2, windowMs: 760, minHits: 3 });
+const rankConsensus = new BoardCardConsensus({ slots: 2, windowMs: 760, minHits: 2 });
 const suitConsensus = new SuitConsensus({
   slots: 2,
   windowMs: 860,
@@ -51,6 +53,9 @@ let busy = false;
 let trackedHandId = -1;
 let pairKey = '';
 let pairHits = 0;
+let directPairKey = '';
+let directPairHits = 0;
+let directPairAt = 0;
 
 function nowMs() {
   return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
@@ -105,9 +110,13 @@ function resetConsensus(handId = activeHandMachine?.handId || 0) {
   suitConsensus.resetHand(trackedHandId);
   pairKey = '';
   pairHits = 0;
+  directPairKey = '';
+  directPairHits = 0;
+  directPairAt = 0;
   diagnostics.rankConsensus = '0/2';
   diagnostics.suitConsensus = '0/2';
   diagnostics.pairConsensus = '0/2';
+  diagnostics.directConsensus = '0/2';
 }
 
 function scoreSlots(frame, slots) {
@@ -119,51 +128,26 @@ function scoreSlots(frame, slots) {
   return Math.min(...scores);
 }
 
-function chooseSlots(frame) {
-  // Physical discovery is authoritative whenever it finds a plausible pair.
-  // This avoids letting a generic felt-relative crop outrank the two actual card
-  // faces merely because its white-pixel score is a little higher.
+function choosePhysicalSlots(frame) {
   const located = locateHeroCardSlots(frame.canvas, felt, searchScratch);
   if (located) {
-    const score = scoreSlots(frame, located);
-    if (score >= 0.12) {
-      diagnostics.lastSlots = `located:${score.toFixed(2)}`;
+    const locatedScore = scoreSlots(frame, located);
+    if (locatedScore >= 0.14) {
+      diagnostics.lastSlots = `located:${locatedScore.toFixed(2)}`;
       diagnostics.locatedReads++;
-      return { name: 'located', rankSlots: located, suitSlots: located, score };
+      return located;
     }
   }
 
-  // The higher/taller Hero crop includes the top-left rank + suit glyphs. It is
-  // the safest geometry fallback when physical discovery is temporarily hidden
-  // by animation. Never use the lower suit/rank lanes interchangeably by score.
-  if (layout?.heroSuitSlots?.length === 2) {
-    const score = scoreSlots(frame, layout.heroSuitSlots);
-    if (score >= 0.12) {
-      diagnostics.lastSlots = `hero-card-geometry:${score.toFixed(2)}`;
+  const fixed = layout?.heroSuitSlots?.length === 2 ? layout.heroSuitSlots : null;
+  if (fixed) {
+    const fixedScore = scoreSlots(frame, fixed);
+    if (fixedScore >= 0.12) {
+      diagnostics.lastSlots = `hero-full-geometry:${fixedScore.toFixed(2)}`;
       diagnostics.geometryReads++;
-      return {
-        name: 'hero-card-geometry',
-        rankSlots: layout.heroSuitSlots,
-        suitSlots: layout.heroSuitSlots,
-        score,
-      };
+      return fixed;
     }
   }
-
-  if (layout?.heroSlots?.length === 2) {
-    const score = scoreSlots(frame, layout.heroSlots);
-    if (score >= 0.12) {
-      diagnostics.lastSlots = `hero-rank-geometry:${score.toFixed(2)}`;
-      diagnostics.geometryReads++;
-      return {
-        name: 'hero-rank-geometry',
-        rankSlots: layout.heroSlots,
-        suitSlots: layout.heroSlots,
-        score,
-      };
-    }
-  }
-
   return null;
 }
 
@@ -214,6 +198,55 @@ function keyOf(cards) {
   return cards.map((card) => `${String(card.rank).toUpperCase()}:${card.suit}`).join('|');
 }
 
+function validPair(cards) {
+  return Array.isArray(cards)
+    && cards.length === 2
+    && cards.every((card) => card?.rank && card?.suit)
+    && !(cards[0].rank === cards[1].rank && cards[0].suit === cards[1].suit);
+}
+
+function hardPair(cards) {
+  if (!validPair(cards)) return false;
+  return cards.every((card) => Number(card.confidence) >= 0.70 && Number(card.suitConfidence) >= 0.84);
+}
+
+function dispatchAutoConfirmed(handId, cards) {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('prc:hero-auto-confirmed', {
+    detail: { generation: handId, cards: cards.map((card) => ({ ...card })), source: 'replay-auto' },
+  }));
+}
+
+function commitCards(cards, { direct = false } = {}) {
+  const machine = activeHandMachine;
+  if (!machine || !validPair(cards) || heroLocked()) return false;
+
+  if (machine.handId <= 0) {
+    const boot = machine.observeHero(cards.map((card) => card.rank), true, nowMs());
+    if (!boot?.newHand || machine.handId <= 0) {
+      diagnostics.status = 'bootstrap-waiting';
+      return false;
+    }
+    diagnostics.bootstraps++;
+    resetConsensus(machine.handId);
+  }
+
+  const handId = machine.handId;
+  const accepted = machine.setHero(cards, handId, { source: 'replay-auto', now: nowMs() });
+  if (!accepted) {
+    diagnostics.status = 'authority-rejected';
+    return false;
+  }
+
+  diagnostics.commits++;
+  if (direct) diagnostics.directLocks++;
+  diagnostics.reads++;
+  diagnostics.status = 'auto-locked';
+  diagnostics.lastError = null;
+  dispatchAutoConfirmed(handId, cards);
+  return true;
+}
+
 async function tick() {
   const machine = activeHandMachine;
   diagnostics.sourceAllowed = replayAllowed();
@@ -226,7 +259,7 @@ async function tick() {
   }
 
   const now = nowMs();
-  if (now - lastReadAt < 90) return;
+  if (now - lastReadAt < 80) return;
   lastReadAt = now;
 
   if (machine.handId !== trackedHandId) resetConsensus(machine.handId);
@@ -248,19 +281,46 @@ async function tick() {
       return;
     }
 
-    const selected = chooseSlots(frame);
-    if (!selected) {
+    const physicalSlots = choosePhysicalSlots(frame);
+    if (!physicalSlots) {
       diagnostics.status = 'locating-cards';
       return;
     }
 
-    const rankCrops = selected.rankSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, rankScratch[index]));
-    const suitCrops = selected.suitSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, suitScratch[index]));
+    const rankCrops = physicalSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, rankScratch[index]));
+    const suitCrops = physicalSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, suitScratch[index]));
 
     const rankReads = await Promise.all(rankCrops.map(readRank));
     if (rankReads.some((read) => !read?.rank)) {
       diagnostics.status = 'reading-ranks';
       return;
+    }
+
+    const directSuits = rankReads.map((card, index) => suitRead(card, suitCrops[index]));
+    const directCards = directSuits.map((card) => ({
+      ...card,
+      rank: String(card.rank).toUpperCase(),
+      confidence: Number(card.confidence) || 0,
+      suitConfidence: Number(card.suitConfidence) || 0,
+      source: 'hero-auto-rescue-direct',
+    }));
+
+    if (hardPair(directCards)) {
+      const directKey = keyOf(directCards);
+      const at = nowMs();
+      if (directKey === directPairKey && at - directPairAt <= 700) directPairHits++;
+      else {
+        directPairKey = directKey;
+        directPairHits = 1;
+      }
+      directPairAt = at;
+      diagnostics.directConsensus = `${Math.min(2, directPairHits)}/2`;
+      if (directPairHits >= 2 && commitCards(directCards, { direct: true })) return;
+    } else {
+      directPairKey = '';
+      directPairHits = 0;
+      directPairAt = 0;
+      diagnostics.directConsensus = '0/2';
     }
 
     const consensusHand = machine.handId || 0;
@@ -290,12 +350,8 @@ async function tick() {
       source: 'hero-auto-rescue-r14',
     }));
 
-    if (cards.some((card) => !card.rank || !card.suit)) {
+    if (!validPair(cards)) {
       diagnostics.status = 'pair-incomplete';
-      return;
-    }
-    if (cards[0].rank === cards[1].rank && cards[0].suit === cards[1].suit) {
-      diagnostics.status = 'duplicate-card-rejected';
       pairKey = '';
       pairHits = 0;
       return;
@@ -313,33 +369,7 @@ async function tick() {
       return;
     }
 
-    if (machine.handId <= 0) {
-      const boot = machine.observeHero(cards.map((card) => card.rank), true, nowMs());
-      if (!boot?.newHand || machine.handId <= 0) {
-        diagnostics.status = 'bootstrap-waiting';
-        return;
-      }
-      diagnostics.bootstraps++;
-      resetConsensus(machine.handId);
-    }
-
-    if (heroLocked()) return;
-    const handId = machine.handId;
-    const accepted = machine.setHero(cards, handId, { source: 'replay-auto', now: nowMs() });
-    if (!accepted) {
-      diagnostics.status = 'authority-rejected';
-      return;
-    }
-
-    diagnostics.commits++;
-    diagnostics.reads++;
-    diagnostics.status = 'auto-locked';
-    diagnostics.lastError = null;
-    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('prc:hero-auto-confirmed', {
-        detail: { generation: handId, cards: cards.map((card) => ({ ...card })), source: 'replay-auto' },
-      }));
-    }
+    commitCards(cards);
   } catch (error) {
     diagnostics.lastError = error?.message || 'hero-auto-rescue-failed';
     diagnostics.status = 'error';
