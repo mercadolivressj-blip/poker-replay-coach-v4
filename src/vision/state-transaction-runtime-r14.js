@@ -12,6 +12,7 @@ const diagnostics = {
   potRestores: 0,
   lifecycleBlocks: 0,
   physicalRedeals: 0,
+  strongPhysicalBoundaries: 0,
   deferredHeroRedeals: 0,
   suppressedHeroRedeals: 0,
   deferredBoardClears: 0,
@@ -158,9 +159,6 @@ function install(machine) {
     return accepted;
   };
 
-  // Hero animation can briefly disappear between streets. A postflop hand is
-  // therefore never rotated only because Hero disappeared/reappeared while the
-  // logical board is still alive. The board lane owns that boundary.
   machine.observeHero = (fp, present, now = performance.now()) => {
     if (machine.handId <= 0) {
       const out = rawObserveHero(fp, present, now);
@@ -201,6 +199,21 @@ function install(machine) {
       const reason = `r14-${observed.reason}`;
       const logicalBoardCount = Array.isArray(machine.state?.board) ? machine.state.board.length : 0;
       const boardLive = Boolean(logicalBoardCount > 0 || Number(lifecycle.visualBoardCount) > 0);
+
+      // Strong physical rollover: an old postflop board was seen, then became
+      // stably empty, Hero physically disappeared long enough to arm a gap, and
+      // Hero reappeared. This is independent evidence of a new deal and must not
+      // wait for the slower dealer/full-frame lane. It also avoids pot-only resets.
+      if (logicalBoardCount > 0 && lifecycle.boardClearArmed && Number(lifecycle.visualBoardCount) === 0) {
+        const strongReason = 'r14-physical-redeal-board-cleared';
+        diagnostics.physicalRedeals++;
+        diagnostics.boardClearRedeals++;
+        diagnostics.strongPhysicalBoundaries++;
+        machine.newHand(strongReason, now);
+        lifecycle.seedHeroPresence(true, now);
+        syncLifecycleDiagnostics();
+        return { newHand: true, reason: strongReason };
+      }
 
       if (logicalBoardCount > 0) {
         if (lifecycle.boardClearArmed && !pendingBoardClear) {
@@ -244,12 +257,6 @@ function install(machine) {
     return { newHand: false, reason: `r14-${observed.reason || 'hero-observed'}` };
   };
 
-  // A physical board clear is first treated as a candidate boundary. PokerStars
-  // can momentarily make the board detector read zero while dealing turn/river.
-  // Keep the current generation for a short grace window; a board that returns
-  // with the same or larger count proves this is the SAME hand. A genuinely
-  // empty board that survives the grace window still rotates the generation so
-  // stale river/pot/actions cannot leak into the next deal.
   machine.observeBoardCount = (count, now = performance.now()) => {
     if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
     const logicalBoardCount = Array.isArray(machine.state?.board) ? machine.state.board.length : 0;
