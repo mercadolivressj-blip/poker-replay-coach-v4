@@ -148,7 +148,7 @@ assert.match(heroContinuity, /anyPublicBoardVisible/);
 assert.match(heroContinuity, /fast\.board/);
 assert.match(heroContinuity, /full\.board/);
 assert.match(heroContinuity, /preflop-hero-boundary-pending-board-check/);
-assert.match(heroContinuity, /preflop-hero-boundary-cancelled/);
+assert.match(heroContinuity, /preflop-boundary-cancelled/);
 assert.match(heroContinuity, /r14-preflop-redeal-pending-board-check/);
 assert.match(heroContinuity, /at - pendingPreflopHeroBoundary\.armedAt >= PREFLOP_REDEAL_GRACE_MS/);
 
