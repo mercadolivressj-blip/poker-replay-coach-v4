@@ -66,24 +66,51 @@ function resetTurnLock() {
   deadlineReached = false;
 }
 
+export function decisionStateKey(handId, state = {}) {
+  const hero = (state.hero || []).map(cardId).join(',');
+  const board = (state.board || []).map(cardId).join(',');
+  const actions = (state.actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).join('|');
+  return `${handId || 0}#${state.street || '-'}#${hero}#${board}#${Number.isFinite(state.pot) ? state.pot : '-'}#${actions}`;
+}
+
+export function decisionEpochKey(handId, state = {}) {
+  const hero = (state.hero || []).map(cardId).join(',');
+  const board = (state.board || []).map(cardId).join(',');
+  const actions = (state.actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).join('|');
+  return `${handId || 0}#${state.street || '-'}#${hero}#${board}#${actions}`;
+}
+
+function currentStateKey() {
+  const machine = activeHandMachine;
+  return machine ? decisionStateKey(machine.handId, machine.state) : '0#-';
+}
+
+function currentEpochKey() {
+  const machine = activeHandMachine;
+  return machine ? decisionEpochKey(machine.handId, machine.state) : '0#-';
+}
+
+function invalidateStaleLock() {
+  if (!lockedFinal) return false;
+  const liveEpoch = currentEpochKey();
+  if (lockedFinal.epochKey === liveEpoch) return false;
+
+  lockedFinal = null;
+  current = null;
+  deadlineReached = false;
+  turnStartedAt = heroTurnActive() && manualHeroReadyForDecision() ? nowMs() : 0;
+  return true;
+}
+
 function ensureTurnClock() {
   const active = heroTurnActive();
   const heroReady = manualHeroReadyForDecision();
-  // The user's 5-minute replay exposed that the old clock started while the
-  // manual card picker was still open. By the time Hero was entered, the 7s
-  // timer had already expired and the old fallback immediately said FOLD.
-  // The decision clock now starts only AFTER Hero's two manual cards are locked.
   if (active && heroReady && !turnStartedAt) {
     turnStartedAt = nowMs();
     deadlineReached = false;
   }
   if (!active && (turnStartedAt || lockedFinal || deadlineReached)) resetTurnLock();
   return active;
-}
-
-function currentStateKey() {
-  const machine = activeHandMachine;
-  return machine ? decisionStateKey(machine.handId, machine.state) : '0#-';
 }
 
 function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisão.') {
@@ -95,7 +122,7 @@ function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisã
     stateKey: currentStateKey(),
     decision: 'ANALISANDO',
     reason: `${reason}${suffix}`,
-    details: 'Hero manual, board, pote, ações, posições e contexto da mesa precisam estar confirmados antes de publicar estratégia.',
+    details: 'Núcleo atual: Hero manual, board, pote, stacks, jogadores ativos, posição/dealer e ação atual. Histórico completo apenas refina range/confiança.',
     confidence: 0,
     source: 'r14-decision-finalizer',
   };
@@ -106,19 +133,12 @@ function deadlineInsufficientDecision(entry, elapsed) {
     ...(entry || {}),
     stateKey: entry?.stateKey || currentStateKey(),
     decision: 'LEITURA INSUFICIENTE',
-    reason: 'O prazo de leitura terminou sem um snapshot confiável. O Coach não vai transformar falta de informação em FOLD, CHECK, CALL ou RAISE.',
-    details: `SEM DECISÃO ESTRATÉGICA POR PRAZO · ${Math.round(elapsed)}ms · se uma leitura 2/2 confiável chegar enquanto ainda for sua vez, ela poderá substituir este aviso.`,
+    reason: 'O prazo terminou sem o núcleo atual ficar confiável. O Coach não vai inventar uma ação.',
+    details: `SEM DECISÃO ESTRATÉGICA POR PRAZO · ${Math.round(elapsed)}ms · se o estado atual confiável chegar enquanto ainda for sua vez, ele poderá substituir este aviso.`,
     confidence: 0,
     source: 'r14-decision-deadline-insufficient',
     deadlineFinal: true,
   };
-}
-
-export function decisionStateKey(handId, state = {}) {
-  const hero = (state.hero || []).map(cardId).join(',');
-  const board = (state.board || []).map(cardId).join(',');
-  const actions = (state.actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).join('|');
-  return `${handId || 0}#${state.street || '-'}#${hero}#${board}#${Number.isFinite(state.pot) ? state.pot : '-'}#${actions}`;
 }
 
 export function setDecisionGate(gate) {
@@ -127,6 +147,7 @@ export function setDecisionGate(gate) {
 
 export function publishDecision(entry) {
   const activeTurn = ensureTurnClock();
+  invalidateStaleLock();
 
   if (activeTurn && lockedFinal) {
     current = { ...lockedFinal };
@@ -144,10 +165,10 @@ export function publishDecision(entry) {
       next = {
         ...next,
         decision: 'LEITURA INSUFICIENTE',
-        reason: 'A trava de segurança da leitura não pôde validar esta decisão.',
-        details: 'Nenhuma recomendação estratégica é liberada sem validação da mesa.',
+        reason: 'A trava do núcleo atual não pôde validar esta decisão.',
+        details: 'Nenhuma recomendação estratégica é liberada sem Hero, board, pote, stacks/jogadores e ação atual coerentes.',
         confidence: 0,
-        source: 'study-safety-gate-r14',
+        source: 'decision-core-gate-r14',
       };
     }
   }
@@ -160,6 +181,7 @@ export function publishDecision(entry) {
         finalDecision: true,
         lockedAt: nowMs(),
         turnStartedAt: turnStartedAt || nowMs(),
+        epochKey: currentEpochKey(),
       };
       next = { ...lockedFinal };
     } else if (next.decision === 'LEITURA INSUFICIENTE') {
@@ -179,6 +201,7 @@ export function publishDecision(entry) {
 
 export function clearDecision() {
   const activeTurn = ensureTurnClock();
+  invalidateStaleLock();
   if (activeTurn) {
     if (lockedFinal) {
       current = { ...lockedFinal };
@@ -202,6 +225,7 @@ export function clearDecision() {
 }
 
 export function getDecision(stateKey = null) {
+  invalidateStaleLock();
   if (!current) return null;
   if (lockedFinal && heroTurnActive()) return current;
   if (stateKey && current.stateKey !== stateKey) return null;
@@ -210,6 +234,7 @@ export function getDecision(stateKey = null) {
 
 function decisionWatchdog() {
   const activeTurn = ensureTurnClock();
+  invalidateStaleLock();
 
   if (!activeTurn) {
     if (current) {
@@ -251,6 +276,7 @@ if (typeof window !== 'undefined') {
     fastTurnFallback: true,
     strategicDeadlineFallback: false,
     clockStartsAfterManualHero: true,
+    lockFollowsDecisionEpoch: true,
     get locked() { return lockedFinal ? { ...lockedFinal } : null; },
     get deadlineReached() { return deadlineReached; },
     get elapsedMs() { return turnStartedAt ? nowMs() - turnStartedAt : 0; },
