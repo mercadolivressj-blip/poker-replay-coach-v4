@@ -46,18 +46,27 @@ function heroTurnActive() {
   return Boolean(activeHandMachine?.state?.heroToAct || uiHeroTurn() || fastTurnSignal());
 }
 
+// Historical function name retained for test/backwards compatibility. Hero can
+// now be confirmed manually OR by the local uploaded-replay reader. The clock
+// does not care which source won; it starts only after the two complete cards
+// are locked to the current generation.
 function manualHeroReadyForDecision() {
   const machine = activeHandMachine;
   const authority = typeof window !== 'undefined' ? window.__prcManualHeroAuthorityR14 : null;
   const hero = machine?.state?.hero || [];
   return Boolean(
     machine?.handId > 0
-    && authority?.manualOnly
     && authority?.heroLocked
     && Number(authority.handId) === Number(machine.handId)
     && hero.length === 2
     && hero.every((card) => card?.rank && card?.suit)
   );
+}
+
+function heroSourceLabel() {
+  if (typeof window === 'undefined') return 'confirmado';
+  const source = window.__prcManualHeroAuthorityR14?.heroSource;
+  return source === 'replay-auto' ? 'automático local' : source === 'manual' ? 'manual' : 'confirmado';
 }
 
 function resetTurnLock() {
@@ -116,13 +125,13 @@ function ensureTurnClock() {
 function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisão.') {
   const heroReady = manualHeroReadyForDecision();
   const suffix = heroReady
-    ? ` Vou tentar fechar uma leitura confiável em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`
-    : ' O relógio estratégico só começa depois que suas duas cartas manuais forem confirmadas.';
+    ? ` Hero ${heroSourceLabel()} e relógio estratégico ativo; vou tentar fechar uma leitura confiável em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`
+    : ' O relógio estratégico ainda NÃO começou; ele só inicia depois que as duas cartas do Hero forem confirmadas.';
   return {
     stateKey: currentStateKey(),
     decision: 'ANALISANDO',
     reason: `${reason}${suffix}`,
-    details: 'Núcleo atual: Hero manual, board, pote, stacks, jogadores ativos, posição/dealer e ação atual. Histórico completo apenas refina range/confiança.',
+    details: 'Núcleo atual: Hero confirmado, board, pote, stacks, jogadores ativos, posição/dealer e ação atual. Histórico completo apenas refina range/confiança.',
     confidence: 0,
     source: 'r14-decision-finalizer',
   };
@@ -133,8 +142,8 @@ function deadlineInsufficientDecision(entry, elapsed) {
     ...(entry || {}),
     stateKey: entry?.stateKey || currentStateKey(),
     decision: 'LEITURA INSUFICIENTE',
-    reason: 'O prazo terminou sem o núcleo atual ficar confiável. O Coach não vai inventar uma ação.',
-    details: `SEM DECISÃO ESTRATÉGICA POR PRAZO · ${Math.round(elapsed)}ms · se o estado atual confiável chegar enquanto ainda for sua vez, ele poderá substituir este aviso.`,
+    reason: 'O prazo terminou sem o núcleo atual ficar confiável. O Coach não vai transformar falta de informação em FOLD, CHECK, CALL ou RAISE.',
+    details: `SEM DECISÃO ESTRATÉGICA POR PRAZO · ${Math.round(elapsed)}ms · o prazo conta somente depois do Hero confirmado; se o estado atual confiável chegar enquanto ainda for sua vez, ele poderá substituir este aviso.`,
     confidence: 0,
     source: 'r14-decision-deadline-insufficient',
     deadlineFinal: true,
@@ -211,7 +220,7 @@ export function clearDecision() {
         deadlineReached = true;
         current = deadlineInsufficientDecision(current, elapsed);
       } else {
-        current = analyzingEntry(elapsed, manualHeroReadyForDecision() ? 'Ainda estou fechando a ação atual.' : 'Aguardando suas duas cartas manuais.');
+        current = analyzingEntry(elapsed, manualHeroReadyForDecision() ? 'Ainda estou fechando a ação atual.' : 'Aguardando confirmação das suas duas cartas.');
       }
     }
     dispatchCurrent();
@@ -247,7 +256,7 @@ function decisionWatchdog() {
   if (lockedFinal) return;
   if (!manualHeroReadyForDecision()) {
     if (!current || current.decision !== 'ANALISANDO') {
-      current = analyzingEntry(0, 'Aguardando suas duas cartas manuais.');
+      current = analyzingEntry(0, 'Aguardando confirmação das suas duas cartas.');
       dispatchCurrent();
     }
     return;
@@ -275,8 +284,11 @@ if (typeof window !== 'undefined') {
     watchdogMs: WATCHDOG_MS,
     fastTurnFallback: true,
     strategicDeadlineFallback: false,
+    // Legacy flag retained for compatibility; semantic replacement below.
     clockStartsAfterManualHero: true,
+    clockStartsAfterHeroConfirmation: true,
     lockFollowsDecisionEpoch: true,
+    get heroSource() { return window.__prcManualHeroAuthorityR14?.heroSource || null; },
     get locked() { return lockedFinal ? { ...lockedFinal } : null; },
     get deadlineReached() { return deadlineReached; },
     get elapsedMs() { return turnStartedAt ? nowMs() - turnStartedAt : 0; },
