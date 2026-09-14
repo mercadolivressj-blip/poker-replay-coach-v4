@@ -1,14 +1,16 @@
 import { activeHandMachine } from '../core/state-machine.js';
+import { activeTableStateTracker } from '../core/table-state-tracker.js';
 
 let promptedHandId = 0;
 let lastHeroAppliedHandId = 0;
+let lastHeroAppliedDealerSeat = null;
 let armedPromptHandId = 0;
 let armedPromptReason = 'boot';
+let dealerCandidate = null;
+let dealerCandidateHits = 0;
 
 const CONFIRMED_GENERATION_REASONS = new Set([
   'first-cards',
-  'r14-board-cleared-postflop',
-  'r14-board-redeal-after-clear',
   'r14-physical-hero-redeal',
 ]);
 
@@ -34,6 +36,17 @@ function physicalHeroReadyForPrompt() {
   return life.seenHeroPresent === true && life.heroGapArmed !== true;
 }
 
+function currentDealerSeat() {
+  const tableDealer = activeTableStateTracker?.latest?.dealerSeat;
+  if (Number.isInteger(tableDealer)) return tableDealer;
+  if (typeof window !== 'undefined') {
+    const seats = window.__prcAIStateR14?.seats;
+    const dealer = Array.isArray(seats) ? seats.find((seat) => seat?.dealer) : null;
+    if (Number.isInteger(dealer?.seatIndex)) return dealer.seatIndex;
+  }
+  return null;
+}
+
 function confirmedGeneration(handId, reason) {
   if (handId <= 0) return false;
   if (handId === 1 && lastHeroAppliedHandId === 0) return true;
@@ -42,14 +55,49 @@ function confirmedGeneration(handId, reason) {
   if (!CONFIRMED_GENERATION_REASONS.has(normalized)) return false;
 
   if (normalized === 'r14-physical-hero-redeal') {
-    const guard = typeof window !== 'undefined' ? window.__prcHeroContinuityGuardR14 : null;
-    const guardReason = String(guard?.lastReason || '');
-    return guardReason.includes('confirmed-dealer-moved')
-      || guardReason.includes('confirmed-pot-reset')
-      || Number(guard?.committedPreflopHeroBoundaries) > 0;
+    const proof = typeof window !== 'undefined' ? window.__prcHeroRedealProofGuardR14 : null;
+    const continuity = typeof window !== 'undefined' ? window.__prcHeroContinuityGuardR14 : null;
+    const proofConfirmed = String(proof?.lastReason || '').includes('dealer-move-confirmed-2of2')
+      || Number(proof?.confirmedDealerBoundaries) > 0;
+    const continuityConfirmed = String(continuity?.lastReason || '').includes('confirmed-dealer-moved');
+    return proofConfirmed || continuityConfirmed;
   }
 
   return true;
+}
+
+function maybeArmFromStableDealerMove() {
+  const handId = Number(activeHandMachine?.handId) || 0;
+  if (handId <= 0 || lastHeroAppliedHandId <= 0 || handId === lastHeroAppliedHandId || armedPromptHandId === handId) return false;
+  if (!Number.isInteger(lastHeroAppliedDealerSeat)) return false;
+
+  const dealer = currentDealerSeat();
+  if (!Number.isInteger(dealer) || dealer === lastHeroAppliedDealerSeat) {
+    dealerCandidate = null;
+    dealerCandidateHits = 0;
+    return false;
+  }
+
+  if (dealerCandidate === dealer) dealerCandidateHits++;
+  else {
+    dealerCandidate = dealer;
+    dealerCandidateHits = 1;
+  }
+  if (dealerCandidateHits < 2) return false;
+
+  armedPromptHandId = handId;
+  armedPromptReason = 'stable-dealer-move-2of2';
+  dealerCandidate = null;
+  dealerCandidateHits = 0;
+  if (promptedHandId >= handId) promptedHandId = handId - 1;
+  return true;
+}
+
+function rememberDealerBaseline() {
+  const handId = Number(activeHandMachine?.handId) || 0;
+  if (!heroReady() || handId <= 0 || handId !== lastHeroAppliedHandId) return;
+  const dealer = currentDealerSeat();
+  if (Number.isInteger(dealer)) lastHeroAppliedDealerSeat = dealer;
 }
 
 function markManualUi() {
@@ -72,13 +120,12 @@ function promptCurrentHand() {
   const handId = Number(activeHandMachine?.handId) || 0;
   if (handId <= 0 || promptedHandId === handId || heroReady()) return;
 
-  // After the user has already entered a Hero once, never let the 220ms polling
-  // loop reopen the modal just because some internal detector cleared authority.
-  // A later hand must be explicitly armed by a confirmed public generation.
-  if (lastHeroAppliedHandId > 0 && armedPromptHandId !== handId) return;
+  maybeArmFromStableDealerMove();
 
-  // Even a confirmed old-hand boundary can happen before the new physical cards
-  // are dealt. Wait until the fresh generation has actually seen Hero cards.
+  // After Hero was entered once, no board-clear, pot glitch or internal
+  // generation may reopen the modal. A later hand must be armed by a stable
+  // public dealer move or an already dealer-confirmed physical redeal.
+  if (lastHeroAppliedHandId > 0 && armedPromptHandId !== handId) return;
   if (!physicalHeroReadyForPrompt()) return;
 
   const metric = markManualUi();
@@ -102,31 +149,38 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    // An unconfirmed internal generation is never allowed to steal focus by
-    // opening the manual card editor. Keep the modal disarmed and let the
-    // lifecycle/diagnostics resolve the boundary first.
+    // Board-only or otherwise unproven generations never steal focus. Polling
+    // may arm this hand later only after the dealer move is seen twice.
     armedPromptReason = `blocked:${reason || 'unknown'}`;
+    dealerCandidate = null;
+    dealerCandidateHits = 0;
   });
 
   window.addEventListener('prc:manual-state-applied', (event) => {
     if (!event.detail?.hero) return;
     const generation = Number(event.detail.generation) || Number(activeHandMachine?.handId) || 0;
     lastHeroAppliedHandId = generation;
+    lastHeroAppliedDealerSeat = currentDealerSeat();
     promptedHandId = generation;
     armedPromptHandId = 0;
     armedPromptReason = 'hero-applied';
+    dealerCandidate = null;
+    dealerCandidateHits = 0;
   });
 
   window.__prcPromptManualHeroR14 = promptCurrentHand;
   window.__prcManualHeroEntryR14 = {
     get promptedHandId() { return promptedHandId; },
     get lastHeroAppliedHandId() { return lastHeroAppliedHandId; },
+    get lastHeroAppliedDealerSeat() { return lastHeroAppliedDealerSeat; },
     get armedPromptHandId() { return armedPromptHandId; },
     get armedPromptReason() { return armedPromptReason; },
+    get dealerCandidateHits() { return dealerCandidateHits; },
   };
 }
 
 setInterval(() => {
   markManualUi();
+  rememberDealerBaseline();
   promptCurrentHand();
 }, 220);
