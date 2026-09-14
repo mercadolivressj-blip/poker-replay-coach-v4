@@ -136,20 +136,24 @@ assert.match(heroContinuity, /postflopAlive/);
 assert.match(heroContinuity, /machine\.handId === beforeHandId/);
 assert.match(heroContinuity, /r14-hero-continuity-protected/);
 
-// VIDEO REGRESSION 10: real replay preflop->flop can produce a false Hero gap
-// before the board detector has registered the flop. A physical reappearance may
-// therefore only become a new hand after a grace window with every public board
-// source still empty. If any board source sees the flop, cancel the boundary and
-// keep the manually-entered Hero in the same generation.
-assert.match(heroContinuity, /PREFLOP_REDEAL_GRACE_MS = 1000/);
+// VIDEO REGRESSION 10: physical Hero disappearance/reappearance alone is NEVER
+// sufficient to clear a manually-entered Hero. A pending preflop boundary must
+// wait for public redeal evidence: dealer/button movement or a stable pot reset.
+// Any visible board cancels the pending boundary and proves the same hand lives.
+assert.match(heroContinuity, /PREFLOP_REDEAL_GRACE_MS = 250/);
 assert.match(heroContinuity, /PREFLOP_HERO_REDEAL_REASON = 'r14-physical-hero-redeal'/);
 assert.match(heroContinuity, /pendingPreflopHeroBoundary/);
+assert.match(heroContinuity, /preflopBoundaryPending/);
+assert.match(heroContinuity, /lastStableDealerSeat/);
+assert.match(heroContinuity, /lastStablePublicPot/);
+assert.match(heroContinuity, /function redealEvidence/);
+assert.match(heroContinuity, /dealerChanged \|\| potReset/);
+assert.match(heroContinuity, /preflop-hero-boundary-awaiting-public-evidence/);
+assert.match(heroContinuity, /r14-preflop-redeal-awaiting-public-boundary/);
+assert.match(heroContinuity, /preflop-hero-boundary-confirmed-dealer-moved/);
+assert.match(heroContinuity, /preflop-hero-boundary-confirmed-pot-reset/);
 assert.match(heroContinuity, /anyPublicBoardVisible/);
-assert.match(heroContinuity, /fast\.board/);
-assert.match(heroContinuity, /full\.board/);
-assert.match(heroContinuity, /preflop-hero-boundary-pending-board-check/);
-assert.match(heroContinuity, /preflop-boundary-cancelled/);
-assert.match(heroContinuity, /r14-preflop-redeal-pending-board-check/);
-assert.match(heroContinuity, /at - pendingPreflopHeroBoundary\.armedAt >= PREFLOP_REDEAL_GRACE_MS/);
+assert.match(safety, /boundaryPending/);
+assert.match(safety, /public-redeal-evidence/);
 
 console.log('VIDEO REGRESSIONS R14 passed');
