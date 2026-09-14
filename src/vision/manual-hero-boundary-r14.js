@@ -1,9 +1,5 @@
 import { activeHandMachine } from '../core/state-machine.js';
 
-function cloneHero(cards) {
-  return (cards || []).map((card) => ({ ...card }));
-}
-
 function publicLifecycle() {
   const source = typeof window !== 'undefined' ? window.__prcPublicLifecycleR14 : null;
   return typeof source?.view === 'function' ? source.view() : source;
@@ -21,38 +17,38 @@ function shouldRotateFromManualHero(machine) {
   return Boolean(physicalEmpty && (life.boardClearArmed || Number(life.maxVisualBoardCount) > 0));
 }
 
-function rebaseManualHeroIfNeeded(event) {
-  if (!event?.detail?.hero || event.detail?.rebasedBoundary) return;
+// R14 used to create a new generation immediately when the user finished
+// entering Hero while a stale logical board happened to be visible. In a
+// continuously playing replay that can occur during an ordinary street animation
+// and was one of the paths that erased Hero and reopened the popup mid-hand.
+//
+// Manual/automatic Hero confirmation is now identity only. The central Hero
+// continuity guard owns EVERY post-lock hand boundary and requires a stable
+// dealer move before generation can rotate.
+function observeManualHero(event) {
+  if (!event?.detail?.hero) return;
   const machine = activeHandMachine;
-  if (!shouldRotateFromManualHero(machine)) return;
-
-  const hero = cloneHero(machine.state.hero);
-  if (hero.length !== 2 || !hero.every((card) => card?.rank && card?.suit)) return;
-
-  const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-  machine.newHand('r14-manual-hero-confirms-redeal', now);
-  const accepted = machine.setHero(hero, machine.handId, { source: 'manual', now });
-  if (!accepted) return;
-
-  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('prc:manual-state-applied', {
-      detail: {
-        generation: machine.handId,
-        hero: true,
-        board: false,
-        pot: false,
-        rebasedBoundary: true,
-      },
-    }));
+  const candidate = shouldRotateFromManualHero(machine);
+  if (typeof window !== 'undefined') {
+    const diag = window.__prcManualHeroBoundaryR14;
+    if (diag) {
+      diag.observations++;
+      diag.lastCandidate = candidate;
+      diag.lastGeneration = machine?.handId || 0;
+    }
   }
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('prc:manual-state-applied', rebaseManualHeroIfNeeded);
   window.__prcManualHeroBoundaryR14 = {
     enabled: true,
-    rule: 'manual-hero-plus-stable-empty-board-rotates-stale-public-state',
+    observations: 0,
+    lastCandidate: false,
+    lastGeneration: 0,
+    rule: 'hero-confirmation-never-creates-generation; stable-dealer-proof-owns-boundary',
   };
+  window.addEventListener('prc:manual-state-applied', observeManualHero);
+  window.addEventListener('prc:hero-auto-confirmed', observeManualHero);
 }
 
 export { shouldRotateFromManualHero };
