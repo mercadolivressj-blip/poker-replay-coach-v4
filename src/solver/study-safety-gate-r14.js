@@ -153,6 +153,8 @@ function tableContextTrust(d = null) {
 
 function decisionTrust() {
   const d = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
+  const continuity = typeof window !== 'undefined' ? window.__prcHeroContinuityGuardR14 : null;
+  const boundaryPending = Boolean(continuity?.preflopBoundaryPending);
   const machine = activeHandMachine;
   const t = nowMs();
   const age = Number.isFinite(Number(d?.lastSeenAt)) && Number(d.lastSeenAt) > 0 ? t - Number(d.lastSeenAt) : Infinity;
@@ -169,6 +171,7 @@ function decisionTrust() {
   const tableContext = tableContextTrust(d);
   const trusted = Boolean(d?.trusted)
     && heroReady
+    && !boundaryPending
     && rawStableFrames >= 2
     && stableFrames >= 2
     && sameHand
@@ -180,13 +183,15 @@ function decisionTrust() {
     && hasPricedCall;
 
   let reason = heroReady ? (d?.trustReason || 'A IA rápida ainda não confirmou a decisão atual.') : 'Informe suas duas cartas manualmente para liberar a decisão.';
-  if (heroReady && !publicBoard.trusted) reason = publicBoard.reason;
+  if (heroReady && boundaryPending) reason = 'Confirmando publicamente se começou uma nova mão; preservando suas cartas até dealer/pote provarem o redeal.';
+  else if (heroReady && !publicBoard.trusted) reason = publicBoard.reason;
   else if (heroReady && !tableContext.trusted) reason = tableContext.reason;
   else if (heroReady && rawStableFrames < 2) reason = 'Aguardando a segunda leitura rápida igual (2/2).';
 
   return {
     trusted,
     heroReady,
+    boundaryPending,
     reason,
     age,
     freshnessWindow,
@@ -237,7 +242,7 @@ setDecisionGate((entry) => {
       ...entry,
       decision: 'LEITURA INSUFICIENTE',
       reason,
-      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · IA rápida ${fast.rawStableFrames}/2 (consenso ${fast.stableFrames}/2) · board físico ${Number.isFinite(board.physicalCount) ? board.physicalCount : '?'} / estado ${Number.isFinite(board.logicalCount) ? board.logicalCount : '?'}${board.fastIdentityConsensus ? ' · identidade rápida OK' : ''} · mesa ${table.heroPosition || '?'} / ${table.preflopMode || machine?.state?.street || '?'} · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'sem agressor confirmado'} · ${age}.`,
+      details: `Segurança de estudo · Hero manual ${fast.heroReady ? 'OK' : 'pendente'} · IA rápida ${fast.rawStableFrames}/2 (consenso ${fast.stableFrames}/2)${fast.boundaryPending ? ' · redeal público pendente' : ''} · board físico ${Number.isFinite(board.physicalCount) ? board.physicalCount : '?'} / estado ${Number.isFinite(board.logicalCount) ? board.logicalCount : '?'}${board.fastIdentityConsensus ? ' · identidade rápida OK' : ''} · mesa ${table.heroPosition || '?'} / ${table.preflopMode || machine?.state?.street || '?'} · confiança ${Math.round(fast.confidence * 100)}% · ${fast.actions} ações atuais · ${fast.aggressorName ? `agressor ${fast.aggressorName}` : 'sem agressor confirmado'} · ${age}.`,
       confidence: 0,
       source: 'study-safety-gate-ai-r14',
     };
@@ -260,7 +265,7 @@ setDecisionGate((entry) => {
 if (typeof window !== 'undefined') {
   window.__prcStudySafetyGateR14 = {
     enabled: true,
-    requires: ['manual-hero','ai-decision-raw-2of2','physical-board-or-fast-identity','fresh-table-context'],
+    requires: ['manual-hero','public-redeal-evidence','ai-decision-raw-2of2','physical-board-or-fast-identity','fresh-table-context'],
     stableDecisionFrames: 2,
     rawDecisionFrames: 2,
     physicalBoardConsensus: 3,
