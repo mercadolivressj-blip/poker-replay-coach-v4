@@ -110,9 +110,13 @@ assert.doesNotMatch(rescue, /candidates\.sort/);
 assert.match(rescue, /const rankCrops = physicalSlots\.map/);
 assert.match(rescue, /const suitCrops = physicalSlots\.map/);
 assert.match(rescue, /directConsensus/);
-assert.match(rescue, /directPairHits >= 2/);
+assert.match(rescue, /directPairHits >= 3/);
 assert.match(rescue, /commitCards\(directCards, \{ direct: true \}\)/);
-assert.match(rescue, /minHits: 2/);
+assert.match(rescue, /minHits: 3/);
+assert.match(rescue, /rankSource: card\.source/);
+assert.match(rescue, /hero-auto-rescue-local/);
+assert.match(rescue, /ocrDisagreements/);
+assert.match(rescue, /faceVsLowConflict/);
 assert.match(rescue, /source: 'hero-auto-rescue-direct'/);
 
 assert.match(authority, /replay\?\.screenReplayReady === true/);
