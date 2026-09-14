@@ -120,18 +120,51 @@ function scoreSlots(frame, slots) {
 }
 
 function chooseSlots(frame) {
+  // Physical discovery is authoritative whenever it finds a plausible pair.
+  // This avoids letting a generic felt-relative crop outrank the two actual card
+  // faces merely because its white-pixel score is a little higher.
   const located = locateHeroCardSlots(frame.canvas, felt, searchScratch);
-  const candidates = [];
-  if (located) candidates.push({ name: 'located', slots: located, score: scoreSlots(frame, located) });
-  if (layout?.heroSuitSlots?.length === 2) candidates.push({ name: 'hero-suit-geometry', slots: layout.heroSuitSlots, score: scoreSlots(frame, layout.heroSuitSlots) });
-  if (layout?.heroSlots?.length === 2) candidates.push({ name: 'hero-rank-geometry', slots: layout.heroSlots, score: scoreSlots(frame, layout.heroSlots) });
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0] || null;
-  if (!best || best.score < 0.14) return null;
-  diagnostics.lastSlots = `${best.name}:${best.score.toFixed(2)}`;
-  if (best.name === 'located') diagnostics.locatedReads++;
-  else diagnostics.geometryReads++;
-  return best;
+  if (located) {
+    const score = scoreSlots(frame, located);
+    if (score >= 0.12) {
+      diagnostics.lastSlots = `located:${score.toFixed(2)}`;
+      diagnostics.locatedReads++;
+      return { name: 'located', rankSlots: located, suitSlots: located, score };
+    }
+  }
+
+  // The higher/taller Hero crop includes the top-left rank + suit glyphs. It is
+  // the safest geometry fallback when physical discovery is temporarily hidden
+  // by animation. Never use the lower suit/rank lanes interchangeably by score.
+  if (layout?.heroSuitSlots?.length === 2) {
+    const score = scoreSlots(frame, layout.heroSuitSlots);
+    if (score >= 0.12) {
+      diagnostics.lastSlots = `hero-card-geometry:${score.toFixed(2)}`;
+      diagnostics.geometryReads++;
+      return {
+        name: 'hero-card-geometry',
+        rankSlots: layout.heroSuitSlots,
+        suitSlots: layout.heroSuitSlots,
+        score,
+      };
+    }
+  }
+
+  if (layout?.heroSlots?.length === 2) {
+    const score = scoreSlots(frame, layout.heroSlots);
+    if (score >= 0.12) {
+      diagnostics.lastSlots = `hero-rank-geometry:${score.toFixed(2)}`;
+      diagnostics.geometryReads++;
+      return {
+        name: 'hero-rank-geometry',
+        rankSlots: layout.heroSlots,
+        suitSlots: layout.heroSlots,
+        score,
+      };
+    }
+  }
+
+  return null;
 }
 
 function localRank(crop) {
@@ -221,13 +254,8 @@ async function tick() {
       return;
     }
 
-    const rankSlots = selected.slots;
-    const suitSlots = selected.name === 'located'
-      ? selected.slots
-      : (layout.heroSuitSlots?.length === 2 ? layout.heroSuitSlots : selected.slots);
-
-    const rankCrops = rankSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, rankScratch[index]));
-    const suitCrops = suitSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, suitScratch[index]));
+    const rankCrops = selected.rankSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, rankScratch[index]));
+    const suitCrops = selected.suitSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 190, suitScratch[index]));
 
     const rankReads = await Promise.all(rankCrops.map(readRank));
     if (rankReads.some((read) => !read?.rank)) {
