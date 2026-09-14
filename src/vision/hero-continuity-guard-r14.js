@@ -8,15 +8,23 @@ const diagnostics = {
   deferredPreflopHeroBoundaries: 0,
   cancelledPreflopHeroBoundaries: 0,
   committedPreflopHeroBoundaries: 0,
+  deferredBoardBoundaries: 0,
+  cancelledBoardBoundaries: 0,
+  committedBoardBoundaries: 0,
   confirmedPreflopByDealer: 0,
+  // Kept for backwards diagnostics. Pot reset is deliberately no longer proof.
   confirmedPreflopByPotReset: 0,
+  blockedPotOnlyBoundaries: 0,
+  dealerProofHits: 0,
   preflopBoundaryPending: false,
+  boardBoundaryPending: false,
   lastBoundaryEvidence: null,
   lastReason: 'boot',
 };
 
 const HERO_RECENT_MS = 1000;
 const PREFLOP_REDEAL_GRACE_MS = 250;
+const DEALER_CONFIRM_HITS = 2;
 const PREFLOP_HERO_REDEAL_REASON = 'r14-physical-hero-redeal';
 const BOARD_BOUNDARY_REASONS = new Set([
   'r14-board-cleared-postflop',
@@ -24,7 +32,8 @@ const BOARD_BOUNDARY_REASONS = new Set([
 ]);
 
 let pendingPreflopHeroBoundary = null;
-let committingPendingPreflopBoundary = false;
+let pendingBoardBoundary = null;
+let committingPendingBoundary = false;
 let lastStableDealerSeat = null;
 let lastStablePublicPot = null;
 
@@ -42,6 +51,16 @@ function heroRecentlyPhysical(machine, at = nowMs()) {
   return lastSeen > 0 && at - lastSeen <= HERO_RECENT_MS;
 }
 
+function authorityLocked(machine) {
+  if (typeof window === 'undefined') return false;
+  const authority = window.__prcManualHeroAuthorityR14;
+  return Boolean(
+    authority?.heroLocked
+    && Number(authority.handId) === Number(machine?.handId)
+    && heroComplete(machine)
+  );
+}
+
 function postflopAlive(machine) {
   return Array.isArray(machine?.state?.board) && machine.state.board.length >= 3;
 }
@@ -51,21 +70,13 @@ function publicLifecycleView() {
   return typeof life?.view === 'function' ? life.view() : life;
 }
 
-function anyPublicBoardVisible(machine) {
-  const logical = Array.isArray(machine?.state?.board) ? machine.state.board.length : 0;
-  if (logical > 0) return true;
-
+function physicalBoardCount() {
   const life = publicLifecycleView();
-  if (Number(life?.visualBoardCount) > 0) return true;
+  return Number.isFinite(Number(life?.visualBoardCount)) ? Number(life.visualBoardCount) : null;
+}
 
-  if (typeof window !== 'undefined') {
-    const fast = window.__prcAIDecisionR14;
-    const full = window.__prcAIStateR14;
-    if (Array.isArray(fast?.board) && fast.board.length > 0) return true;
-    if (Array.isArray(full?.board) && full.board.length > 0) return true;
-  }
-
-  return false;
+function physicalBoardVisible() {
+  return Number(physicalBoardCount()) > 0;
 }
 
 function currentDealerSeat() {
@@ -79,6 +90,19 @@ function currentDealerSeat() {
     if (Number.isInteger(fullDealer?.seatIndex)) return fullDealer.seatIndex;
   }
   return null;
+}
+
+function rememberedHeroDealerSeat() {
+  if (typeof window === 'undefined') return null;
+  const seat = window.__prcManualHeroEntryR14?.lastHeroAppliedDealerSeat;
+  return Number.isInteger(seat) ? seat : null;
+}
+
+function boundaryDealerBaseline() {
+  if (Number.isInteger(lastStableDealerSeat)) return lastStableDealerSeat;
+  const remembered = rememberedHeroDealerSeat();
+  if (Number.isInteger(remembered)) return remembered;
+  return currentDealerSeat();
 }
 
 function stablePublicPot(machine) {
@@ -97,7 +121,7 @@ function stablePublicPot(machine) {
 }
 
 function rememberStableBoundaryBaseline(machine, present) {
-  if (!present || pendingPreflopHeroBoundary || anyPublicBoardVisible(machine)) return;
+  if (!present || pendingPreflopHeroBoundary || pendingBoardBoundary || physicalBoardVisible()) return;
   const life = publicLifecycleView();
   if (life?.heroGapArmed) return;
 
@@ -107,13 +131,36 @@ function rememberStableBoundaryBaseline(machine, present) {
   if (Number.isFinite(pot) && pot > 0) lastStablePublicPot = pot;
 }
 
-function redealEvidence(machine, pending) {
+function newPending(machine, reason, at) {
+  return {
+    handId: machine.handId,
+    reason: String(reason || ''),
+    armedAt: at,
+    baselineDealerSeat: boundaryDealerBaseline(),
+    baselinePot: Number.isFinite(lastStablePublicPot) ? lastStablePublicPot : stablePublicPot(machine),
+    candidateDealer: null,
+    dealerHits: 0,
+  };
+}
+
+function dealerProof(machine, pending) {
   const dealer = currentDealerSeat();
   const pot = stablePublicPot(machine);
   const baselineDealer = Number.isInteger(pending?.baselineDealerSeat) ? pending.baselineDealerSeat : null;
   const baselinePot = Number.isFinite(pending?.baselinePot) ? pending.baselinePot : null;
 
   const dealerChanged = baselineDealer !== null && Number.isInteger(dealer) && dealer !== baselineDealer;
+  if (dealerChanged) {
+    if (pending.candidateDealer === dealer) pending.dealerHits++;
+    else {
+      pending.candidateDealer = dealer;
+      pending.dealerHits = 1;
+    }
+  } else {
+    pending.candidateDealer = null;
+    pending.dealerHits = 0;
+  }
+
   const potReset = Number.isFinite(baselinePot)
     && baselinePot > 0
     && Number.isFinite(pot)
@@ -121,10 +168,15 @@ function redealEvidence(machine, pending) {
     && pot <= baselinePot * 0.72
     && baselinePot - pot >= Math.max(0.01, baselinePot * 0.20);
 
+  if (potReset && !dealerChanged) diagnostics.blockedPotOnlyBoundaries++;
+  diagnostics.dealerProofHits = pending.dealerHits;
+
   return {
-    confirmed: dealerChanged || potReset,
+    confirmed: dealerChanged && pending.dealerHits >= DEALER_CONFIRM_HITS,
     dealerChanged,
+    dealerHits: pending.dealerHits,
     potReset,
+    potResetAccepted: false,
     baselineDealer,
     dealer,
     baselinePot,
@@ -132,16 +184,22 @@ function redealEvidence(machine, pending) {
   };
 }
 
-function shouldProtect(machine, reason, at) {
+function shouldProtect(machine, reason, at = nowMs()) {
   return BOARD_BOUNDARY_REASONS.has(String(reason || ''))
     && postflopAlive(machine)
     && heroComplete(machine)
-    && heroRecentlyPhysical(machine, at);
+    && (heroRecentlyPhysical(machine, at) || authorityLocked(machine));
 }
 
 function shouldDeferPreflopHeroBoundary(machine, reason) {
   return String(reason || '') === PREFLOP_HERO_REDEAL_REASON
     && !postflopAlive(machine)
+    && heroComplete(machine);
+}
+
+function shouldDeferBoardBoundary(machine, reason) {
+  return BOARD_BOUNDARY_REASONS.has(String(reason || ''))
+    && postflopAlive(machine)
     && heroComplete(machine);
 }
 
@@ -154,6 +212,61 @@ function cancelPendingPreflop(reason = 'board-visible') {
   return true;
 }
 
+function cancelPendingBoard(reason = 'board-returned') {
+  if (!pendingBoardBoundary) return false;
+  pendingBoardBoundary = null;
+  diagnostics.boardBoundaryPending = false;
+  diagnostics.cancelledBoardBoundaries++;
+  diagnostics.lastReason = `board-boundary-cancelled:${reason}`;
+  return true;
+}
+
+function maybeCommitPending(machine, kind, at = nowMs()) {
+  const pending = kind === 'board' ? pendingBoardBoundary : pendingPreflopHeroBoundary;
+  if (!pending || pending.handId !== machine.handId) return null;
+  if (physicalBoardVisible()) return null;
+
+  const evidence = dealerProof(machine, pending);
+  diagnostics.lastBoundaryEvidence = evidence;
+  if (!evidence.confirmed) {
+    diagnostics.lastReason = kind === 'board'
+      ? 'board-boundary-awaiting-stable-dealer-move'
+      : 'preflop-hero-boundary-awaiting-stable-dealer-move';
+    return null;
+  }
+
+  if (kind === 'board') {
+    pendingBoardBoundary = null;
+    diagnostics.boardBoundaryPending = false;
+  } else {
+    pendingPreflopHeroBoundary = null;
+    diagnostics.preflopBoundaryPending = false;
+  }
+
+  const before = machine.handId;
+  committingPendingBoundary = true;
+  try {
+    machine.newHand(pending.reason, at);
+  } finally {
+    committingPendingBoundary = false;
+  }
+
+  if (machine.handId === before) return null;
+  lastStableDealerSeat = evidence.dealer;
+  lastStablePublicPot = evidence.pot;
+  diagnostics.dealerProofHits = 0;
+
+  if (kind === 'board') {
+    diagnostics.committedBoardBoundaries++;
+    diagnostics.lastReason = 'board-boundary-confirmed-dealer-moved-2of2';
+  } else {
+    diagnostics.committedPreflopHeroBoundaries++;
+    diagnostics.confirmedPreflopByDealer++;
+    diagnostics.lastReason = 'preflop-hero-boundary-confirmed-dealer-moved-2of2';
+  }
+  return { newHand: true, reason: pending.reason };
+}
+
 function install(machine) {
   if (!machine || machine.__prcHeroContinuityGuardR14) return;
 
@@ -162,89 +275,70 @@ function install(machine) {
   const transactionObserveBoardCount = machine.observeBoardCount.bind(machine);
 
   machine.newHand = (reason, at = nowMs()) => {
-    if (shouldProtect(machine, reason, at)) {
+    if (committingPendingBoundary) {
+      diagnostics.lastReason = `allowed-confirmed:${reason || 'unknown'}`;
+      return transactionNewHand(reason, at);
+    }
+
+    if (shouldDeferBoardBoundary(machine, reason)) {
+      if (!pendingBoardBoundary || pendingBoardBoundary.handId !== machine.handId) {
+        pendingBoardBoundary = newPending(machine, reason, at);
+        diagnostics.deferredBoardBoundaries++;
+      }
+      diagnostics.boardBoundaryPending = true;
       diagnostics.suppressedGenerationChanges++;
-      diagnostics.lastReason = `protected:${reason}`;
+      diagnostics.lastBoundaryEvidence = null;
+      diagnostics.lastReason = `board-boundary-pending-dealer-proof:${reason}`;
       return false;
     }
 
-    if (!committingPendingPreflopBoundary && shouldDeferPreflopHeroBoundary(machine, reason)) {
-      pendingPreflopHeroBoundary = {
-        handId: machine.handId,
-        reason: String(reason),
-        armedAt: at,
-        baselineDealerSeat: Number.isInteger(lastStableDealerSeat) ? lastStableDealerSeat : currentDealerSeat(),
-        baselinePot: Number.isFinite(lastStablePublicPot) ? lastStablePublicPot : stablePublicPot(machine),
-      };
+    if (shouldDeferPreflopHeroBoundary(machine, reason)) {
+      if (!pendingPreflopHeroBoundary || pendingPreflopHeroBoundary.handId !== machine.handId) {
+        pendingPreflopHeroBoundary = newPending(machine, reason, at);
+        diagnostics.deferredPreflopHeroBoundaries++;
+      }
       diagnostics.preflopBoundaryPending = true;
-      diagnostics.deferredPreflopHeroBoundaries++;
       diagnostics.lastBoundaryEvidence = null;
-      diagnostics.lastReason = 'preflop-hero-boundary-pending-public-evidence';
+      diagnostics.lastReason = 'preflop-hero-boundary-pending-dealer-proof';
       return false;
     }
 
     pendingPreflopHeroBoundary = null;
+    pendingBoardBoundary = null;
     diagnostics.preflopBoundaryPending = false;
+    diagnostics.boardBoundaryPending = false;
     diagnostics.lastReason = `allowed:${reason || 'unknown'}`;
     return transactionNewHand(reason, at);
   };
 
   machine.observeHero = (fp, present, at = nowMs()) => {
-    if (pendingPreflopHeroBoundary && pendingPreflopHeroBoundary.handId !== machine.handId) {
-      pendingPreflopHeroBoundary = null;
-      diagnostics.preflopBoundaryPending = false;
-    }
+    if (pendingPreflopHeroBoundary && pendingPreflopHeroBoundary.handId !== machine.handId) cancelPendingPreflop('generation-changed');
+    if (pendingBoardBoundary && pendingBoardBoundary.handId !== machine.handId) cancelPendingBoard('generation-changed');
 
-    if (pendingPreflopHeroBoundary && anyPublicBoardVisible(machine)) {
-      cancelPendingPreflop('flop-or-later-visible');
+    if (pendingBoardBoundary) {
+      const committed = maybeCommitPending(machine, 'board', at);
+      if (committed) return committed;
     }
 
     if (pendingPreflopHeroBoundary) {
-      if (present && at - pendingPreflopHeroBoundary.armedAt >= PREFLOP_REDEAL_GRACE_MS) {
-        const evidence = redealEvidence(machine, pendingPreflopHeroBoundary);
-        diagnostics.lastBoundaryEvidence = evidence;
-        if (evidence.confirmed && !anyPublicBoardVisible(machine)) {
-          const pending = pendingPreflopHeroBoundary;
-          pendingPreflopHeroBoundary = null;
-          diagnostics.preflopBoundaryPending = false;
-          const before = machine.handId;
-          committingPendingPreflopBoundary = true;
-          try {
-            machine.newHand(pending.reason, at);
-          } finally {
-            committingPendingPreflopBoundary = false;
-          }
-          if (machine.handId !== before) {
-            diagnostics.committedPreflopHeroBoundaries++;
-            if (evidence.dealerChanged) diagnostics.confirmedPreflopByDealer++;
-            if (evidence.potReset) diagnostics.confirmedPreflopByPotReset++;
-            diagnostics.lastReason = evidence.dealerChanged
-              ? 'preflop-hero-boundary-confirmed-dealer-moved'
-              : 'preflop-hero-boundary-confirmed-pot-reset';
-            lastStableDealerSeat = evidence.dealer;
-            lastStablePublicPot = evidence.pot;
-            return { newHand: true, reason: pending.reason };
-          }
-        }
+      if (physicalBoardVisible()) cancelPendingPreflop('flop-or-later-visible');
+      else if (present && at - pendingPreflopHeroBoundary.armedAt >= PREFLOP_REDEAL_GRACE_MS) {
+        const committed = maybeCommitPending(machine, 'preflop', at);
+        if (committed) return committed;
       }
 
-      // Never let physical Hero disappearance/reappearance alone erase a manual
-      // Hero. Hold the generation until a public redeal signal arrives, or until
-      // a flop/turn/river proves this was only an in-hand animation/fold event.
-      diagnostics.lastReason = 'preflop-hero-boundary-awaiting-public-evidence';
-      return { newHand: false, reason: 'r14-preflop-redeal-awaiting-public-boundary' };
+      if (pendingPreflopHeroBoundary) {
+        diagnostics.lastReason = 'preflop-hero-boundary-awaiting-stable-dealer-move';
+        return { newHand: false, reason: 'r14-preflop-redeal-awaiting-public-boundary' };
+      }
     }
 
     const beforeHandId = machine.handId;
     const out = transactionObserveHero(fp, present, at) || { newHand: false, reason: null };
 
-    // state-transaction can report newHand=true even when this guard vetoed the
-    // immediate preflop redeal. Normalize the result and keep the old manual Hero
-    // alive while we wait for a public redeal signal.
-    if (out.newHand && machine.handId === beforeHandId && pendingPreflopHeroBoundary) {
-      diagnostics.lastReason = 'preflop-hero-boundary-deferred';
-      diagnostics.preflopBoundaryPending = true;
-      return { newHand: false, reason: 'r14-preflop-redeal-awaiting-public-boundary' };
+    if (out.newHand && machine.handId === beforeHandId && (pendingPreflopHeroBoundary || pendingBoardBoundary)) {
+      diagnostics.lastReason = pendingBoardBoundary ? 'board-boundary-deferred' : 'preflop-hero-boundary-deferred';
+      return { newHand: false, reason: 'r14-boundary-awaiting-dealer-proof' };
     }
 
     rememberStableBoundaryBaseline(machine, present);
@@ -252,20 +346,30 @@ function install(machine) {
   };
 
   machine.observeBoardCount = (count, at = nowMs()) => {
-    if (count > 0 && pendingPreflopHeroBoundary) {
-      cancelPendingPreflop('physical-board-visible');
+    if (![0, 3, 4, 5].includes(count)) return { newHand: false, reason: null };
+
+    if (count > 0) {
+      if (pendingPreflopHeroBoundary) cancelPendingPreflop('physical-board-visible');
+      if (pendingBoardBoundary) cancelPendingBoard('physical-board-returned');
+    } else if (pendingBoardBoundary) {
+      const committed = maybeCommitPending(machine, 'board', at);
+      if (committed) return committed;
     }
 
     const beforeHandId = machine.handId;
     const out = transactionObserveBoardCount(count, at) || { newHand: false, reason: null };
 
-    // state-transaction may report newHand=true after calling machine.newHand.
-    // If this guard vetoed that generation change because physical Hero is still
-    // present, normalize the lifecycle result too so main.js does not reset its
-    // lanes for a hand that never actually changed.
+    // state-transaction can report newHand=true even when this guard intercepted
+    // machine.newHand and converted it into a pending dealer-proof boundary.
     if (out.newHand && machine.handId === beforeHandId) {
+      if (pendingBoardBoundary && count === 0) {
+        const committed = maybeCommitPending(machine, 'board', at);
+        if (committed) return committed;
+      }
       diagnostics.correctedBoardResults++;
-      diagnostics.lastReason = 'board-boundary-vetoed-hero-still-visible';
+      diagnostics.lastReason = pendingBoardBoundary
+        ? 'board-boundary-awaiting-stable-dealer-move'
+        : 'boundary-vetoed-generation-stable';
       return { newHand: false, reason: 'r14-hero-continuity-protected' };
     }
     return out;
@@ -280,4 +384,4 @@ if (typeof window !== 'undefined') {
   window.__prcHeroContinuityGuardR14 = diagnostics;
 }
 
-export { HERO_RECENT_MS, PREFLOP_REDEAL_GRACE_MS, shouldProtect };
+export { HERO_RECENT_MS, PREFLOP_REDEAL_GRACE_MS, DEALER_CONFIRM_HITS, shouldProtect };
