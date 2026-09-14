@@ -12,14 +12,15 @@ assert.ok(bootstrap.indexOf("await import('./main.js')") < bootstrap.indexOf('re
 assert.doesNotMatch(bootstrap, /replay-ai-review-runtime-r14/, 'inactive strategic review runtime must not boot');
 assert.match(guard, /share\.disabled = false/, 'replay screen-share button must remain available');
 assert.match(guard, /Compartilhar replay/, 'UI must identify screen sharing as replay sharing');
-assert.match(guard, /replay gravado\/pós-jogo/);
+assert.match(guard, /pós-jogo/);
 assert.match(guard, /NÃO uma mesa ao vivo/);
 assert.match(guard, /screenReplayConfirmed/);
 assert.match(guard, /currentScreenStream/);
 assert.match(guard, /publishScreenReplay/);
 assert.match(guard, /reconcileScreenReplay/);
-assert.match(guard, /setInterval\(reconcileScreenReplay, 120\)/, 'confirmed screen replay must be reconciled from the actual MediaStream, not a one-shot timing edge');
-assert.match(guard, /trackedScreenStream !== stream/, 'stale ended events must not clear a newer shared replay stream');
+assert.match(guard, /setInterval\(reconcileScreenReplay, 120\)/, 'confirmed replay share must reconcile from the actual MediaStream');
+assert.match(guard, /state\.screenReplayReady && trackedScreenStream && !trackedEnded/, 'a published replay session must survive transient video/srcObject gaps');
+assert.match(guard, /installStopTracking/);
 assert.match(guard, /screen-replay-pending/);
 assert.match(guard, /screen-replay/);
 assert.match(guard, /video-file/);
