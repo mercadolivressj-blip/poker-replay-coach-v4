@@ -11,6 +11,7 @@ const state = {
 let shareIntentId = 0;
 let pendingSince = 0;
 let trackedScreenStream = null;
+let trackedEnded = false;
 
 function emitSource() {
   window.dispatchEvent(new CustomEvent('prc:replay-source', { detail: { ...state } }));
@@ -26,16 +27,19 @@ function updateBadge() {
   badge.classList.add('ok');
 }
 
+function hasLiveVideoTrack(stream) {
+  if (!stream || typeof stream.getVideoTracks !== 'function') return false;
+  return stream.getVideoTracks().some((track) => track?.readyState === 'live');
+}
+
 function currentScreenStream() {
   const video = document.getElementById('video');
   const stream = video?.srcObject || null;
-  if (!stream || typeof stream.getVideoTracks !== 'function') return null;
-  const tracks = stream.getVideoTracks();
-  return tracks.some((track) => track?.readyState === 'live') ? stream : null;
+  return hasLiveVideoTrack(stream) ? stream : null;
 }
 
 function publishScreenReplay(stream) {
-  if (!stream || !state.screenReplayConfirmed) return false;
+  if (!stream || !state.screenReplayConfirmed || !hasLiveVideoTrack(stream)) return false;
   const changed = state.screenReplayReady !== true
     || state.sourceKind !== 'screen-replay'
     || trackedScreenStream !== stream;
@@ -46,14 +50,15 @@ function publishScreenReplay(stream) {
   state.sourceKind = 'screen-replay';
   state.loadedAt ||= Date.now();
   pendingSince = 0;
+  trackedEnded = false;
 
   if (trackedScreenStream !== stream) {
     trackedScreenStream = stream;
     const intent = shareIntentId;
     for (const track of stream.getVideoTracks()) {
       track.addEventListener('ended', () => {
-        // A stale stream from a previous share must never clear a newer one.
         if (intent !== shareIntentId || trackedScreenStream !== stream) return;
+        trackedEnded = true;
         setTimeout(reconcileScreenReplay, 0);
       }, { once: true });
     }
@@ -69,6 +74,7 @@ function publishScreenReplay(stream) {
 function clearScreenReplay({ releaseConfirmation = true } = {}) {
   state.screenReplayReady = false;
   trackedScreenStream = null;
+  trackedEnded = false;
   pendingSince = 0;
   if (releaseConfirmation) state.screenReplayConfirmed = false;
   if (state.sourceKind === 'screen-replay' || state.sourceKind === 'screen-replay-pending') {
@@ -81,23 +87,33 @@ function clearScreenReplay({ releaseConfirmation = true } = {}) {
 
 function reconcileScreenReplay() {
   if (!state.screenReplayConfirmed) return false;
+
   const stream = currentScreenStream();
   if (stream) return publishScreenReplay(stream);
 
-  if (state.screenReplayReady || state.sourceKind === 'screen-replay') {
+  // Once a confirmed replay stream has been seen, transient srcObject/video
+  // timing gaps are NOT allowed to disarm the replay session. The session ends
+  // only when the tracked capture track actually ends or the user clicks Parar.
+  if (state.screenReplayReady && trackedScreenStream && !trackedEnded) {
+    state.sourceKind = 'screen-replay';
+    updateBadge();
+    return true;
+  }
+
+  if (trackedEnded) {
     clearScreenReplay({ releaseConfirmation: true });
     return false;
   }
 
-  // getDisplayMedia can take time and the legacy handler may publish srcObject a
-  // little after this guard resumes. Keep the user's confirmed replay intent
-  // armed instead of falling back to AGUARDANDO FONTE immediately.
   if (state.sourceKind !== 'screen-replay-pending') {
     state.sourceKind = 'screen-replay-pending';
     updateBadge();
     emitSource();
   }
-  if (pendingSince && Date.now() - pendingSince > 30000) {
+
+  // Only the initial picker/cancel path may time out. A replay that was already
+  // published never falls back to AGUARDANDO FONTE because of a transient gap.
+  if (!state.screenReplayReady && pendingSince && Date.now() - pendingSince > 30000) {
     clearScreenReplay({ releaseConfirmation: true });
   }
   return false;
@@ -110,18 +126,19 @@ function installReplayShare() {
 
   share.textContent = 'Compartilhar replay';
   share.disabled = false;
-  share.title = 'Compartilhe somente uma janela/tela reproduzindo um replay gravado/pós-jogo.';
+  share.title = 'Compartilhe somente uma janela/tela com o replayer gravado/pós-jogo.';
 
   share.onclick = async (event) => {
     event?.preventDefault?.();
     const confirmed = window.confirm(
-      'Confirma que a tela/janela compartilhada está reproduzindo somente um replay gravado/pós-jogo e NÃO uma mesa ao vivo?'
+      'Confirma que a tela/janela compartilhada contém somente o REPLAY pós-jogo e NÃO uma mesa ao vivo?'
     );
     if (!confirmed) return;
 
     shareIntentId++;
     pendingSince = Date.now();
     trackedScreenStream = null;
+    trackedEnded = false;
     state.fileReady = false;
     state.fileName = null;
     state.screenReplayConfirmed = true;
@@ -131,11 +148,20 @@ function installReplayShare() {
     updateBadge();
     emitSource();
 
-    // main.js owns getDisplayMedia. This guard owns only the replay consent and
-    // waits until main has actually attached the MediaStream to #video.
+    // main.js owns getDisplayMedia. As soon as it attaches a live display track,
+    // that capture becomes the latched replay source for this session.
     if (typeof legacyHandler === 'function') await legacyHandler.call(share, event);
     reconcileScreenReplay();
   };
+}
+
+function installStopTracking() {
+  const stop = document.getElementById('stopBtn');
+  if (!stop) return;
+  stop.addEventListener('click', () => {
+    shareIntentId++;
+    clearScreenReplay({ releaseConfirmation: true });
+  }, true);
 }
 
 function installFileTracking() {
@@ -147,6 +173,7 @@ function installFileTracking() {
     state.screenReplayConfirmed = false;
     state.screenReplayReady = false;
     trackedScreenStream = null;
+    trackedEnded = false;
     pendingSince = 0;
     state.sourceKind = !file ? null : file.type.startsWith('image/') ? 'image-file' : 'video-file';
     state.fileName = file?.name || null;
@@ -159,9 +186,8 @@ function installFileTracking() {
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   window.__prcReplayOnlyR14 = state;
   installReplayShare();
+  installStopTracking();
   installFileTracking();
   updateBadge();
-  // Do not rely on a single timing edge after getDisplayMedia. Reconcile the
-  // actual MediaStream continuously while the user-confirmed replay share lives.
   setInterval(reconcileScreenReplay, 120);
 }
