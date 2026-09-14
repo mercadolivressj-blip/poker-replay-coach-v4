@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { BoardCardConsensus } from '../src/core/board-card-consensus.js';
+import { SuitConsensus } from '../src/core/suit-consensus.js';
+
+const c = (rank, suit = null, confidence = 0.95, suitConfidence = 0.95) => ({
+  rank,
+  suit,
+  confidence,
+  suitConfidence,
+});
+
+// Hero rank consensus uses the same primitive as the board. One isolated bad
+// frame must not become a locked card; three agreeing clean frames do.
+const ranks = new BoardCardConsensus({ slots: 2, windowMs: 1000, minHits: 3 });
+ranks.resetHand(42);
+let out = ranks.observe([c('8'), c('T')], { handId: 42, now: 100 });
+assert.equal(out.ready, false);
+assert.equal(out.confirmedCount, 0);
+
+out = ranks.observe([c('T'), c('T')], { handId: 42, now: 180 });
+assert.equal(out.ready, false);
+out = ranks.observe([c('T'), c('T')], { handId: 42, now: 260 });
+assert.equal(out.ready, false, 'two matching rank frames are intentionally not enough');
+out = ranks.observe([c('T'), c('T')], { handId: 42, now: 340 });
+assert.equal(out.ready, true);
+assert.deepEqual(out.cards.map((card) => card.rank), ['T', 'T']);
+
+// Suits independently require temporal agreement. A complete Hero identity is
+// not available until both slots are confirmed.
+const suits = new SuitConsensus({ slots: 2, windowMs: 1000, allowFacePairCandidates: true, allowCandidates: true, candidateMinHits: 4 });
+suits.resetHand(42);
+out = suits.observe([c('T', 'clubs'), c('T', 'diamonds')], { handId: 42, now: 400 });
+assert.equal(out.confirmedCount, 0);
+out = suits.observe([c('T', 'clubs'), c('T', 'diamonds')], { handId: 42, now: 480 });
+assert.equal(out.confirmedCount, 2);
+assert.deepEqual(out.cards.map((card) => card.suit), ['clubs', 'diamonds']);
+
+const runtime = fs.readFileSync(new URL('../src/vision/hero-refiner-runtime-r14.js', import.meta.url), 'utf8');
+const authority = fs.readFileSync(new URL('../src/vision/manual-hero-authority-r14.js', import.meta.url), 'utf8');
+const entry = fs.readFileSync(new URL('../src/vision/manual-hero-entry-r14.js', import.meta.url), 'utf8');
+const continuity = fs.readFileSync(new URL('../src/vision/hero-continuity-guard-r14.js', import.meta.url), 'utf8');
+const store = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
+
+assert.match(runtime, /windowMs: 620, minHits: 3/);
+assert.match(runtime, /windowMs: 720/);
+assert.match(runtime, /candidateMinHits: 4/);
+assert.match(runtime, /pairHits < 2/);
+assert.match(runtime, /T' && second === '8'/);
+assert.match(runtime, /fallbackReady = now - startedAt >= 1800/);
+assert.match(runtime, /source: 'replay-auto'/);
+assert.match(runtime, /replay\?\.sourceKind === 'video-file'/);
+assert.match(runtime, /replay\?\.sourceKind === 'image-file'/);
+assert.doesNotMatch(runtime, /machine\.newHand/);
+
+assert.match(authority, /authority\.heroSource === 'manual'/);
+assert.match(authority, /return sameCards\(machine\.state\.hero \|\| \[\], cards \|\| \[\]\)/);
+assert.match(entry, /if \(autoReaderOwnsCurrentAttempt\(\)\) return/);
+assert.match(entry, /prc:hero-auto-confirmed/);
+assert.match(continuity, /DEALER_CONFIRM_HITS = 2/);
+assert.match(continuity, /potResetAccepted: false/);
+assert.match(store, /clockStartsAfterHeroConfirmation: true/);
+assert.match(store, /relógio estratégico ainda NÃO começou/);
+
+console.log('HERO AUTO REFINER R14 passed');
