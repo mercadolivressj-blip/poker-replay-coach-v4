@@ -107,19 +107,27 @@ function fullFrameTableFallback(full, machine, board, pot, at) {
   if (!full || Number(full.handId) !== Number(machine?.handId) || !fresh(full, at, 6500)) return null;
   if (Number(full.confidence) < 0.88 || Number(full.seatsConfidence) < 0.70) return null;
   if (!exactCards(board, full.board || [])) return null;
-  if (!Number.isFinite(Number(full.pot)) || !closeMoney(Number(pot), Number(full.pot))) return null;
+
+  // Seats/stacks are independent public evidence. A lagging full-frame pot must
+  // not make otherwise-current seats unusable when the canonical pot is already
+  // owned by the fast/local path. Keep the disagreement as a confidence penalty
+  // and diagnostic signal, but do not veto the table fallback.
+  const fullPotKnown = Number.isFinite(Number(full.pot));
+  const potAgrees = fullPotKnown && closeMoney(Number(pot), Number(full.pot));
   const seats = Array.isArray(full.seats) ? full.seats.map((seat) => ({ ...seat })) : [];
   if (seats.length < 2 || !seats.some((seat) => seat?.hero)) return null;
   const dealer = seats.find((seat) => seat?.dealer && Number.isInteger(seat?.seatIndex));
   const dealerSeat = Number.isInteger(dealer?.seatIndex) ? dealer.seatIndex : null;
+  const rawConfidence = Math.min(Number(full.confidence) || 0, Number(full.seatsConfidence) || 0);
   return {
     handId: machine.handId,
     seats,
-    confidence: Math.min(Number(full.confidence) || 0, Number(full.seatsConfidence) || 0),
+    confidence: Math.max(0, rawConfidence - (potAgrees ? 0 : 0.06)),
     observedAt: Number(full.lastSeenAt) || at,
     dealerSeat,
     heroPosition: inferHeroPositionFromSeats(seats, dealerSeat),
-    source: 'full-frame-current-fallback',
+    source: potAgrees ? 'full-frame-current-fallback' : 'full-frame-current-fallback-pot-lag',
+    potAgrees,
   };
 }
 
@@ -169,7 +177,7 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
 
   if (!stableTableReady) {
     tableView = fullFrameTableFallback(full, machine, board, Number(state.pot), at);
-    tableSource = 'full-frame-current-fallback';
+    tableSource = tableView?.source || 'full-frame-current-fallback';
     tableAge = Number.isFinite(Number(tableView?.observedAt)) ? at - Number(tableView.observedAt) : Infinity;
   }
   if (!tableView) return fail('Jogadores/stacks ainda não pertencem ao snapshot atual.');
@@ -225,7 +233,8 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
   );
   let confidence = Math.round(60 + weighted * 38);
   if (fullAgreement) confidence += 2;
-  if (tableSource === 'full-frame-current-fallback') confidence -= 3;
+  if (String(tableSource).startsWith('full-frame-current-fallback')) confidence -= 3;
+  if (tableSource === 'full-frame-current-fallback-pot-lag') confidence -= 2;
   if (fullPotConflict) confidence -= 2;
   if (fullBoardConflict) confidence -= 3;
   if (activeOpponents.some((seat) => !Number.isFinite(seat.stack))) confidence -= 4;
@@ -241,8 +250,10 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
   return {
     ready: true,
     confidence,
-    reason: tableSource === 'full-frame-current-fallback'
-      ? 'Estado atual confirmado; jogadores/stacks vieram do frame inteiro atual enquanto o tracker estabiliza.'
+    reason: String(tableSource).startsWith('full-frame-current-fallback')
+      ? tableSource === 'full-frame-current-fallback-pot-lag'
+        ? 'Estado atual confirmado; jogadores/stacks vieram do frame inteiro atual e o pote atrasado dessa fonte foi ignorado.'
+        : 'Estado atual confirmado; jogadores/stacks vieram do frame inteiro atual enquanto o tracker estabiliza.'
       : fullAgreement
         ? 'Estado atual confirmado pelo núcleo + segunda fonte pública.'
         : secondaryLag.length
