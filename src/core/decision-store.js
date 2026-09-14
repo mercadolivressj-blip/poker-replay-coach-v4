@@ -6,10 +6,16 @@ let decisionGate = null;
 let lockedFinal = null;
 let turnStartedAt = 0;
 let deadlineReached = false;
+let lastPositiveTurnAt = 0;
+let pendingEpochMismatchKey = '';
+let pendingEpochMismatchAt = 0;
 
 const STRATEGIC = new Set(['PAGAR','DESISTIR','PASSAR','APOSTAR','AUMENTAR','ALL-IN']);
 const HARD_DEADLINE_MS = 7000;
 const WATCHDOG_MS = 100;
+const TURN_END_GRACE_MS = 900;
+const ACTION_EPOCH_CONFIRM_MS = 320;
+const ACTION_ORDER = Object.freeze(['fold','check','call','bet','raise','allin']);
 
 function nowMs() {
   return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
@@ -42,14 +48,23 @@ function fastTurnSignal() {
   return lifecycle || freshDecisionFrame;
 }
 
-function heroTurnActive() {
+function rawHeroTurnSignal() {
   return Boolean(activeHandMachine?.state?.heroToAct || uiHeroTurn() || fastTurnSignal());
 }
 
+function heroTurnActive() {
+  const now = nowMs();
+  if (rawHeroTurnSignal()) {
+    lastPositiveTurnAt = now;
+    return true;
+  }
+  return Boolean((turnStartedAt || lockedFinal) && lastPositiveTurnAt > 0 && now - lastPositiveTurnAt <= TURN_END_GRACE_MS);
+}
+
 // Historical function name retained for test/backwards compatibility. Hero can
-// now be confirmed manually OR by the local uploaded-replay reader. The clock
-// does not care which source won; it starts only after the two complete cards
-// are locked to the current generation.
+// now be confirmed manually OR by the local replay reader. The clock does not
+// care which source won; it starts only after the two complete cards are locked
+// to the current generation.
 function manualHeroReadyForDecision() {
   const machine = activeHandMachine;
   const authority = typeof window !== 'undefined' ? window.__prcManualHeroAuthorityR14 : null;
@@ -73,20 +88,68 @@ function resetTurnLock() {
   lockedFinal = null;
   turnStartedAt = 0;
   deadlineReached = false;
+  lastPositiveTurnAt = 0;
+  pendingEpochMismatchKey = '';
+  pendingEpochMismatchAt = 0;
+}
+
+function normalizedAmount(value) {
+  if (!Number.isFinite(value)) return '-';
+  const number = Number(value);
+  if (Math.abs(number) < 10) return String(Math.round(number * 100) / 100);
+  return String(Math.round(number * 1000) / 1000);
+}
+
+function normalizeDecisionActions(actions = []) {
+  const rows = (actions || [])
+    .map((action) => ({
+      type: String(action?.type || '').toLowerCase(),
+      amount: Number.isFinite(action?.amount) ? Number(action.amount) : null,
+    }))
+    .filter((action) => ACTION_ORDER.includes(action.type));
+
+  const types = new Set(rows.map((action) => action.type));
+  const hasCheck = types.has('check');
+  const hasCall = types.has('call');
+  const normalized = new Map();
+
+  for (const action of rows) {
+    let type = action.type;
+    if (['bet','raise'].includes(type)) {
+      if (hasCheck && !hasCall) type = 'bet';
+      else if (hasCall) type = 'raise';
+    }
+    const existing = normalized.get(type);
+    if (!existing || (!Number.isFinite(existing.amount) && Number.isFinite(action.amount))) {
+      normalized.set(type, { type, amount: action.amount });
+    }
+  }
+
+  return ACTION_ORDER
+    .filter((type) => normalized.has(type))
+    .map((type) => normalized.get(type));
+}
+
+function actionKey(actions = []) {
+  return normalizeDecisionActions(actions)
+    .map((action) => `${action.type}:${normalizedAmount(action.amount)}`)
+    .join('|');
+}
+
+function identityKey(handId, state = {}) {
+  const hero = (state.hero || []).map(cardId).join(',');
+  const board = (state.board || []).map(cardId).join(',');
+  return `${handId || 0}#${state.street || '-'}#${hero}#${board}`;
 }
 
 export function decisionStateKey(handId, state = {}) {
-  const hero = (state.hero || []).map(cardId).join(',');
-  const board = (state.board || []).map(cardId).join(',');
-  const actions = (state.actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).join('|');
-  return `${handId || 0}#${state.street || '-'}#${hero}#${board}#${Number.isFinite(state.pot) ? state.pot : '-'}#${actions}`;
+  const base = identityKey(handId, state);
+  const pot = Number.isFinite(state.pot) ? normalizedAmount(Number(state.pot)) : '-';
+  return `${base}#${pot}#${actionKey(state.actions || [])}`;
 }
 
 export function decisionEpochKey(handId, state = {}) {
-  const hero = (state.hero || []).map(cardId).join(',');
-  const board = (state.board || []).map(cardId).join(',');
-  const actions = (state.actions || []).map((a) => `${a.type}:${Number.isFinite(a.amount) ? a.amount : '-'}`).join('|');
-  return `${handId || 0}#${state.street || '-'}#${hero}#${board}#${actions}`;
+  return `${identityKey(handId, state)}#${actionKey(state.actions || [])}`;
 }
 
 function currentStateKey() {
@@ -99,15 +162,49 @@ function currentEpochKey() {
   return machine ? decisionEpochKey(machine.handId, machine.state) : '0#-';
 }
 
+function currentIdentityKey() {
+  const machine = activeHandMachine;
+  return machine ? identityKey(machine.handId, machine.state) : '0#-';
+}
+
 function invalidateStaleLock() {
   if (!lockedFinal) return false;
+
+  // A real hand/street/board/Hero transition invalidates immediately.
+  const liveIdentity = currentIdentityKey();
+  if (lockedFinal.identityKey !== liveIdentity) {
+    lockedFinal = null;
+    current = null;
+    deadlineReached = false;
+    pendingEpochMismatchKey = '';
+    pendingEpochMismatchAt = 0;
+    turnStartedAt = heroTurnActive() && manualHeroReadyForDecision() ? nowMs() : 0;
+    return true;
+  }
+
   const liveEpoch = currentEpochKey();
-  if (lockedFinal.epochKey === liveEpoch) return false;
+  if (lockedFinal.epochKey === liveEpoch) {
+    pendingEpochMismatchKey = '';
+    pendingEpochMismatchAt = 0;
+    return false;
+  }
+
+  // Action OCR/button semantics can flicker for one or two frames. Do not pull a
+  // valid study recommendation off screen unless the new action epoch persists.
+  const now = nowMs();
+  if (pendingEpochMismatchKey !== liveEpoch) {
+    pendingEpochMismatchKey = liveEpoch;
+    pendingEpochMismatchAt = now;
+    return false;
+  }
+  if (now - pendingEpochMismatchAt < ACTION_EPOCH_CONFIRM_MS) return false;
 
   lockedFinal = null;
   current = null;
   deadlineReached = false;
-  turnStartedAt = heroTurnActive() && manualHeroReadyForDecision() ? nowMs() : 0;
+  pendingEpochMismatchKey = '';
+  pendingEpochMismatchAt = 0;
+  turnStartedAt = heroTurnActive() && manualHeroReadyForDecision() ? now : 0;
   return true;
 }
 
@@ -124,9 +221,14 @@ function ensureTurnClock() {
 
 function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisão.') {
   const heroReady = manualHeroReadyForDecision();
-  const suffix = heroReady
-    ? ` Hero ${heroSourceLabel()} e relógio estratégico ativo; vou tentar fechar uma leitura confiável em até ${Math.max(0, Math.ceil((HARD_DEADLINE_MS - elapsed) / 1000))}s.`
-    : ' O relógio estratégico ainda NÃO começou; ele só inicia depois que as duas cartas do Hero forem confirmadas.';
+  let suffix;
+  if (!heroReady) {
+    suffix = ' O relógio estratégico ainda NÃO começou; ele só inicia depois que as duas cartas do Hero forem confirmadas.';
+  } else if (elapsed < HARD_DEADLINE_MS) {
+    suffix = ` Hero ${heroSourceLabel()} confirmado; fechando a leitura atual (${Math.round(elapsed)}ms).`;
+  } else {
+    suffix = ` Hero ${heroSourceLabel()} confirmado; a leitura passou de ${Math.round(HARD_DEADLINE_MS / 1000)}s, mas atraso sozinho NÃO vira LEITURA INSUFICIENTE. Continuo tentando enquanto este spot for atual.`;
+  }
   return {
     stateKey: currentStateKey(),
     decision: 'ANALISANDO',
@@ -134,19 +236,6 @@ function analyzingEntry(elapsed = 0, reason = 'Fechando o snapshot desta decisã
     details: 'Núcleo atual: Hero confirmado, board, pote, stacks, jogadores ativos, posição/dealer e ação atual. Histórico completo apenas refina range/confiança.',
     confidence: 0,
     source: 'r14-decision-finalizer',
-  };
-}
-
-function deadlineInsufficientDecision(entry, elapsed) {
-  return {
-    ...(entry || {}),
-    stateKey: entry?.stateKey || currentStateKey(),
-    decision: 'LEITURA INSUFICIENTE',
-    reason: 'O prazo terminou sem o núcleo atual ficar confiável. O Coach não vai transformar falta de informação em FOLD, CHECK, CALL ou RAISE.',
-    details: `SEM DECISÃO ESTRATÉGICA POR PRAZO · ${Math.round(elapsed)}ms · o prazo conta somente depois do Hero confirmado; se o estado atual confiável chegar enquanto ainda for sua vez, ele poderá substituir este aviso.`,
-    confidence: 0,
-    source: 'r14-decision-deadline-insufficient',
-    deadlineFinal: true,
   };
 }
 
@@ -191,15 +280,16 @@ export function publishDecision(entry) {
         lockedAt: nowMs(),
         turnStartedAt: turnStartedAt || nowMs(),
         epochKey: currentEpochKey(),
+        identityKey: currentIdentityKey(),
       };
+      pendingEpochMismatchKey = '';
+      pendingEpochMismatchAt = 0;
       next = { ...lockedFinal };
     } else if (next.decision === 'LEITURA INSUFICIENTE') {
-      if (!manualHeroReadyForDecision() || (elapsed < HARD_DEADLINE_MS && !deadlineReached)) {
-        next = analyzingEntry(elapsed);
-      } else {
-        deadlineReached = true;
-        next = deadlineInsufficientDecision(next, elapsed);
-      }
+      // In replay study, elapsed time is not evidence that the poker state is
+      // unreadable. Keep ANALISANDO and let a later trustworthy snapshot win.
+      deadlineReached = elapsed >= HARD_DEADLINE_MS;
+      next = analyzingEntry(elapsed, next.reason || 'Ainda estou fechando o núcleo atual.');
     }
   }
 
@@ -216,12 +306,8 @@ export function clearDecision() {
       current = { ...lockedFinal };
     } else {
       const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
-      if (manualHeroReadyForDecision() && (elapsed >= HARD_DEADLINE_MS || deadlineReached)) {
-        deadlineReached = true;
-        current = deadlineInsufficientDecision(current, elapsed);
-      } else {
-        current = analyzingEntry(elapsed, manualHeroReadyForDecision() ? 'Ainda estou fechando a ação atual.' : 'Aguardando confirmação das suas duas cartas.');
-      }
+      deadlineReached = manualHeroReadyForDecision() && elapsed >= HARD_DEADLINE_MS;
+      current = analyzingEntry(elapsed, manualHeroReadyForDecision() ? 'Ainda estou fechando a ação atual.' : 'Aguardando confirmação das suas duas cartas.');
     }
     dispatchCurrent();
     return current;
@@ -263,12 +349,11 @@ function decisionWatchdog() {
   }
 
   const elapsed = turnStartedAt ? nowMs() - turnStartedAt : 0;
-  if (elapsed >= HARD_DEADLINE_MS) {
-    if (!deadlineReached || current?.decision !== 'LEITURA INSUFICIENTE' || !current?.deadlineFinal) {
-      deadlineReached = true;
-      current = deadlineInsufficientDecision(current, elapsed);
-      dispatchCurrent();
-    }
+  const crossedDeadline = elapsed >= HARD_DEADLINE_MS;
+  if (crossedDeadline && !deadlineReached) {
+    deadlineReached = true;
+    current = analyzingEntry(elapsed, 'A leitura está levando mais tempo, mas o spot continua atual.');
+    dispatchCurrent();
     return;
   }
 
@@ -282,12 +367,16 @@ if (typeof window !== 'undefined') {
   window.__prcDecisionFinalizerR14 = {
     deadlineMs: HARD_DEADLINE_MS,
     watchdogMs: WATCHDOG_MS,
+    turnEndGraceMs: TURN_END_GRACE_MS,
+    actionEpochConfirmMs: ACTION_EPOCH_CONFIRM_MS,
     fastTurnFallback: true,
     strategicDeadlineFallback: false,
+    timeoutDoesNotForceInsufficient: true,
     // Legacy flag retained for compatibility; semantic replacement below.
     clockStartsAfterManualHero: true,
     clockStartsAfterHeroConfirmation: true,
     lockFollowsDecisionEpoch: true,
+    semanticActionEpoch: true,
     get heroSource() { return window.__prcManualHeroAuthorityR14?.heroSource || null; },
     get locked() { return lockedFinal ? { ...lockedFinal } : null; },
     get deadlineReached() { return deadlineReached; },
