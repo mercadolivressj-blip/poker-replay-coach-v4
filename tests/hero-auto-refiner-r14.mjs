@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { BoardCardConsensus } from '../src/core/board-card-consensus.js';
 import { SuitConsensus } from '../src/core/suit-consensus.js';
+import { mergeHeroCardFragments, locateHeroPairRects } from '../src/detectors/hero-card-locator.js';
 
 const c = (rank, suit = null, confidence = 0.95, suitConfidence = 0.95) => ({
   rank,
@@ -36,7 +37,50 @@ out = suits.observe([c('T', 'clubs'), c('T', 'diamonds')], { handId: 42, now: 48
 assert.equal(out.confirmedCount, 2);
 assert.deepEqual(out.cards.map((card) => card.suit), ['clubs', 'diamonds']);
 
+// Regression from a real PokerStars replay frame: the white-mask detector can
+// split card 1 into two narrow pieces because red/black glyph columns interrupt
+// the white run. Those two fragments must be merged BEFORE choosing the Hero
+// pair, otherwise the locator mistakes both halves of card 1 for the two cards.
+{
+  const fragments = [
+    { x: 136, y: 55, w: 32, h: 46 },
+    { x: 168, y: 55, w: 32, h: 46 },
+    { x: 202, y: 55, w: 64, h: 62 },
+  ];
+  const merged = mergeHeroCardFragments(fragments);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].x, 136);
+  assert.equal(merged[0].w, 64);
+  assert.equal(merged[1].x, 202);
+}
+
+// End-to-end raw-pixel version of the same failure shape.
+{
+  const w = 400;
+  const h = 120;
+  const data = new Uint8ClampedArray(w * h * 4);
+  const fill = (x0, y0, rw, rh, rgb) => {
+    for (let y = y0; y < Math.min(h, y0 + rh); y++) {
+      for (let x = x0; x < Math.min(w, x0 + rw); x++) {
+        const i = (y * w + x) * 4;
+        data[i] = rgb[0]; data[i + 1] = rgb[1]; data[i + 2] = rgb[2]; data[i + 3] = 255;
+      }
+    }
+  };
+  fill(0, 0, w, h, [28, 92, 48]);
+  fill(136, 55, 31, 48, [245, 245, 245]);
+  fill(170, 55, 30, 48, [245, 245, 245]);
+  fill(167, 55, 3, 48, [185, 25, 35]);
+  fill(202, 55, 64, 62, [245, 245, 245]);
+  const pair = locateHeroPairRects(data, w, h);
+  assert.ok(pair, 'split first card + complete second card must resolve to a Hero pair');
+  assert.equal(pair.length, 2);
+  assert.ok(pair[0].w >= 58, `first physical card should be merged, got width ${pair[0].w}`);
+  assert.ok(pair[1].w >= 58, `second physical card should remain complete, got width ${pair[1].w}`);
+}
+
 const runtime = fs.readFileSync(new URL('../src/vision/hero-refiner-runtime-r14.js', import.meta.url), 'utf8');
+const rescue = fs.readFileSync(new URL('../src/vision/hero-auto-rescue-r14.js', import.meta.url), 'utf8');
 const authority = fs.readFileSync(new URL('../src/vision/manual-hero-authority-r14.js', import.meta.url), 'utf8');
 const entry = fs.readFileSync(new URL('../src/vision/manual-hero-entry-r14.js', import.meta.url), 'utf8');
 const continuity = fs.readFileSync(new URL('../src/vision/hero-continuity-guard-r14.js', import.meta.url), 'utf8');
@@ -58,6 +102,10 @@ assert.match(runtime, /replay\?\.sourceKind === 'screen-replay'/);
 assert.match(runtime, /diagnostics\.fallbackReady = false/);
 assert.doesNotMatch(runtime, /fallbackReady = now - startedAt/);
 assert.doesNotMatch(runtime, /machine\.newHand/);
+
+assert.match(rescue, /rankSlots: located, suitSlots: located/);
+assert.match(rescue, /hero-card-geometry/);
+assert.doesNotMatch(rescue, /candidates\.sort/);
 
 assert.match(authority, /replay\?\.screenReplayReady === true/);
 assert.match(authority, /replay\?\.sourceKind === 'screen-replay'/);
