@@ -71,14 +71,16 @@ function baseFixture() {
   assert.equal(core.effectiveStack, 0.8);
 }
 
-// 2) A decision-critical suit conflict between public sources must still fail
-// closed; simplifying history must never mean guessing a flush/draw state.
+// 2) A slower full-frame source may be one street/frame behind. When the logical
+// board and the fast current-turn source agree exactly, that lag is advisory: it
+// reduces confidence and is exposed diagnostically, but does not veto strategy.
 {
   const f = baseFixture();
   f.full = { ...f.full, board: [card('K','diamonds'), card('8','hearts'), card('7','spades')] };
   const core = evaluateDecisionCore({ ...f, at: 1500 });
-  assert.equal(core.ready, false);
-  assert.match(core.reason, /divergindo no board/i);
+  assert.equal(core.ready, true);
+  assert.equal(core.fullBoardConflict, true);
+  assert.match(core.reason, /frame inteiro atrasado/i);
 }
 
 // 3) Current physical action mismatch is decision-critical and blocks strategy.
