@@ -36,7 +36,6 @@ function autoReaderOwnsCurrentAttempt() {
     auto?.enabled
     && auto?.sourceAllowed === true
     && Number(auto?.handId) === handId
-    && auto?.fallbackReady !== true
   );
 }
 
@@ -142,9 +141,10 @@ function promptCurrentHand() {
   const handId = Number(activeHandMachine?.handId) || 0;
   if (handId <= 0 || promptedHandId === handId || heroReady()) return;
 
-  // Uploaded replay/image gets a short local-vision window first. The popup is
-  // only the fallback; it must not steal five seconds while the automatic Hero
-  // consensus is already accumulating exactly like the board lane.
+  // HARD RULE: when the local replay Hero reader is active for this generation,
+  // it owns the attempt indefinitely. A timeout/fallbackReady flag may affect
+  // diagnostics only; it must NEVER click the Hero metric or open the manual
+  // correction modal automatically. Manual correction is user-initiated only.
   if (autoReaderOwnsCurrentAttempt()) return;
 
   maybeArmFromStableDealerMove();
