@@ -6,6 +6,7 @@ await import('./vision/replay-only-guard-r14.js');
 await import('./vision/money-runtime-r13.js');
 await import('./vision/state-transaction-runtime-r14.js');
 await import('./vision/hero-continuity-guard-r14.js');
+await import('./vision/hero-redeal-proof-guard-r14.js');
 await import('./vision/manual-hero-authority-r14.js');
 await import('./vision/manual-hero-boundary-r14.js');
 await import('./vision/board-refiner-runtime-r14.js');
