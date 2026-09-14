@@ -137,14 +137,19 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     : Math.min(...knownOpponentStacks.map((seat) => Number(seat.stack)));
   const effectiveStack = Math.min(heroStack, referenceOpponentStack);
 
+  // Full-frame vision is a secondary confirmation source only. The current-turn
+  // core is machine + fast decision frame + physical actions/table. A slower full
+  // frame may lag one action/pot/street behind and must NEVER veto a coherent
+  // current decision snapshot.
   let fullAgreement = false;
+  let fullBoardConflict = false;
+  let fullPotConflict = false;
   if (full && Number(full.handId) === Number(machine.handId) && fresh(full, at, 6500)) {
     const fullBoardReliable = Number(full.boardConfidence) >= 0.72;
     const fullPotReliable = Number(full.potConfidence) >= 0.74;
-    if (fullBoardReliable && !exactCards(board, full.board || [])) return fail('As duas fontes estão divergindo no board atual.');
-    if (fullPotReliable && Number.isFinite(Number(full.pot)) && !closeMoney(Number(state.pot), Number(full.pot))) return fail('As duas fontes estão divergindo no pote atual.');
-    fullAgreement = (!fullBoardReliable || exactCards(board, full.board || []))
-      && (!fullPotReliable || !Number.isFinite(Number(full.pot)) || closeMoney(Number(state.pot), Number(full.pot)));
+    fullBoardConflict = Boolean(fullBoardReliable && !exactCards(board, full.board || []));
+    fullPotConflict = Boolean(fullPotReliable && Number.isFinite(Number(full.pot)) && !closeMoney(Number(state.pot), Number(full.pot)));
+    fullAgreement = !fullBoardConflict && !fullPotConflict;
   }
 
   const preflopContext = state.street === 'preflop'
@@ -165,17 +170,26 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
   );
   let confidence = Math.round(60 + weighted * 38);
   if (fullAgreement) confidence += 2;
+  if (fullPotConflict) confidence -= 2;
+  if (fullBoardConflict) confidence -= 3;
   if (activeOpponents.some((seat) => !Number.isFinite(seat.stack))) confidence -= 4;
   if (state.street !== 'preflop' && table.dealerSeat == null && !heroPosition) confidence -= 3;
   if (activeOpponents.length > 1) confidence -= Math.min(6, (activeOpponents.length - 1) * 2);
   confidence = Math.max(70, Math.min(95, confidence));
+
+  const secondaryLag = [
+    fullPotConflict ? 'pote' : null,
+    fullBoardConflict ? 'board' : null,
+  ].filter(Boolean);
 
   return {
     ready: true,
     confidence,
     reason: fullAgreement
       ? 'Estado atual confirmado pelo núcleo + segunda fonte pública.'
-      : 'Estado atual confirmado pelo núcleo mínimo.',
+      : secondaryLag.length
+        ? `Estado atual confirmado pelo núcleo; frame inteiro atrasado em ${secondaryLag.join(' e ')} e ignorado para esta decisão.`
+        : 'Estado atual confirmado pelo núcleo mínimo.',
     handId: machine.handId,
     street: state.street,
     hero: hero.map((card) => ({ ...card })),
@@ -197,6 +211,8 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     preflopMode: preflopContext?.mode || null,
     preflopContext,
     fullAgreement,
+    fullBoardConflict,
+    fullPotConflict,
     tableAge,
   };
 }
