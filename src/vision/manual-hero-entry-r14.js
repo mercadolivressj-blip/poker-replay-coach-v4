@@ -25,6 +25,21 @@ function heroReady() {
   );
 }
 
+function autoReader() {
+  return typeof window !== 'undefined' ? window.__prcHeroRefinerR14 : null;
+}
+
+function autoReaderOwnsCurrentAttempt() {
+  const auto = autoReader();
+  const handId = Number(activeHandMachine?.handId) || 0;
+  return Boolean(
+    auto?.enabled
+    && auto?.sourceAllowed === true
+    && Number(auto?.handId) === handId
+    && auto?.fallbackReady !== true
+  );
+}
+
 function lifecycleView() {
   const source = typeof window !== 'undefined' ? window.__prcPublicLifecycleR14 : null;
   return typeof source?.view === 'function' ? source.view() : source;
@@ -100,18 +115,25 @@ function rememberDealerBaseline() {
   if (Number.isInteger(dealer)) lastHeroAppliedDealerSeat = dealer;
 }
 
-function markManualUi() {
+function markHeroUi() {
   const metric = document.querySelector('.metric-editable[data-manual-target="hero"]');
   if (!metric) return null;
   const label = metric.querySelector('span');
-  if (label && !label.dataset.manualOnlyR14) {
-    label.dataset.manualOnlyR14 = '1';
+  if (label) {
     const edit = label.querySelector('em');
-    label.textContent = 'SUAS CARTAS · MANUAL ';
-    if (edit) label.append(edit);
+    const authority = typeof window !== 'undefined' ? window.__prcManualHeroAuthorityR14 : null;
+    const autoActive = autoReader()?.sourceAllowed === true;
+    const mode = authority?.heroSource === 'manual' ? 'MANUAL' : autoActive ? 'AUTO' : 'MANUAL';
+    const desired = `SUAS CARTAS · ${mode} `;
+    if (label.childNodes?.[0]?.textContent !== desired) {
+      label.textContent = desired;
+      if (edit) label.append(edit);
+    }
+    metric.title = autoActive
+      ? 'Leitura automática local do replay; clique para corrigir manualmente'
+      : 'Informe manualmente suas duas cartas nesta mão';
+    metric.setAttribute('aria-label', autoActive ? 'Corrigir manualmente suas cartas' : 'Informar manualmente suas duas cartas');
   }
-  metric.title = 'Informe manualmente suas duas cartas nesta mão';
-  metric.setAttribute('aria-label', 'Informar manualmente suas duas cartas');
   return metric;
 }
 
@@ -120,20 +142,37 @@ function promptCurrentHand() {
   const handId = Number(activeHandMachine?.handId) || 0;
   if (handId <= 0 || promptedHandId === handId || heroReady()) return;
 
+  // Uploaded replay/image gets a short local-vision window first. The popup is
+  // only the fallback; it must not steal five seconds while the automatic Hero
+  // consensus is already accumulating exactly like the board lane.
+  if (autoReaderOwnsCurrentAttempt()) return;
+
   maybeArmFromStableDealerMove();
 
-  // After Hero was entered once, no board-clear, pot glitch or internal
-  // generation may reopen the modal. A later hand must be armed by a stable
-  // public dealer move or an already dealer-confirmed physical redeal.
+  // After Hero was entered/confirmed once, no board-clear, pot glitch or
+  // internal generation may reopen the modal. A later hand must be armed by a
+  // stable public dealer move or an already dealer-confirmed physical redeal.
   if (lastHeroAppliedHandId > 0 && armedPromptHandId !== handId) return;
   if (!physicalHeroReadyForPrompt()) return;
 
-  const metric = markManualUi();
+  const metric = markHeroUi();
   if (!metric) return;
   const panel = document.getElementById('manualPanel');
   if (panel && !panel.classList.contains('hidden')) return;
   promptedHandId = handId;
   metric.click();
+}
+
+function rememberConfirmedHero(generation, reason) {
+  const handId = Number(generation) || Number(activeHandMachine?.handId) || 0;
+  if (handId <= 0) return;
+  lastHeroAppliedHandId = handId;
+  lastHeroAppliedDealerSeat = currentDealerSeat();
+  promptedHandId = handId;
+  armedPromptHandId = 0;
+  armedPromptReason = reason;
+  dealerCandidate = null;
+  dealerCandidateHits = 0;
 }
 
 if (typeof window !== 'undefined') {
@@ -149,8 +188,6 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    // Board-only or otherwise unproven generations never steal focus. Polling
-    // may arm this hand later only after the dealer move is seen twice.
     armedPromptReason = `blocked:${reason || 'unknown'}`;
     dealerCandidate = null;
     dealerCandidateHits = 0;
@@ -158,14 +195,11 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('prc:manual-state-applied', (event) => {
     if (!event.detail?.hero) return;
-    const generation = Number(event.detail.generation) || Number(activeHandMachine?.handId) || 0;
-    lastHeroAppliedHandId = generation;
-    lastHeroAppliedDealerSeat = currentDealerSeat();
-    promptedHandId = generation;
-    armedPromptHandId = 0;
-    armedPromptReason = 'hero-applied';
-    dealerCandidate = null;
-    dealerCandidateHits = 0;
+    rememberConfirmedHero(event.detail.generation, 'hero-manual-applied');
+  });
+
+  window.addEventListener('prc:hero-auto-confirmed', (event) => {
+    rememberConfirmedHero(event.detail?.generation, 'hero-auto-confirmed');
   });
 
   window.__prcPromptManualHeroR14 = promptCurrentHand;
@@ -176,11 +210,12 @@ if (typeof window !== 'undefined') {
     get armedPromptHandId() { return armedPromptHandId; },
     get armedPromptReason() { return armedPromptReason; },
     get dealerCandidateHits() { return dealerCandidateHits; },
+    get autoDeferred() { return autoReaderOwnsCurrentAttempt(); },
   };
 }
 
 setInterval(() => {
-  markManualUi();
+  markHeroUi();
   rememberDealerBaseline();
   promptCurrentHand();
-}, 220);
+}, 120);
