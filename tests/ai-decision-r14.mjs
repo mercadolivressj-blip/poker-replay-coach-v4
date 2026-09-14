@@ -92,9 +92,11 @@ assert.match(gate, /coreStateKey/);
 assert.match(gate, /A recomendação não existe entre os botões físicos atuais/);
 assert.match(gate, /accepted-current-core/);
 
-// New product law: current-state core requires Hero, board, pot, action, table,
-// stacks and preflop position. Full history is not a mandatory blocker.
-assert.match(decisionCore, /Aguardando as duas cartas manuais do Hero/);
+// Current-state core requires Hero, board, pot, action, table, stacks and
+// preflop position. Hero may be confirmed manually or by the local uploaded-file
+// refiner; remote AI still never owns Hero identity.
+assert.match(decisionCore, /Aguardando confirmação das duas cartas do Hero/);
+assert.match(decisionCore, /heroSource/);
 assert.match(decisionCore, /Board\/street atual ainda não está completo/);
 assert.match(decisionCore, /Pote atual ainda não foi confirmado/);
 assert.match(decisionCore, /Os botões físicos e a leitura atual ainda não concordam/);
@@ -109,7 +111,8 @@ assert.match(resolver, /fastDecision/);
 assert.match(resolver, /mergeDecisionActions/);
 
 // Decision lock belongs to the current decision epoch. A preflop decision may
-// not leak to flop or to a new price/action set.
+// not leak to flop or to a new price/action set. The 7s watchdog starts only
+// after Hero has actually been confirmed and locked.
 assert.match(store, /HARD_DEADLINE_MS = 7000/);
 assert.match(store, /WATCHDOG_MS = 100/);
 assert.match(store, /fastTurnSignal/);
@@ -120,9 +123,11 @@ assert.match(store, /invalidateStaleLock/);
 assert.match(store, /lockFollowsDecisionEpoch: true/);
 assert.match(store, /manualHeroReadyForDecision/);
 assert.match(store, /clockStartsAfterManualHero: true/);
+assert.match(store, /clockStartsAfterHeroConfirmation: true/);
 assert.match(store, /strategicDeadlineFallback: false/);
 assert.match(store, /deadlineInsufficientDecision/);
-assert.match(store, /não vai inventar uma ação/);
+assert.match(store, /não vai transformar falta de informação em FOLD/);
+assert.match(store, /relógio estratégico ainda NÃO começou/);
 assert.match(store, /ANALISANDO/);
 assert.doesNotMatch(store, /conservativeDeadlineDecision/);
 
@@ -130,6 +135,7 @@ assert.match(bootstrap, /ai-decision-runtime-r14/);
 assert.match(bootstrap, /ai-decision-consensus-r14/);
 assert.match(bootstrap, /ai-decision-pot-bridge-r14/);
 assert.match(bootstrap, /manual-hero-boundary-r14/);
+assert.match(bootstrap, /hero-refiner-runtime-r14/);
 assert.match(bootstrap, /decision-core-gate-r14/);
 assert.match(bootstrap, /fundamental-resolver-runtime-r14/);
 assert.doesNotMatch(bootstrap, /study-safety-gate-r14/);
