@@ -25,19 +25,25 @@ assert.match(authority, /source === 'replay-auto'/);
 assert.match(authority, /source === 'manual'/);
 assert.match(authority, /video-file/);
 assert.match(authority, /image-file/);
-assert.doesNotMatch(authority, /screen-replay.*replay-auto/s, 'automatic Hero ownership must not be enabled for shared-screen capture');
+assert.match(authority, /screenReplayReady === true/);
+assert.match(authority, /sourceKind === 'screen-replay'/);
+assert.match(authority, /fileReplay \|\| confirmedSharedReplay/);
 assert.match(authority, /full\.manual\.hero = true/);
-assert.match(authority, /Ignore remote AI Hero-card reads completely/);
 
 assert.match(autoHero, /BoardCardConsensus\(\{ slots: 2/);
 assert.match(autoHero, /candidateMinHits: 4/);
 assert.match(autoHero, /pairHits < 2/);
 assert.match(autoHero, /locateHeroCardSlots/);
 assert.match(autoHero, /classifyPokerStarsSuitPixels/);
+assert.match(autoHero, /new OcrService\(\)/);
+assert.match(autoHero, /ocr\.readRank/);
 assert.match(autoHero, /source: 'replay-auto'/);
-assert.match(autoHero, /localReplayOnly: true/);
+assert.match(autoHero, /replayOnly: true/);
 assert.match(autoHero, /video-file/);
 assert.match(autoHero, /image-file/);
+assert.match(autoHero, /screenReplayReady === true/);
+assert.match(autoHero, /sourceKind === 'screen-replay'/);
+assert.match(autoHero, /layout\?\.heroSuitSlots/);
 
 assert.doesNotMatch(boundary, /machine\.newHand/);
 assert.match(boundary, /stable-dealer-proof-owns-boundary/);
@@ -51,8 +57,8 @@ assert.doesNotMatch(consensus, /cardKey\(d\.hero\)/, 'local/manual Hero must not
 assert.match(store, /clockStartsAfterManualHero: true/);
 assert.match(store, /manualHeroReadyForDecision/);
 
-// Remote AI endpoints remain public-state-only. The new automatic Hero lane is
-// local pixel analysis of an uploaded replay file, never an API Hero read.
+// Remote AI endpoints remain public-state-only. Automatic Hero is local pixel
+// analysis of a confirmed replay source; the API still never reads hole cards.
 assert.match(decisionApi, /Hero hole cards are MANUAL-ONLY/);
 assert.match(decisionApi, /hero:\s*\[\]/);
 assert.match(decisionApi, /heroConfidence:\s*0/);
