@@ -111,10 +111,13 @@ assert.match(resolver, /fastDecision/);
 assert.match(resolver, /mergeDecisionActions/);
 
 // Decision lock belongs to the current decision epoch. A preflop decision may
-// not leak to flop or to a new price/action set. The 7s watchdog starts only
-// after Hero has actually been confirmed and locked.
+// not leak to flop or to a genuinely new price/action set. In replay study the
+// 7s watchdog is diagnostic only: elapsed time by itself must never become
+// LEITURA INSUFICIENTE or pull a valid recommendation off screen.
 assert.match(store, /HARD_DEADLINE_MS = 7000/);
 assert.match(store, /WATCHDOG_MS = 100/);
+assert.match(store, /TURN_END_GRACE_MS = 900/);
+assert.match(store, /ACTION_EPOCH_CONFIRM_MS = 320/);
 assert.match(store, /fastTurnSignal/);
 assert.match(store, /decisionWatchdog/);
 assert.match(store, /lockedFinal/);
@@ -125,10 +128,12 @@ assert.match(store, /manualHeroReadyForDecision/);
 assert.match(store, /clockStartsAfterManualHero: true/);
 assert.match(store, /clockStartsAfterHeroConfirmation: true/);
 assert.match(store, /strategicDeadlineFallback: false/);
-assert.match(store, /deadlineInsufficientDecision/);
-assert.match(store, /não vai transformar falta de informação em FOLD/);
+assert.match(store, /timeoutDoesNotForceInsufficient: true/);
+assert.match(store, /semanticActionEpoch: true/);
+assert.match(store, /atraso sozinho NÃO vira LEITURA INSUFICIENTE/);
 assert.match(store, /relógio estratégico ainda NÃO começou/);
 assert.match(store, /ANALISANDO/);
+assert.doesNotMatch(store, /deadlineInsufficientDecision/);
 assert.doesNotMatch(store, /conservativeDeadlineDecision/);
 
 assert.match(bootstrap, /ai-decision-runtime-r14/);
