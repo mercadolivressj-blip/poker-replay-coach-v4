@@ -31,18 +31,23 @@ function mergeRect(a, b) {
   return { x, y, w: right - x, h: bottom - y, mergedHeroFragments: true };
 }
 
+function similarSize(a, b, tolerance) {
+  return Math.abs(a - b) / Math.max(1, Math.max(a, b)) <= tolerance;
+}
+
 /**
- * PokerStars face cards / red pip layouts can split one physical white card into
- * two horizontal runs in the generic white-mask detector. In real replay frames
- * this produced [left half of card 1] [right half of card 1] [card 2], and the
- * Hero locator mistakenly selected the two halves as the two hole cards.
+ * PokerStars face/pip layouts can split one physical white card into two narrow
+ * runs in the generic detector. A real replay frame then looks like:
+ *   [left fragment card 1] [right fragment card 1] [complete card 2]
  *
- * Merge only pairs where BOTH components are narrow fragments. Real adjacent
- * cards are close too, but a complete card is normally much wider relative to
- * its height, so it must never be merged with its neighbour here.
+ * Two real cards may also both be narrow, so width/aspect alone is not enough.
+ * We only merge an adjacent narrow pair when ANOTHER detected region has roughly
+ * the size of the combined rectangle. That third region is the evidence that the
+ * two candidates are fragments of one card rather than the two physical cards.
  */
 export function mergeHeroCardFragments(rects = []) {
   const sorted = [...rects].sort((a, b) => a.x - b.x);
+  if (sorted.length < 3) return sorted;
   const out = [];
 
   for (let i = 0; i < sorted.length; i++) {
@@ -63,9 +68,16 @@ export function mergeHeroCardFragments(rects = []) {
     const combined = mergeRect(a, b);
     const combinedAspect = combined.w / Math.max(1, combined.h);
     const plausibleCard = combinedAspect >= 0.62 && combinedAspect <= 1.62;
+    const peer = sorted.find((candidate, index) => (
+      index !== i
+      && index !== i + 1
+      && similarSize(candidate.w, combined.w, 0.36)
+      && similarSize(candidate.h, combined.h, 0.46)
+    ));
 
     if (
       bothNarrow
+      && peer
       && overlap >= 0.78
       && centerYDelta <= 0.18
       && gap >= -gapLimit * 0.45
