@@ -42,17 +42,25 @@ const entry = fs.readFileSync(new URL('../src/vision/manual-hero-entry-r14.js', 
 const continuity = fs.readFileSync(new URL('../src/vision/hero-continuity-guard-r14.js', import.meta.url), 'utf8');
 const store = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
 
-assert.match(runtime, /windowMs: 620, minHits: 3/);
-assert.match(runtime, /windowMs: 720/);
+assert.match(runtime, /windowMs: 680, minHits: 3/);
+assert.match(runtime, /windowMs: 780/);
 assert.match(runtime, /candidateMinHits: 4/);
 assert.match(runtime, /pairHits < 2/);
 assert.match(runtime, /T' && second === '8'/);
-assert.match(runtime, /fallbackReady = now - startedAt >= 1800/);
+assert.match(runtime, /new OcrService\(\)/);
+assert.match(runtime, /ocr\.readRank\(rankCrop\(crop\.canvas\), 'hero'\)/);
+assert.match(runtime, /layout\?\.heroSuitSlots/);
 assert.match(runtime, /source: 'replay-auto'/);
 assert.match(runtime, /replay\?\.sourceKind === 'video-file'/);
 assert.match(runtime, /replay\?\.sourceKind === 'image-file'/);
+assert.match(runtime, /replay\?\.screenReplayReady === true/);
+assert.match(runtime, /replay\?\.sourceKind === 'screen-replay'/);
+assert.match(runtime, /diagnostics\.fallbackReady = false/);
+assert.doesNotMatch(runtime, /fallbackReady = now - startedAt/);
 assert.doesNotMatch(runtime, /machine\.newHand/);
 
+assert.match(authority, /replay\?\.screenReplayReady === true/);
+assert.match(authority, /replay\?\.sourceKind === 'screen-replay'/);
 assert.match(authority, /authority\.heroSource === 'manual'/);
 assert.match(authority, /return sameCards\(machine\.state\.hero \|\| \[\], cards \|\| \[\]\)/);
 assert.match(entry, /if \(autoReaderOwnsCurrentAttempt\(\)\) return/);
