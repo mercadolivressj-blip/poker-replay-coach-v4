@@ -36,15 +36,16 @@ machine.state.street = 'river';
 machine.state.pot = 0.67;
 
 const mod = await import(`../src/vision/manual-hero-boundary-r14.js?test=${Date.now()}`);
-assert.equal(mod.shouldRotateFromManualHero(machine), true, 'stable physical empty board plus stale logical river must be a redeal candidate');
+assert.equal(mod.shouldRotateFromManualHero(machine), true, 'stable physical empty board may be diagnosed as a boundary candidate');
 
 const oldHandId = machine.handId;
+const oldHero = machine.state.hero.map((c) => `${c.rank}${c.suit}`);
 listeners.get('prc:manual-state-applied')?.({ detail: { generation: oldHandId, hero: true } });
-assert.equal(machine.handId, oldHandId + 1, 'manual Hero on a physically empty new table must rotate stale generation');
-assert.equal(machine.state.street, 'preflop');
-assert.deepEqual(machine.state.board, []);
-assert.equal(machine.state.pot, null);
-assert.deepEqual(machine.state.hero.map((c) => `${c.rank}${c.suit}`), ['8clubs','2clubs'], 'manual Hero must be rebound into the new generation');
+assert.equal(machine.handId, oldHandId, 'manual Hero confirmation must never create a new generation by itself');
+assert.equal(machine.state.street, 'river');
+assert.equal(machine.state.pot, 0.67);
+assert.deepEqual(machine.state.hero.map((c) => `${c.rank}${c.suit}`), oldHero, 'Hero must remain intact while central dealer proof resolves the real boundary');
+assert.equal(window.__prcManualHeroBoundaryR14.rule, 'hero-confirmation-never-creates-generation; stable-dealer-proof-owns-boundary');
 
 window.__prcPublicLifecycleR14 = { view: () => ({ visualBoardCount: 3, visualBoardHits: 3, boardClearArmed: false, maxVisualBoardCount: 3 }) };
 machine.state.board = [
@@ -53,6 +54,6 @@ machine.state.board = [
   { rank: 'T', suit: 'clubs' },
 ];
 machine.state.street = 'flop';
-assert.equal(mod.shouldRotateFromManualHero(machine), false, 'manual correction during a real flop must not rotate the hand');
+assert.equal(mod.shouldRotateFromManualHero(machine), false, 'manual correction during a real flop must not be a boundary candidate');
 
 console.log('MANUAL HERO BOUNDARY R14 passed');
