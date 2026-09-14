@@ -5,9 +5,9 @@ import { DealSnapshotArbiter } from '../src/core/deal-snapshot-arbiter-r14.js';
 
 const card = (rank, suit) => ({ rank, suit, confidence: 1 });
 
-// VIDEO REGRESSION 1: an old river must die when physical Hero cards disappear
-// long enough and then reappear for the next deal. Board clear is independent
-// confirmation, so the first stable reappearance can rotate the generation.
+// VIDEO REGRESSION 1: low-level lifecycle may flag a physical redeal candidate.
+// R14's continuity guard owns the final generation decision and requires public
+// dealer proof before a locked Hero can actually be cleared.
 const life = new DealLifecycleR14({ heroMissingHits: 4, heroMissingMs: 260, heroReappearHits: 2, boardZeroHits: 3, boardZeroMs: 120 });
 life.reset(7, 0);
 life.seedHeroPresence(true, 100);
@@ -22,14 +22,14 @@ life.observeHero(false, 1200);
 life.observeBoardCount(0, 1200);
 let boundary = life.observeHero(false, 1300);
 assert.equal(boundary.newDeal, false);
-assert.equal(life.heroGapArmed, true, 'sustained physical Hero gap must arm a redeal');
-assert.equal(life.boardClearArmed, true, 'stable old-board -> zero must arm public-state invalidation');
+assert.equal(life.heroGapArmed, true, 'sustained physical Hero gap must arm a redeal candidate');
+assert.equal(life.boardClearArmed, true, 'stable old-board -> zero must arm a public boundary candidate');
 boundary = life.observeHero(true, 1350);
-assert.equal(boundary.newDeal, true, 'Hero reappearance after a real gap must start a new generation');
+assert.equal(boundary.newDeal, true, 'low-level lifecycle may emit a redeal candidate on reappearance');
 assert.match(boundary.reason, /redeal/);
 
 // VIDEO REGRESSION 2: a short capture glitch inside one hand must NOT erase the
-// manually-entered Hero cards or rotate the generation.
+// confirmed Hero cards or rotate the generation.
 const transient = new DealLifecycleR14({ heroMissingHits: 4, heroMissingMs: 260 });
 transient.reset(8, 0);
 transient.seedHeroPresence(true, 100);
@@ -68,9 +68,9 @@ assert.deepEqual(fresh.board, []);
 assert.equal(fresh.pot, null);
 assert.equal(fresh.street, 'preflop');
 
-// VIDEO REGRESSION 5: manual-Hero, raw 2/2 and a trustworthy public board are
-// mandatory. Board trust may come from stable physical occupancy OR exact fast
-// board identity 2/2 when the local count-only detector lags.
+// VIDEO REGRESSION 5: old public-state safety modules still keep their strict
+// contracts even though R14's fundamental decision core no longer waits for the
+// old 2/2 gate to be the only strategy path.
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const transaction = fs.readFileSync(new URL('../src/vision/state-transaction-runtime-r14.js', import.meta.url), 'utf8');
 const heroContinuity = fs.readFileSync(new URL('../src/vision/hero-continuity-guard-r14.js', import.meta.url), 'utf8');
@@ -88,12 +88,10 @@ assert.match(safety, /rawStableFrames >= 2/);
 assert.match(safety, /fastIdentityConsensus/);
 assert.match(safety, /visualBoardCount/);
 assert.match(decisionStore, /strategicDeadlineFallback: false/);
-assert.match(decisionStore, /clockStartsAfterManualHero: true/);
+assert.match(decisionStore, /clockStartsAfterHeroConfirmation: true/);
 
-// VIDEO REGRESSION 6: postflop board clear is now DEFERRED instead of rotating
-// instantly. This prevents brief zero-board frames during flop->turn / turn->river
-// animation from deleting the manual Hero and pot. If board remains truly empty
-// beyond the grace window, the old hand still rotates and cannot leak forward.
+// VIDEO REGRESSION 6: lower transaction layer still defers board clears rather
+// than rotating instantly. The continuity guard above it now adds dealer proof.
 assert.match(transaction, /BOARD_CLEAR_GRACE_MS = 500/);
 assert.match(transaction, /pendingBoardClear/);
 assert.match(transaction, /deferredBoardClears/);
@@ -104,9 +102,7 @@ assert.match(transaction, /now - pendingBoardClear\.armedAt < BOARD_CLEAR_GRACE_
 assert.match(transaction, /r14-board-cleared-postflop/);
 
 // VIDEO REGRESSION 7: PokerStars may briefly hide/move Hero cards while dealing
-// the flop. A preflop Hero gap therefore cannot rotate immediately. The R14
-// transaction layer must defer it for one cycle and cancel the pending redeal
-// as soon as a live flop/turn/river board is observed.
+// the flop. A preflop Hero gap therefore cannot rotate immediately.
 assert.match(transaction, /pendingHeroRedeal/);
 assert.match(transaction, /deferredHeroRedeals/);
 assert.match(transaction, /suppressedHeroRedeals/);
@@ -116,43 +112,44 @@ assert.match(transaction, /count > 0 && pendingHeroRedeal/);
 assert.match(transaction, /Number\(lifecycle\.visualBoardCount\) > 0/);
 
 // VIDEO REGRESSION 8: once there is a logical postflop board, Hero disappearance
-// alone is never allowed to rotate the deal. Board continuity owns the boundary,
-// so the manually entered Hero survives flop->turn->river.
+// alone is never allowed to rotate the deal. Board continuity owns the candidate.
 assert.match(transaction, /logicalBoardCount > 0/);
 assert.match(transaction, /r14-hero-redeal-suppressed-postflop/);
 assert.match(transaction, /count >= previousCount/);
 assert.match(transaction, /r14-board-redeal-after-clear/);
 
 // VIDEO REGRESSION 9: the observed real replay can keep Hero cards physically
-// visible while the board detector reads zero for >500ms during turn->river.
-// A board-only boundary must therefore be vetoed while physical Hero was seen
-// recently; otherwise generation change deletes the manual Hero mid-hand.
+// visible while the board detector reads zero during a street animation. The
+// central guard must preserve the generation until public boundary proof exists.
 assert.match(bootstrap, /hero-continuity-guard-r14/);
 assert.match(heroContinuity, /HERO_RECENT_MS = 1000/);
 assert.match(heroContinuity, /r14-board-cleared-postflop/);
 assert.match(heroContinuity, /r14-board-redeal-after-clear/);
 assert.match(heroContinuity, /heroRecentlyPhysical/);
-assert.match(heroContinuity, /postflopAlive/);
+assert.match(heroContinuity, /authorityLocked/);
 assert.match(heroContinuity, /machine\.handId === beforeHandId/);
 assert.match(heroContinuity, /r14-hero-continuity-protected/);
 
-// VIDEO REGRESSION 10: physical Hero disappearance/reappearance alone is NEVER
-// sufficient to clear a manually-entered Hero. A pending preflop boundary must
-// wait for public redeal evidence: dealer/button movement or a stable pot reset.
-// Any visible board cancels the pending boundary and proves the same hand lives.
+// VIDEO REGRESSION 10: once Hero is locked, card disappearance, board clear and
+// pot reset are NEVER sufficient to erase it. The dealer/button must move and the
+// SAME new dealer must be observed twice. Pot reset remains diagnostic only.
 assert.match(heroContinuity, /PREFLOP_REDEAL_GRACE_MS = 250/);
+assert.match(heroContinuity, /DEALER_CONFIRM_HITS = 2/);
 assert.match(heroContinuity, /PREFLOP_HERO_REDEAL_REASON = 'r14-physical-hero-redeal'/);
 assert.match(heroContinuity, /pendingPreflopHeroBoundary/);
+assert.match(heroContinuity, /pendingBoardBoundary/);
 assert.match(heroContinuity, /preflopBoundaryPending/);
+assert.match(heroContinuity, /boardBoundaryPending/);
 assert.match(heroContinuity, /lastStableDealerSeat/);
-assert.match(heroContinuity, /lastStablePublicPot/);
-assert.match(heroContinuity, /function redealEvidence/);
-assert.match(heroContinuity, /dealerChanged \|\| potReset/);
-assert.match(heroContinuity, /preflop-hero-boundary-awaiting-public-evidence/);
-assert.match(heroContinuity, /r14-preflop-redeal-awaiting-public-boundary/);
-assert.match(heroContinuity, /preflop-hero-boundary-confirmed-dealer-moved/);
-assert.match(heroContinuity, /preflop-hero-boundary-confirmed-pot-reset/);
-assert.match(heroContinuity, /anyPublicBoardVisible/);
+assert.match(heroContinuity, /function dealerProof/);
+assert.match(heroContinuity, /dealerChanged && pending\.dealerHits >= DEALER_CONFIRM_HITS/);
+assert.match(heroContinuity, /potResetAccepted: false/);
+assert.match(heroContinuity, /blockedPotOnlyBoundaries/);
+assert.match(heroContinuity, /preflop-hero-boundary-awaiting-stable-dealer-move/);
+assert.match(heroContinuity, /board-boundary-awaiting-stable-dealer-move/);
+assert.match(heroContinuity, /preflop-hero-boundary-confirmed-dealer-moved-2of2/);
+assert.match(heroContinuity, /board-boundary-confirmed-dealer-moved-2of2/);
+assert.match(heroContinuity, /physicalBoardVisible/);
 assert.match(safety, /boundaryPending/);
 assert.match(safety, /public-redeal-evidence/);
 
