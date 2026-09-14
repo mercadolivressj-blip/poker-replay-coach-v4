@@ -89,6 +89,33 @@ if (!HandMachine.prototype[PATCH]) {
   };
 }
 
+function nowMs() {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+}
+
+function fastProvisionalPot(machine) {
+  if (typeof window === 'undefined' || !machine || machine.handId <= 0) return null;
+  const fast = window.__prcAIDecisionR14;
+  if (!fast || Number(fast.handId) !== Number(machine.handId)) return null;
+
+  const value = normalizeAmount(fast.pot);
+  if (value === null || Number(fast.potConfidence) < 0.92) return null;
+
+  const actions = Array.isArray(fast.actions) ? fast.actions : [];
+  const decisionFrame = fast.heroToAct === true || actions.length >= 2;
+  if (!decisionFrame) return null;
+
+  const seenAt = Number(fast.lastSeenAt) || 0;
+  const latency = Math.max(0, Number(fast.lastLatencyMs) || 0);
+  const age = seenAt > 0 ? nowMs() - seenAt : Infinity;
+  const freshness = Math.max(2600, Math.min(5200, latency + 1800));
+  if (age > freshness) return null;
+
+  const canonical = normalizeAmount(machine.state?.pot);
+  if (canonical !== null && value + amountTolerance(canonical, 0.02) < canonical) return null;
+  return value;
+}
+
 let syncing = false;
 function syncMoneyUi() {
   if (syncing || typeof document === 'undefined') return;
@@ -97,9 +124,17 @@ function syncMoneyUi() {
   syncing = true;
   try {
     const potEl = document.getElementById('potValue');
-    if (potEl && Number.isFinite(machine.state.pot)) {
-      const wanted = formatAmount(machine.state.pot);
+    if (potEl) {
+      const provisional = fastProvisionalPot(machine);
+      const canonical = normalizeAmount(machine.state.pot);
+      const displayValue = provisional ?? canonical;
+      const wanted = formatAmount(displayValue);
       if (potEl.textContent !== wanted) potEl.textContent = wanted;
+      if (provisional !== null && (canonical === null || Math.abs(provisional - canonical) > amountTolerance(provisional, 0.02))) {
+        potEl.dataset.fastProvisional = '1';
+      } else {
+        delete potEl.dataset.fastProvisional;
+      }
     }
 
     const actionBox = document.getElementById('actions');
@@ -111,9 +146,7 @@ function syncMoneyUi() {
       const wanted = `${String(action.type || '').toUpperCase()}${amount}`;
       if (pill.textContent !== wanted) pill.textContent = wanted;
     });
-  } finally {
-    syncing = false;
-  }
+  } finally { syncing = false; }
 }
 
 if (typeof document !== 'undefined') {
@@ -122,6 +155,6 @@ if (typeof document !== 'undefined') {
     const observer = new MutationObserver(syncMoneyUi);
     observer.observe(target, { subtree: true, childList: true, characterData: true });
   }
-  setInterval(syncMoneyUi, 90);
+  setInterval(syncMoneyUi, 45);
   setTimeout(syncMoneyUi, 0);
 }

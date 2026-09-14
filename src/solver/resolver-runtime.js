@@ -13,6 +13,7 @@ let lastPublished = null;
 let applyingPublished = false;
 
 function $(id) { return document.getElementById(id); }
+function now() { return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now(); }
 function cloneCard(c) { return c ? { rank: c.rank, suit: c.suit || null, confidence: Number.isFinite(c.confidence) ? c.confidence : null, suitConfidence: Number.isFinite(c.suitConfidence) ? c.suitConfidence : null } : null; }
 function completeCard(c) { return !!c?.rank && !!c?.suit; }
 function cardsReady(state) {
@@ -20,6 +21,53 @@ function cardsReady(state) {
   if (state.street === 'preflop') return (state.board || []).length === 0;
   const expected = state.street === 'flop' ? 3 : state.street === 'turn' ? 4 : state.street === 'river' ? 5 : 0;
   return expected > 0 && state.board?.length === expected && state.board.every(completeCard);
+}
+
+function fastDecision(machine) {
+  const d = typeof window !== 'undefined' ? window.__prcAIDecisionR14 : null;
+  if (!d || d.handId !== machine?.handId || d.heroToAct !== true) return null;
+  const age = Number.isFinite(d.lastSeenAt) && d.lastSeenAt > 0 ? now() - d.lastSeenAt : Infinity;
+  const windowMs = Math.max(4500, Math.min(9000, (Number(d.lastLatencyMs) || 0) * 2 + 1800));
+  return age <= windowMs ? d : null;
+}
+
+function mergeDecisionActions(machine, fast) {
+  const local = (machine.state.actions || []).map((a) => ({ type: a.type, amount: Number.isFinite(a.amount) ? a.amount : null }));
+  const ai = (fast?.actions || []).map((a) => ({ type: a.type, amount: Number.isFinite(a.amount) ? a.amount : null }));
+  if (!ai.length) return local;
+  const byType = new Map(local.map((a) => [a.type, a]));
+  for (const action of ai) {
+    const existing = byType.get(action.type);
+    if (!existing) byType.set(action.type, action);
+    else if (!Number.isFinite(existing.amount) && Number.isFinite(action.amount)) existing.amount = action.amount;
+  }
+  return [...byType.values()];
+}
+
+function ensureCurrentFrameEvidence(events, machine, fast) {
+  if (!fast?.aggressorName || fast.aggressorConfidence < 0.68) return events;
+  const sameStreetKnown = events.some((e) => e.street === machine.state.street && String(e.actorName || '').trim().toLowerCase() === String(fast.aggressorName).trim().toLowerCase());
+  if (sameStreetKnown) return events;
+
+  const facingAmount = Number.isFinite(fast.aggressorCommitted) && Number.isFinite(fast.heroCommitted)
+    ? Math.max(0, fast.aggressorCommitted - fast.heroCommitted)
+    : null;
+  if (!(facingAmount > 0)) return events;
+
+  let action = machine.state.street === 'preflop' ? 'raise' : 'bet';
+  const localHeroCommit = Number(fast.heroCommitted) || 0;
+  if (machine.state.street !== 'preflop' && localHeroCommit > 0) action = 'raise';
+  return [...events, {
+    handId: machine.handId,
+    street: machine.state.street,
+    actorName: fast.aggressorName,
+    seatLabel: null,
+    action,
+    amount: Number.isFinite(fast.aggressorCommitted) ? fast.aggressorCommitted : null,
+    source: 'ai-decision-frame-r14',
+    confidence: Math.max(0.68, Math.min(0.96, Number(fast.aggressorConfidence) || 0.75)),
+    observedAt: now(),
+  }];
 }
 
 function ensureResolverStatus() {
@@ -69,17 +117,22 @@ function villainActor(events, street, table) {
 }
 
 function contextSnapshot(machine) {
-  const events = activeActionTimeline?.handId === machine.handId ? activeActionTimeline.events.map((e) => ({ ...e })) : [];
+  const fast = fastDecision(machine);
+  let events = activeActionTimeline?.handId === machine.handId ? activeActionTimeline.events.map((e) => ({ ...e })) : [];
+  events = ensureCurrentFrameEvidence(events, machine, fast);
   const provisionalTable = snapshotTable(null);
-  const actorName = villainActor(events, machine.state.street, provisionalTable);
+  const actorName = (fast?.aggressorName && fast.aggressorConfidence >= 0.68)
+    ? fast.aggressorName
+    : villainActor(events, machine.state.street, provisionalTable);
   const table = snapshotTable(actorName);
+  const actions = mergeDecisionActions(machine, fast);
   const state = {
     street: machine.state.street,
-    heroToAct: Boolean(machine.state.heroToAct),
+    heroToAct: Boolean(machine.state.heroToAct || fast?.heroToAct === true),
     hero: (machine.state.hero || []).map(cloneCard).filter(Boolean),
     board: (machine.state.board || []).map(cloneCard).filter(Boolean),
-    pot: Number.isFinite(machine.state.pot) ? machine.state.pot : null,
-    actions: (machine.state.actions || []).map((a) => ({ type: a.type, amount: Number.isFinite(a.amount) ? a.amount : null })),
+    pot: fast?.trusted && Number.isFinite(fast.pot) ? fast.pot : (Number.isFinite(machine.state.pot) ? machine.state.pot : null),
+    actions,
   };
   return { handId: machine.handId, state, events, actorName, table };
 }
@@ -100,8 +153,7 @@ function applyPublished() {
 }
 
 function publishUi(entry) {
-  lastPublished = entry;
-  publishDecision(entry);
+  lastPublished = publishDecision(entry);
   applyPublished();
 }
 
@@ -179,7 +231,7 @@ function tick() {
   const fingerprint = resolverFingerprint(context);
   resolver.schedule(context);
 
-  if (!machine.state.heroToAct || !machine.state.actions?.length) {
+  if (!context.state.heroToAct || !context.state.actions?.length) {
     lastPublished = null;
     clearDecision();
     if (statusBadge) statusBadge.textContent = resolver.prepared?.fingerprint === fingerprint ? 'RESOLVER PRÉ-CALCULADO' : 'RESOLVER CALCULANDO';
@@ -187,7 +239,7 @@ function tick() {
   }
 
   const cacheHit = resolver.prepared?.fingerprint === fingerprint;
-  const result = resolver.resolve(context, machine.state.actions);
+  const result = resolver.resolve(context, context.state.actions);
   renderLocal(result, cacheHit, statusBadge, machine);
 }
 

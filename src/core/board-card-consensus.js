@@ -7,7 +7,11 @@ function clone(card) { return card ? { ...card } : null; }
 
 export class BoardCardConsensus {
   constructor({ slots = 5, windowMs = 420, minHits = 3 } = {}) {
-    this.slots = Math.max(3, Math.min(5, Math.floor(slots)));
+    // Despite the historical class name, this is a generic per-slot rank
+    // consensus. R14 also uses it for the two local Hero-card slots so Hero can
+    // get the same temporal rank stability as the board without introducing a
+    // second, weaker consensus implementation.
+    this.slots = Math.max(1, Math.min(5, Math.floor(slots)));
     this.windowMs = windowMs;
     this.minHits = Math.max(2, Math.floor(minHits));
     this.resetSession();
