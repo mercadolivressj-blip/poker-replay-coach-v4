@@ -2,8 +2,13 @@ import { activeHandMachine } from '../core/state-machine.js';
 
 const authority = {
   handId: 0,
+  // Legacy name retained for compatibility: remote/full-frame AI never owns
+  // Hero cards. R14 may now also accept a LOCAL replay-file reader after strong
+  // temporal consensus; manual correction always has priority over it.
   manualOnly: true,
+  localReplayAuto: true,
   heroLocked: false,
+  heroSource: null,
   lockedAt: 0,
 };
 
@@ -24,27 +29,44 @@ function sameCards(a, b) {
     && a.every((card, index) => cardId(card) === cardId(b[index]));
 }
 
+function completeHero(cards) {
+  return Array.isArray(cards)
+    && cards.length === 2
+    && cards.every((card) => card?.rank && card?.suit);
+}
+
+function replayFileAutoAllowed() {
+  if (typeof window === 'undefined') return false;
+  const replay = window.__prcReplayOnlyR14;
+  return Boolean(
+    replay?.fileReady === true
+    && (replay?.sourceKind === 'video-file' || replay?.sourceKind === 'image-file')
+  );
+}
+
 function heroReady() {
   const cards = activeHandMachine?.state?.hero || [];
   return authority.heroLocked
     && authority.handId === activeHandMachine?.handId
-    && cards.length === 2
-    && cards.every((card) => card?.rank && card?.suit);
+    && completeHero(cards);
 }
 
 function reset(handId = activeHandMachine?.handId || 0) {
   authority.handId = Number(handId) || 0;
   authority.heroLocked = false;
+  authority.heroSource = null;
   authority.lockedAt = 0;
 }
 
-function lockHero() {
+function lockHero(source = 'manual') {
   const machine = activeHandMachine;
-  if (!machine?.state || machine.handId <= 0) return;
+  if (!machine?.state || machine.handId <= 0 || !completeHero(machine.state.hero || [])) return false;
   authority.handId = machine.handId;
   authority.heroLocked = true;
+  authority.heroSource = source === 'replay-auto' ? 'replay-auto' : 'manual';
   authority.lockedAt = now();
   syncManualOnlyState();
+  return true;
 }
 
 function installMachineGuard() {
@@ -54,12 +76,34 @@ function installMachineGuard() {
   const setHero = machine.setHero.bind(machine);
   machine.setHero = (cards, handId, options = {}) => {
     const source = String(options?.source || 'local');
-    if (source !== 'manual') {
-      // R14 manual-only Hero lane: visual/AI readers may still detect physical
-      // card presence for hand lifecycle, but they never own Hero ranks/suits.
-      return sameCards(machine.state.hero || [], cards || []);
+
+    if (source === 'manual') {
+      const accepted = setHero(cards, handId, options);
+      if (accepted && completeHero(cards)) lockHero('manual');
+      return accepted;
     }
-    return setHero(cards, handId, options);
+
+    if (source === 'replay-auto') {
+      // Never extend local visual Hero recognition to a shared/live screen.
+      // Automatic Hero ownership exists only for an uploaded replay/image file.
+      if (!authority.localReplayAuto || !replayFileAutoAllowed()) return false;
+
+      // A manual correction is final for the current hand. The local reader may
+      // verify the same pair but can never overwrite it.
+      if (authority.heroLocked && Number(authority.handId) === Number(handId)) {
+        if (authority.heroSource === 'manual') return sameCards(machine.state.hero || [], cards || []);
+        if (sameCards(machine.state.hero || [], cards || [])) return true;
+        return false;
+      }
+
+      const accepted = setHero(cards, handId, options);
+      if (accepted && completeHero(cards)) lockHero('replay-auto');
+      return accepted;
+    }
+
+    // Full-frame/fast AI and legacy visual lanes may observe physical presence
+    // for lifecycle, but they do not own Hero identity in R14.
+    return sameCards(machine.state.hero || [], cards || []);
   };
 
   machine.__prcManualHeroAuthorityGuardR14 = true;
@@ -77,8 +121,8 @@ function installDecisionDiagnosticGuard() {
       return (activeHandMachine?.state?.hero || []).map((card) => ({ ...card }));
     },
     set(_value) {
-      // Ignore AI Hero-card reads completely. The decision lane may keep reading
-      // pot/actions/aggressor while Hero cards remain manual-only.
+      // Ignore remote AI Hero-card reads completely. Hero is either manually
+      // entered or confirmed by the local replay-file pixel reader.
     },
   });
 
@@ -101,7 +145,7 @@ function syncManualOnlyState() {
   const full = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
   if (full) {
     full.manual ||= { hero: false, board: false, pot: false };
-    // Always true: full-frame owns table context, never Hero cards.
+    // The full-frame endpoint owns public table context, never Hero cards.
     full.manual.hero = true;
     full.hero = hero.map((card) => ({ ...card }));
     full.heroConfidence = ready ? 1 : 0;
@@ -120,7 +164,12 @@ if (typeof window !== 'undefined') {
   window.addEventListener('prc:manual-state-applied', (event) => {
     if (!event.detail?.hero) return;
     if (Number(event.detail.generation) !== activeHandMachine?.handId) return;
-    lockHero();
+    lockHero('manual');
+  });
+
+  window.addEventListener('prc:hero-auto-confirmed', (event) => {
+    if (Number(event.detail?.generation) !== Number(activeHandMachine?.handId)) return;
+    if (authority.heroSource !== 'manual') lockHero('replay-auto');
   });
 }
 
