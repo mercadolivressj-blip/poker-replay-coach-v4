@@ -3,8 +3,8 @@ import { activeHandMachine } from '../core/state-machine.js';
 const authority = {
   handId: 0,
   // Legacy name retained for compatibility: remote/full-frame AI never owns
-  // Hero cards. R14 may now also accept a LOCAL replay-file reader after strong
-  // temporal consensus; manual correction always has priority over it.
+  // Hero cards. R14 may accept a LOCAL reader only for an explicitly confirmed
+  // replay source (uploaded file/image or the user-confirmed shared replay).
   manualOnly: true,
   localReplayAuto: true,
   heroLocked: false,
@@ -35,13 +35,18 @@ function completeHero(cards) {
     && cards.every((card) => card?.rank && card?.suit);
 }
 
-function replayFileAutoAllowed() {
+function replayAutoAllowed() {
   if (typeof window === 'undefined') return false;
   const replay = window.__prcReplayOnlyR14;
-  return Boolean(
+  const fileReplay = Boolean(
     replay?.fileReady === true
     && (replay?.sourceKind === 'video-file' || replay?.sourceKind === 'image-file')
   );
+  const confirmedSharedReplay = Boolean(
+    replay?.screenReplayReady === true
+    && replay?.sourceKind === 'screen-replay'
+  );
+  return fileReplay || confirmedSharedReplay;
 }
 
 function heroReady() {
@@ -84,12 +89,11 @@ function installMachineGuard() {
     }
 
     if (source === 'replay-auto') {
-      // Never extend local visual Hero recognition to a shared/live screen.
-      // Automatic Hero ownership exists only for an uploaded replay/image file.
-      if (!authority.localReplayAuto || !replayFileAutoAllowed()) return false;
+      // Automatic Hero ownership exists only inside the explicit replay modes.
+      if (!authority.localReplayAuto || !replayAutoAllowed()) return false;
 
-      // A manual correction is final for the current hand. The local reader may
-      // verify the same pair but can never overwrite it.
+      // Manual correction is final for the current hand. Local vision may only
+      // verify the same pair; it can never overwrite a manual correction.
       if (authority.heroLocked && Number(authority.handId) === Number(handId)) {
         if (authority.heroSource === 'manual') return sameCards(machine.state.hero || [], cards || []);
         if (sameCards(machine.state.hero || [], cards || [])) return true;
@@ -120,10 +124,7 @@ function installDecisionDiagnosticGuard() {
     get() {
       return (activeHandMachine?.state?.hero || []).map((card) => ({ ...card }));
     },
-    set(_value) {
-      // Ignore remote AI Hero-card reads completely. Hero is either manually
-      // entered or confirmed by the local replay-file pixel reader.
-    },
+    set(_value) {},
   });
 
   Object.defineProperty(d, 'heroConfidence', {
@@ -145,7 +146,6 @@ function syncManualOnlyState() {
   const full = typeof window !== 'undefined' ? window.__prcAIStateR14 : null;
   if (full) {
     full.manual ||= { hero: false, board: false, pot: false };
-    // The full-frame endpoint owns public table context, never Hero cards.
     full.manual.hero = true;
     full.hero = hero.map((card) => ({ ...card }));
     full.heroConfidence = ready ? 1 : 0;
