@@ -18,6 +18,7 @@ await import('./vision/replay-context-runtime-r14.js');
 await import('./vision/table-capacity-stabilizer-r14.js');
 await import('./vision/ai-decision-pot-bridge-r14.js');
 await import('./vision/ai-decision-runtime-r14.js');
+await import('./vision/current-pot-authority-r14.js');
 await import('./vision/ai-decision-field-consensus-r14.js');
 await import('./vision/legal-action-guard-r14.js');
 await import('./vision/ai-decision-consensus-r14.js');
