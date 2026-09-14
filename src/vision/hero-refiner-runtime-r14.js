@@ -2,20 +2,22 @@ import { activeHandMachine } from '../core/state-machine.js';
 import { detectFelt, layoutFromFelt, stabilizeFelt } from '../core/geometry.js';
 import { cropCanvas } from '../core/image.js';
 import { classifyRankPixels } from '../core/rank-classifier.js';
+import { OcrService } from '../core/ocr.js';
 import { classifyPokerStarsSuitPixels } from '../core/pokerstars-suit-scanner.js';
 import { BoardCardConsensus } from '../core/board-card-consensus.js';
 import { SuitConsensus } from '../core/suit-consensus.js';
 import { locateHeroCardSlots } from '../detectors/hero-card-locator.js';
-import { cardPresenceScore } from '../detectors/cards.js';
+import { cardPresenceScore, rankCrop } from '../detectors/cards.js';
 
 const diagnostics = {
   enabled: true,
-  localReplayOnly: true,
+  replayOnly: true,
   sourceAllowed: false,
   handId: 0,
   reads: 0,
   located: 0,
   fallbackGeometryReads: 0,
+  rankOcrFallbacks: 0,
   rankConsensus: '0/2',
   suitConsensus: '0/2',
   pairConsensus: '0/2',
@@ -29,10 +31,11 @@ const diagnostics = {
 };
 if (typeof window !== 'undefined') window.__prcHeroRefinerR14 = diagnostics;
 
-const rankConsensus = new BoardCardConsensus({ slots: 2, windowMs: 620, minHits: 3 });
+const ocr = new OcrService();
+const rankConsensus = new BoardCardConsensus({ slots: 2, windowMs: 680, minHits: 3 });
 const suitConsensus = new SuitConsensus({
   slots: 2,
-  windowMs: 720,
+  windowMs: 780,
   allowFacePairCandidates: true,
   allowCandidates: true,
   candidateMinHits: 4,
@@ -47,7 +50,6 @@ let lastGeomAt = 0;
 let lastReadAt = 0;
 let busy = false;
 let trackedHandId = -1;
-let startedAt = 0;
 let pairKey = '';
 let pairHits = 0;
 
@@ -57,13 +59,18 @@ function nowMs() {
   return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
 }
 
-function replayFileAllowed() {
+function replayAutoAllowed() {
   if (typeof window === 'undefined') return false;
   const replay = window.__prcReplayOnlyR14;
-  return Boolean(
+  const fileReplay = Boolean(
     replay?.fileReady === true
     && (replay?.sourceKind === 'video-file' || replay?.sourceKind === 'image-file')
   );
+  const confirmedSharedReplay = Boolean(
+    replay?.screenReplayReady === true
+    && replay?.sourceKind === 'screen-replay'
+  );
+  return fileReplay || confirmedSharedReplay;
 }
 
 function authority() {
@@ -96,6 +103,8 @@ function frameOf(el) {
   capture.width = Math.max(480, Math.round(sw * scale));
   capture.height = Math.max(270, Math.round(sh * scale));
   const ctx = capture.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(el, 0, 0, capture.width, capture.height);
   return { canvas: capture, w: capture.width, h: capture.height };
 }
@@ -109,7 +118,6 @@ function resetHand(machine) {
   layout = null;
   lastGeomAt = 0;
   lastReadAt = 0;
-  startedAt = nowMs();
   pairKey = '';
   pairHits = 0;
   diagnostics.rankConsensus = '0/2';
@@ -124,7 +132,7 @@ function cardLabel(cards) {
   return (cards || []).map((card) => `${card?.rank || '?'}${SUIT_SYMBOL[card?.suit] || '?'}`).join(' ');
 }
 
-function safeRank(crop) {
+function localRank(crop) {
   const read = classifyRankPixels(crop.data, crop.w, crop.h);
   if (!read?.rank) return null;
   const rank = String(read.rank).toUpperCase();
@@ -132,11 +140,8 @@ function safeRank(crop) {
   const margin = Number(read.margin) || 0;
   const confidence = Number(read.confidence) || 0;
 
-  // T/8 is the real-world ambiguous pair that previously corrupted Hero reads.
-  // Do not let one fuzzy frame vote at all; temporal consensus will wait for a
-  // cleaner frame instead of guessing.
   if (((rank === 'T' && second === '8') || (rank === '8' && second === 'T')) && margin < 0.14) return null;
-  if (confidence < 0.50) return null;
+  if (confidence < 0.54) return null;
 
   return {
     rank,
@@ -144,6 +149,22 @@ function safeRank(crop) {
     confidence,
     rankMargin: margin,
     source: 'hero-refiner-r14-local',
+  };
+}
+
+async function rankCard(crop) {
+  const local = localRank(crop);
+  if (local) return local;
+
+  diagnostics.rankOcrFallbacks++;
+  const read = await ocr.readRank(rankCrop(crop.canvas), 'hero');
+  if (!read?.value) return null;
+  return {
+    rank: String(read.value).toUpperCase(),
+    suit: null,
+    confidence: Math.max(0.50, Math.min(0.92, (Number(read.confidence) || 0) / 100)),
+    rankMargin: Number(read.agreement) >= 2 ? 0.20 : 0.10,
+    source: 'hero-refiner-r14-ocr',
   };
 }
 
@@ -160,7 +181,7 @@ function suitProposal(card, crop) {
     suitFamily: read.family || null,
     suitRoi: read.roi || null,
     suitScanner: read.scanner || 'pokerstars-suit-r9',
-    source: 'hero-refiner-r14-local',
+    source: card.source || 'hero-refiner-r14-local',
   };
 }
 
@@ -174,11 +195,26 @@ function duplicatePhysicalCard(cards) {
   return cards[0]?.rank === cards[1]?.rank && cards[0]?.suit === cards[1]?.suit;
 }
 
-function fallbackSlots(frame) {
-  if (!layout?.heroSuitSlots?.length) return null;
-  const crops = layout.heroSuitSlots.map((slot, index) => cropCanvas(frame.canvas, slot, 170, cardScratch[index]));
-  const present = crops.every((crop) => cardPresenceScore(crop.data, crop.w, crop.h) >= 0.22);
-  return present ? layout.heroSuitSlots : null;
+function slotsPresent(frame, slots) {
+  if (!Array.isArray(slots) || slots.length !== 2) return false;
+  const crops = slots.map((slot, index) => cropCanvas(frame.canvas, slot, 180, cardScratch[index]));
+  return crops.every((crop) => cardPresenceScore(crop.data, crop.w, crop.h) >= 0.20);
+}
+
+function chooseSlots(frame) {
+  // Same philosophy as the board lane: stable felt-relative slots are primary.
+  // Dynamic card discovery is only a fallback for unusual window/table geometry.
+  if (layout?.heroSuitSlots?.length === 2 && slotsPresent(frame, layout.heroSuitSlots)) {
+    diagnostics.fallbackGeometryReads++;
+    return layout.heroSuitSlots;
+  }
+  if (layout?.heroSlots?.length === 2 && slotsPresent(frame, layout.heroSlots)) {
+    diagnostics.fallbackGeometryReads++;
+    return layout.heroSlots;
+  }
+  const located = locateHeroCardSlots(frame.canvas, felt, searchScratch);
+  if (located) diagnostics.located++;
+  return located;
 }
 
 function updateLabel(cards) {
@@ -191,12 +227,12 @@ function updateLabel(cards) {
 async function readOnce() {
   const machine = activeHandMachine;
   const el = source();
-  diagnostics.sourceAllowed = replayFileAllowed();
+  diagnostics.sourceAllowed = replayAutoAllowed();
   if (!machine || machine.handId <= 0 || !el || busy) return;
   if (machine.handId !== trackedHandId) resetHand(machine);
 
   if (!diagnostics.sourceAllowed) {
-    diagnostics.status = 'manual-fallback-screen-replay';
+    diagnostics.status = 'manual-only-unconfirmed-source';
     diagnostics.fallbackReady = true;
     return;
   }
@@ -215,8 +251,10 @@ async function readOnce() {
     return;
   }
 
+  // In confirmed replay modes, automatic Hero vision stays primary. A modal
+  // never interrupts the replay; manual correction remains available by pencil.
+  diagnostics.fallbackReady = false;
   const now = nowMs();
-  diagnostics.fallbackReady = now - startedAt >= 1800;
   if (now - lastReadAt < 58) return;
   lastReadAt = now;
 
@@ -237,12 +275,7 @@ async function readOnce() {
     }
     if (!felt || !layout || machine.handId !== handId) return;
 
-    let slots = locateHeroCardSlots(frame.canvas, felt, searchScratch);
-    if (slots) diagnostics.located++;
-    else {
-      slots = fallbackSlots(frame);
-      if (slots) diagnostics.fallbackGeometryReads++;
-    }
+    const slots = chooseSlots(frame);
     if (!slots) {
       diagnostics.status = 'locating-cards';
       return;
@@ -255,13 +288,13 @@ async function readOnce() {
       return;
     }
 
-    const rankReads = crops.map(safeRank);
-    if (rankReads.some((read) => !read?.rank)) {
+    const rankReads = await Promise.all(crops.map(rankCard));
+    if (machine.handId !== handId || rankReads.some((read) => !read?.rank)) {
       diagnostics.status = 'reading-ranks';
       return;
     }
 
-    const stableRanks = rankConsensus.observe(rankReads, { handId, now });
+    const stableRanks = rankConsensus.observe(rankReads, { handId, now: nowMs() });
     diagnostics.rankConsensus = `${stableRanks.confirmedCount}/2`;
     if (!stableRanks.ready || stableRanks.cards.length !== 2) {
       diagnostics.status = 'rank-consensus';
@@ -269,7 +302,7 @@ async function readOnce() {
     }
 
     const suitReads = stableRanks.cards.map((card, index) => suitProposal(card, crops[index]));
-    const stableSuits = suitConsensus.observe(suitReads, { handId, now });
+    const stableSuits = suitConsensus.observe(suitReads, { handId, now: nowMs() });
     diagnostics.suitConsensus = `${stableSuits.confirmedCount}/2`;
     if (stableSuits.confirmedCount !== 2) {
       diagnostics.status = 'suit-consensus';
@@ -282,8 +315,10 @@ async function readOnce() {
       rank: card.rank,
       suit: stableSuits.cards[index]?.suit || null,
       confidence: Math.max(0.82, Number(card.confidence) || 0),
-      suitConfidence: stableSuits.cards[index]?.suit ? Math.max(0.84, Number(suitReads[index]?.suitConfidence) || Number(suitReads[index]?.suitCandidateConfidence) || 0) : 0,
-      source: 'hero-refiner-r14-local',
+      suitConfidence: stableSuits.cards[index]?.suit
+        ? Math.max(0.84, Number(suitReads[index]?.suitConfidence) || Number(suitReads[index]?.suitCandidateConfidence) || 0)
+        : 0,
+      source: card.source || 'hero-refiner-r14-local',
     }));
 
     if (cards.some((card) => !card.rank || !card.suit) || duplicatePhysicalCard(cards)) {
@@ -307,7 +342,7 @@ async function readOnce() {
     }
 
     if (machine.handId !== handId || manualOwnsHero(machine)) return;
-    const accepted = machine.setHero(cards, handId, { source: 'replay-auto', now });
+    const accepted = machine.setHero(cards, handId, { source: 'replay-auto', now: nowMs() });
     if (!accepted) {
       diagnostics.status = 'authority-rejected';
       return;
@@ -341,7 +376,7 @@ function tick() {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('prc:replay-source', () => {
-    diagnostics.sourceAllowed = replayFileAllowed();
+    diagnostics.sourceAllowed = replayAutoAllowed();
     if (activeHandMachine) resetHand(activeHandMachine);
   });
   window.addEventListener('prc:manual-state-applied', (event) => {
@@ -355,4 +390,4 @@ if (typeof window !== 'undefined') {
 setInterval(tick, 48);
 setTimeout(tick, 120);
 
-export { replayFileAllowed };
+export { replayAutoAllowed };
