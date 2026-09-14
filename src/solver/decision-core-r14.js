@@ -77,6 +77,52 @@ function fail(reason, extra = {}) {
   return { ready: false, confidence: 0, reason, ...extra };
 }
 
+function occupiedSeats(seats = []) {
+  return (seats || [])
+    .filter((seat) => seat?.hero || seat?.actorName || Number.isFinite(seat?.stack) || Number.isFinite(seat?.committed))
+    .filter((seat) => Number.isInteger(seat?.seatIndex))
+    .sort((a, b) => a.seatIndex - b.seatIndex);
+}
+
+function inferHeroPositionFromSeats(seats = [], dealerSeat = null) {
+  const ring = occupiedSeats(seats);
+  if (!ring.length || !Number.isInteger(dealerSeat)) return null;
+  const dealerIndex = ring.findIndex((seat) => seat.seatIndex === dealerSeat);
+  if (dealerIndex < 0) return null;
+  const rotated = [...ring.slice(dealerIndex), ...ring.slice(0, dealerIndex)];
+  const heroOffset = rotated.findIndex((seat) => seat?.hero);
+  if (heroOffset < 0) return null;
+  const n = rotated.length;
+  if (heroOffset === 0) return n === 2 ? 'BTN/SB' : 'BTN';
+  if (n === 2 && heroOffset === 1) return 'BB';
+  if (heroOffset === 1) return 'SB';
+  if (heroOffset === 2) return 'BB';
+  if (n >= 6) return ['UTG', 'HJ', 'CO'][heroOffset - 3] || null;
+  if (n === 5) return ['UTG', 'CO'][heroOffset - 3] || null;
+  if (n === 4) return heroOffset === 3 ? 'CO' : null;
+  return null;
+}
+
+function fullFrameTableFallback(full, machine, board, pot, at) {
+  if (!full || Number(full.handId) !== Number(machine?.handId) || !fresh(full, at, 6500)) return null;
+  if (Number(full.confidence) < 0.88 || Number(full.seatsConfidence) < 0.70) return null;
+  if (!exactCards(board, full.board || [])) return null;
+  if (!Number.isFinite(Number(full.pot)) || !closeMoney(Number(pot), Number(full.pot))) return null;
+  const seats = Array.isArray(full.seats) ? full.seats.map((seat) => ({ ...seat })) : [];
+  if (seats.length < 2 || !seats.some((seat) => seat?.hero)) return null;
+  const dealer = seats.find((seat) => seat?.dealer && Number.isInteger(seat?.seatIndex));
+  const dealerSeat = Number.isInteger(dealer?.seatIndex) ? dealer.seatIndex : null;
+  return {
+    handId: machine.handId,
+    seats,
+    confidence: Math.min(Number(full.confidence) || 0, Number(full.seatsConfidence) || 0),
+    observedAt: Number(full.lastSeenAt) || at,
+    dealerSeat,
+    heroPosition: inferHeroPositionFromSeats(seats, dealerSeat),
+    source: 'full-frame-current-fallback',
+  };
+}
+
 export function evaluateDecisionCore({ machine, authority, fast, full, table, at = nowMs() } = {}) {
   if (!machine || machine.handId <= 0) return fail('A mão atual ainda não foi iniciada.');
 
@@ -111,17 +157,30 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
   const missingAggressiveAmount = actions.some((action) => ['bet','raise'].includes(action.type) && !Number.isFinite(action.amount));
   if (missingAggressiveAmount) return fail('O tamanho atual da aposta/raise ainda não foi confirmado.');
 
-  if (!table || Number(table.handId) !== Number(machine.handId)) return fail('Jogadores/posições ainda não pertencem à mão atual.');
-  const tableAge = Number.isFinite(Number(table.observedAt)) ? at - Number(table.observedAt) : Infinity;
-  if (tableAge > 9000 || Number(table.confidence) < 0.62) return fail('A leitura dos jogadores/posições está velha.');
+  let tableView = table;
+  let tableSource = 'stable-tracker';
+  let tableAge = Number.isFinite(Number(tableView?.observedAt)) ? at - Number(tableView.observedAt) : Infinity;
+  const stableTableReady = Boolean(
+    tableView
+    && Number(tableView.handId) === Number(machine.handId)
+    && tableAge <= 9000
+    && Number(tableView.confidence) >= 0.62
+  );
 
-  const seats = Array.isArray(table.seats) ? table.seats : [];
+  if (!stableTableReady) {
+    tableView = fullFrameTableFallback(full, machine, board, Number(state.pot), at);
+    tableSource = 'full-frame-current-fallback';
+    tableAge = Number.isFinite(Number(tableView?.observedAt)) ? at - Number(tableView.observedAt) : Infinity;
+  }
+  if (!tableView) return fail('Jogadores/stacks ainda não pertencem ao snapshot atual.');
+
+  const seats = Array.isArray(tableView.seats) ? tableView.seats : [];
   const heroSeat = seats.find((seat) => seat?.hero);
   if (!heroSeat) return fail('A posição do Hero ainda não está ligada à mesa.');
   const activeOpponents = seats.filter((seat) => !seat?.hero && seat?.folded !== true && (seat?.actorName || Number.isFinite(seat?.stack) || Number.isFinite(seat?.committed)));
   if (!activeOpponents.length) return fail('Ainda não há adversários ativos confirmados.');
 
-  const heroPosition = table.heroPosition || heroSeat.position || null;
+  const heroPosition = tableView.heroPosition || heroSeat.position || inferHeroPositionFromSeats(seats, tableView.dealerSeat) || null;
   if (state.street === 'preflop' && !heroPosition) return fail('A posição pré-flop do Hero ainda não foi confirmada.');
 
   const heroStack = Number.isFinite(heroSeat.stack) ? Number(heroSeat.stack) : null;
@@ -137,10 +196,6 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     : Math.min(...knownOpponentStacks.map((seat) => Number(seat.stack)));
   const effectiveStack = Math.min(heroStack, referenceOpponentStack);
 
-  // Full-frame vision is a secondary confirmation source only. The current-turn
-  // core is machine + fast decision frame + physical actions/table. A slower full
-  // frame may lag one action/pot/street behind and must NEVER veto a coherent
-  // current decision snapshot.
   let fullAgreement = false;
   let fullBoardConflict = false;
   let fullPotConflict = false;
@@ -166,14 +221,15 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     + Number(fast.actionsConfidence) * 0.22
     + Number(fast.boardConfidence) * 0.16
     + Number(fast.potConfidence) * 0.14
-    + Math.max(0, Math.min(1, Number(table.confidence) || 0)) * 0.20
+    + Math.max(0, Math.min(1, Number(tableView.confidence) || 0)) * 0.20
   );
   let confidence = Math.round(60 + weighted * 38);
   if (fullAgreement) confidence += 2;
+  if (tableSource === 'full-frame-current-fallback') confidence -= 3;
   if (fullPotConflict) confidence -= 2;
   if (fullBoardConflict) confidence -= 3;
   if (activeOpponents.some((seat) => !Number.isFinite(seat.stack))) confidence -= 4;
-  if (state.street !== 'preflop' && table.dealerSeat == null && !heroPosition) confidence -= 3;
+  if (state.street !== 'preflop' && tableView.dealerSeat == null && !heroPosition) confidence -= 3;
   if (activeOpponents.length > 1) confidence -= Math.min(6, (activeOpponents.length - 1) * 2);
   confidence = Math.max(70, Math.min(95, confidence));
 
@@ -185,11 +241,13 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
   return {
     ready: true,
     confidence,
-    reason: fullAgreement
-      ? 'Estado atual confirmado pelo núcleo + segunda fonte pública.'
-      : secondaryLag.length
-        ? `Estado atual confirmado pelo núcleo; frame inteiro atrasado em ${secondaryLag.join(' e ')} e ignorado para esta decisão.`
-        : 'Estado atual confirmado pelo núcleo mínimo.',
+    reason: tableSource === 'full-frame-current-fallback'
+      ? 'Estado atual confirmado; jogadores/stacks vieram do frame inteiro atual enquanto o tracker estabiliza.'
+      : fullAgreement
+        ? 'Estado atual confirmado pelo núcleo + segunda fonte pública.'
+        : secondaryLag.length
+          ? `Estado atual confirmado pelo núcleo; frame inteiro atrasado em ${secondaryLag.join(' e ')} e ignorado para esta decisão.`
+          : 'Estado atual confirmado pelo núcleo mínimo.',
     handId: machine.handId,
     street: state.street,
     hero: hero.map((card) => ({ ...card })),
@@ -201,7 +259,7 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     activeOpponents: activeOpponents.map((seat) => ({ ...seat })),
     activeOpponentCount: activeOpponents.length,
     heroPosition,
-    dealerSeat: table.dealerSeat ?? null,
+    dealerSeat: tableView.dealerSeat ?? null,
     heroStack,
     effectiveStack,
     aggressorName,
@@ -214,6 +272,7 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     fullBoardConflict,
     fullPotConflict,
     tableAge,
+    tableSource,
   };
 }
 
@@ -236,4 +295,4 @@ if (typeof window !== 'undefined') {
   };
 }
 
-export { exactCards, closeMoney, normalizeActions, sameActionTypes };
+export { exactCards, closeMoney, normalizeActions, sameActionTypes, inferHeroPositionFromSeats, fullFrameTableFallback };
