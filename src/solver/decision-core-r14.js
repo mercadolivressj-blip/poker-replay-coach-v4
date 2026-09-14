@@ -82,8 +82,8 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
 
   const state = machine.state || {};
   const hero = Array.isArray(state.hero) ? state.hero : [];
-  if (!authority?.manualOnly || !authority?.heroLocked || Number(authority.handId) !== Number(machine.handId) || !completeCards(hero, 2)) {
-    return fail('Aguardando as duas cartas manuais do Hero.');
+  if (!authority?.heroLocked || Number(authority.handId) !== Number(machine.handId) || !completeCards(hero, 2)) {
+    return fail('Aguardando confirmação das duas cartas do Hero.');
   }
 
   const board = Array.isArray(state.board) ? state.board : [];
@@ -179,6 +179,7 @@ export function evaluateDecisionCore({ machine, authority, fast, full, table, at
     handId: machine.handId,
     street: state.street,
     hero: hero.map((card) => ({ ...card })),
+    heroSource: authority?.heroSource || 'confirmed',
     board: board.map((card) => ({ ...card })),
     pot: Number(state.pot),
     actions,
