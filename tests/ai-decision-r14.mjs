@@ -8,7 +8,9 @@ const fieldConsensus = fs.readFileSync(new URL('../src/vision/ai-decision-field-
 const legalActionGuard = fs.readFileSync(new URL('../src/vision/legal-action-guard-r14.js', import.meta.url), 'utf8');
 const consensus = fs.readFileSync(new URL('../src/vision/ai-decision-consensus-r14.js', import.meta.url), 'utf8');
 const resolver = fs.readFileSync(new URL('../src/solver/resolver-runtime.js', import.meta.url), 'utf8');
-const gate = fs.readFileSync(new URL('../src/solver/study-safety-gate-r14.js', import.meta.url), 'utf8');
+const gate = fs.readFileSync(new URL('../src/solver/decision-core-gate-r14.js', import.meta.url), 'utf8');
+const decisionCore = fs.readFileSync(new URL('../src/solver/decision-core-r14.js', import.meta.url), 'utf8');
+const fundamental = fs.readFileSync(new URL('../src/solver/fundamental-resolver-runtime-r14.js', import.meta.url), 'utf8');
 const store = fs.readFileSync(new URL('../src/core/decision-store.js', import.meta.url), 'utf8');
 const bootstrap = fs.readFileSync(new URL('../src/bootstrap-r14.js', import.meta.url), 'utf8');
 const fullApi = fs.readFileSync(new URL('../api/full-state.js', import.meta.url), 'utf8');
@@ -55,88 +57,83 @@ assert.doesNotMatch(runtime, /machine\.setHero\(out\.hero/);
 assert.match(runtime, /settledResponses/);
 assert.match(runtime, /flushSettledResponses/);
 
-// Late Hero entry contract: public state must reach 2/2 without Hero, and
-// clicking the second manual card must bind to that prepared snapshot without
-// another vision request/consensus reset.
+// Public pre-reading remains useful, but it is no longer a mandatory 2/2
+// strategy gate. The current-state core can answer from one strong current frame
+// once physical actions + table/stacks/position are coherent.
 assert.match(runtime, /Hero is manual-only and therefore MUST NOT participate in public/);
-assert.doesNotMatch(runtime, /diagnostics\.handId,\s*cardsKey\(diagnostics\.hero\)/);
 assert.match(runtime, /diagnostics\.publicPrepared/);
-assert.match(runtime, /diagnostics\.publicPreparedAt/);
-assert.match(runtime, /diagnostics\.heroLateBindings/);
 assert.match(runtime, /bindManualHeroToPreparedSnapshot/);
 assert.match(runtime, /prc:manual-state-applied/);
-assert.match(runtime, /No new network round-trip/);
-assert.match(runtime, /Mesa pública pronta 2\/2/);
-
-// Public evidence is now stabilized independently. A noisy aggressor/commitment
-// must not erase a confirmed board, pot or action-button consensus.
 assert.match(bootstrap, /ai-decision-field-consensus-r14/);
 assert.match(fieldConsensus, /boardHits/);
 assert.match(fieldConsensus, /potHits/);
 assert.match(fieldConsensus, /actionsHits/);
 assert.match(fieldConsensus, /aggressorHits/);
-assert.match(fieldConsensus, /const ready = boardReady && potReady && actionsReady/);
 assert.match(fieldConsensus, /Object\.defineProperty\(d, 'actions'/);
-assert.match(fieldConsensus, /processAppliedResponse/);
-assert.match(fieldConsensus, /schedulePostApplyConsensus/);
-assert.match(fieldConsensus, /queueMicrotask/);
-assert.match(fieldConsensus, /d\.rawStableFrames = Math\.max\(2/);
-assert.match(fieldConsensus, /d\.stableDecisionFrames = Math\.max\(2/);
-assert.match(fieldConsensus, /source: 'ai-decision'/);
-assert.doesNotMatch(fieldConsensus, /cardsKey\(.*hero/);
 
-// Pot UX: one fresh, high-confidence fast read can update only the DISPLAY.
-// Canonical/strategic pot still requires the field consensus above.
+// Pot UX: one fresh, high-confidence fast read can update DISPLAY; canonical
+// state is still protected by public-state consensus/arbiter.
 assert.match(money, /fastProvisionalPot/);
 assert.match(money, /Number\(fast\.potConfidence\) < 0\.92/);
 assert.match(money, /fast\.heroToAct === true \|\| actions\.length >= 2/);
 assert.match(money, /potEl\.dataset\.fastProvisional/);
 assert.match(money, /setInterval\(syncMoneyUi, 45\)/);
 
-// Legal-action contract: fast vision may misread buttons, but the resolver-facing
-// action list must be constrained by the locally visible PokerStars buttons.
+// Legal actions remain physical truth. The strategy gate also checks that its
+// proposed action exists in the CURRENT button set.
 assert.match(bootstrap, /legal-action-guard-r14/);
 assert.match(legalActionGuard, /facingBet = types\.includes\('fold'\) && types\.includes\('call'\)/);
 assert.match(legalActionGuard, /unopened = types\.includes\('check'\) && types\.includes\('bet'\)/);
 assert.match(legalActionGuard, /safeRaw\.filter\(\(action\) => legal\.has/);
-assert.match(legalActionGuard, /Object\.defineProperty\(d, 'actions'/);
+assert.match(gate, /DECISION_TO_ACTION/);
+assert.match(gate, /currentDecisionCoreEvidence/);
+assert.match(gate, /liveStateKey/);
+assert.match(gate, /coreStateKey/);
+assert.match(gate, /A recomendação não existe entre os botões físicos atuais/);
+assert.match(gate, /accepted-current-core/);
 
-assert.match(consensus, /stableHits >= 2/);
-assert.match(consensus, /rawStableFrames/);
-assert.match(consensus, /stableDecisionFrames/);
-assert.match(consensus, /snapshotKey/);
+// New product law: current-state core requires Hero, board, pot, action, table,
+// stacks and preflop position. Full history is not a mandatory blocker.
+assert.match(decisionCore, /Aguardando as duas cartas manuais do Hero/);
+assert.match(decisionCore, /Board\/street atual ainda não está completo/);
+assert.match(decisionCore, /Pote atual ainda não foi confirmado/);
+assert.match(decisionCore, /Os botões físicos e a leitura atual ainda não concordam/);
+assert.match(decisionCore, /Stacks efetivos ainda não estão confirmados/);
+assert.match(decisionCore, /A posição pré-flop do Hero ainda não foi confirmada/);
+assert.doesNotMatch(decisionCore, /rawStableFrames >= 2/);
+assert.match(fundamental, /REFINEMENT_GRACE_MS = 180/);
+assert.match(fundamental, /range populacional fundamental/);
+assert.match(fundamental, /allowGenericCall: true/);
+assert.match(fundamental, /recommendUnopenedPreflop/);
 assert.match(resolver, /fastDecision/);
-assert.match(resolver, /ai-decision-frame-r14/);
 assert.match(resolver, /mergeDecisionActions/);
-assert.match(gate, /decisionTrust/);
-assert.match(gate, /ai-decision-raw-2of2/);
-assert.match(gate, /physical-board-or-fast-identity/);
-assert.match(gate, /fresh-table-context/);
-assert.match(gate, /tableContextTrust/);
-assert.match(gate, /tableContextMaxAgeMs: 8500/);
-assert.match(gate, /fastIdentityConsensus/);
-assert.match(gate, /rawStableFrames >= 2/);
-assert.match(gate, /stableFrames >= 2/);
-assert.doesNotMatch(gate, /aiTrust\(/);
+
+// Decision lock belongs to the current decision epoch. A preflop decision may
+// not leak to flop or to a new price/action set.
 assert.match(store, /HARD_DEADLINE_MS = 7000/);
 assert.match(store, /WATCHDOG_MS = 100/);
 assert.match(store, /fastTurnSignal/);
-assert.match(store, /startsWith\('Sua vez'\)/);
-assert.match(store, /freshDecisionFrame/);
 assert.match(store, /decisionWatchdog/);
-assert.match(store, /setInterval\(decisionWatchdog, WATCHDOG_MS\)/);
 assert.match(store, /lockedFinal/);
+assert.match(store, /decisionEpochKey/);
+assert.match(store, /invalidateStaleLock/);
+assert.match(store, /lockFollowsDecisionEpoch: true/);
 assert.match(store, /manualHeroReadyForDecision/);
 assert.match(store, /clockStartsAfterManualHero: true/);
 assert.match(store, /strategicDeadlineFallback: false/);
 assert.match(store, /deadlineInsufficientDecision/);
-assert.match(store, /não vai transformar falta de informação em FOLD/);
+assert.match(store, /não vai inventar uma ação/);
 assert.match(store, /ANALISANDO/);
 assert.doesNotMatch(store, /conservativeDeadlineDecision/);
+
 assert.match(bootstrap, /ai-decision-runtime-r14/);
 assert.match(bootstrap, /ai-decision-consensus-r14/);
 assert.match(bootstrap, /ai-decision-pot-bridge-r14/);
 assert.match(bootstrap, /manual-hero-boundary-r14/);
+assert.match(bootstrap, /decision-core-gate-r14/);
+assert.match(bootstrap, /fundamental-resolver-runtime-r14/);
+assert.doesNotMatch(bootstrap, /study-safety-gate-r14/);
+assert.doesNotMatch(bootstrap, /preflop-policy-runtime-r14/);
 
 const base = {
   equity: 0.28,
