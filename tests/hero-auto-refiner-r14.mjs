@@ -103,9 +103,17 @@ assert.match(runtime, /diagnostics\.fallbackReady = false/);
 assert.doesNotMatch(runtime, /fallbackReady = now - startedAt/);
 assert.doesNotMatch(runtime, /machine\.newHand/);
 
-assert.match(rescue, /rankSlots: located, suitSlots: located/);
-assert.match(rescue, /hero-card-geometry/);
+assert.match(rescue, /function choosePhysicalSlots\(frame\)/);
+assert.match(rescue, /return located/);
+assert.match(rescue, /hero-full-geometry/);
 assert.doesNotMatch(rescue, /candidates\.sort/);
+assert.match(rescue, /const rankCrops = physicalSlots\.map/);
+assert.match(rescue, /const suitCrops = physicalSlots\.map/);
+assert.match(rescue, /directConsensus/);
+assert.match(rescue, /directPairHits >= 2/);
+assert.match(rescue, /commitCards\(directCards, \{ direct: true \}\)/);
+assert.match(rescue, /minHits: 2/);
+assert.match(rescue, /source: 'hero-auto-rescue-direct'/);
 
 assert.match(authority, /replay\?\.screenReplayReady === true/);
 assert.match(authority, /replay\?\.sourceKind === 'screen-replay'/);
