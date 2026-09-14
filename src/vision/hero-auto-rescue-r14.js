@@ -19,10 +19,11 @@ const diagnostics = {
   locatedReads: 0,
   geometryReads: 0,
   ocrFallbacks: 0,
+  ocrDisagreements: 0,
   rankConsensus: '0/2',
   suitConsensus: '0/2',
   pairConsensus: '0/2',
-  directConsensus: '0/2',
+  directConsensus: '0/3',
   status: 'boot',
   lastSlots: '—',
   lastError: null,
@@ -36,10 +37,10 @@ const rankScratch = [document.createElement('canvas'), document.createElement('c
 const suitScratch = [document.createElement('canvas'), document.createElement('canvas')];
 const probeScratch = [document.createElement('canvas'), document.createElement('canvas')];
 const ocr = new OcrService();
-const rankConsensus = new BoardCardConsensus({ slots: 2, windowMs: 760, minHits: 2 });
+const rankConsensus = new BoardCardConsensus({ slots: 2, windowMs: 900, minHits: 3 });
 const suitConsensus = new SuitConsensus({
   slots: 2,
-  windowMs: 860,
+  windowMs: 920,
   allowFacePairCandidates: true,
   allowCandidates: true,
   candidateMinHits: 3,
@@ -116,7 +117,7 @@ function resetConsensus(handId = activeHandMachine?.handId || 0) {
   diagnostics.rankConsensus = '0/2';
   diagnostics.suitConsensus = '0/2';
   diagnostics.pairConsensus = '0/2';
-  diagnostics.directConsensus = '0/2';
+  diagnostics.directConsensus = '0/3';
 }
 
 function scoreSlots(frame, slots) {
@@ -159,21 +160,53 @@ function localRank(crop) {
   const second = read.second ? String(read.second).toUpperCase() : null;
   const margin = Number(read.margin) || 0;
   if (((rank === 'T' && second === '8') || (rank === '8' && second === 'T')) && margin < 0.12) return null;
-  if (confidence < 0.48) return null;
-  return { rank, suit: null, confidence, source: 'hero-auto-rescue-local' };
+  if (((rank === 'J' && second === '2') || (rank === '2' && second === 'J')) && margin < 0.15) return null;
+  if (confidence < 0.55) return null;
+  return {
+    rank,
+    suit: null,
+    confidence,
+    source: 'hero-auto-rescue-local',
+    rankSecond: second,
+    rankMargin: margin,
+    rankDistance: Number(read.distance) || 0,
+  };
 }
 
 async function readRank(crop) {
   const local = localRank(crop);
   if (local) return local;
+
+  // Keep the template classifier as an independent witness even when it abstains.
+  // OCR is allowed only if it does not strongly contradict that visual candidate.
+  const template = classifyRankPixels(crop.data, crop.w, crop.h);
   diagnostics.ocrFallbacks++;
   const read = await ocr.readRank(rankCrop(crop.canvas), 'hero');
   if (!read?.value) return null;
+
+  const rank = String(read.value).toUpperCase();
+  const candidate = template?.candidate ? String(template.candidate).toUpperCase() : null;
+  const templateConfidence = Number(template?.confidence) || 0;
+  const faceVsLowConflict = candidate
+    && ['J','Q','K'].includes(candidate)
+    && ['2','3','4'].includes(rank);
+  const lowVsFaceConflict = candidate
+    && ['2','3','4'].includes(candidate)
+    && ['J','Q','K'].includes(rank);
+  if (candidate && candidate !== rank && templateConfidence >= 0.28 && (faceVsLowConflict || lowVsFaceConflict || Number(template?.margin) >= 0.035)) {
+    diagnostics.ocrDisagreements++;
+    return null;
+  }
+
   return {
-    rank: String(read.value).toUpperCase(),
+    rank,
     suit: null,
-    confidence: Math.max(0.50, Math.min(0.92, (Number(read.confidence) || 0) / 100)),
+    // OCR may participate in the slower 3-frame consensus but never receives a
+    // confidence high enough to enter the direct fast-lock path by itself.
+    confidence: Math.max(0.50, Math.min(0.68, (Number(read.confidence) || 0) / 100)),
     source: 'hero-auto-rescue-ocr',
+    rankCandidate: candidate,
+    rankCandidateConfidence: templateConfidence,
   };
 }
 
@@ -207,7 +240,11 @@ function validPair(cards) {
 
 function hardPair(cards) {
   if (!validPair(cards)) return false;
-  return cards.every((card) => Number(card.confidence) >= 0.70 && Number(card.suitConfidence) >= 0.84);
+  return cards.every((card) =>
+    card?.rankSource === 'hero-auto-rescue-local'
+    && Number(card.confidence) >= 0.78
+    && Number(card.suitConfidence) >= 0.88
+  );
 }
 
 function dispatchAutoConfirmed(handId, cards) {
@@ -300,6 +337,7 @@ async function tick() {
     const directCards = directSuits.map((card) => ({
       ...card,
       rank: String(card.rank).toUpperCase(),
+      rankSource: card.source,
       confidence: Number(card.confidence) || 0,
       suitConfidence: Number(card.suitConfidence) || 0,
       source: 'hero-auto-rescue-direct',
@@ -308,19 +346,19 @@ async function tick() {
     if (hardPair(directCards)) {
       const directKey = keyOf(directCards);
       const at = nowMs();
-      if (directKey === directPairKey && at - directPairAt <= 700) directPairHits++;
+      if (directKey === directPairKey && at - directPairAt <= 850) directPairHits++;
       else {
         directPairKey = directKey;
         directPairHits = 1;
       }
       directPairAt = at;
-      diagnostics.directConsensus = `${Math.min(2, directPairHits)}/2`;
-      if (directPairHits >= 2 && commitCards(directCards, { direct: true })) return;
+      diagnostics.directConsensus = `${Math.min(3, directPairHits)}/3`;
+      if (directPairHits >= 3 && commitCards(directCards, { direct: true })) return;
     } else {
       directPairKey = '';
       directPairHits = 0;
       directPairAt = 0;
-      diagnostics.directConsensus = '0/2';
+      diagnostics.directConsensus = '0/3';
     }
 
     const consensusHand = machine.handId || 0;
@@ -345,7 +383,7 @@ async function tick() {
       ...proposedSuits[index],
       rank: String(card.rank).toUpperCase(),
       suit: stableSuits.cards[index]?.suit || null,
-      confidence: Math.max(0.82, Number(card.confidence) || 0),
+      confidence: Math.max(0.76, Number(card.confidence) || 0),
       suitConfidence: Math.max(0.82, Number(proposedSuits[index]?.suitConfidence) || Number(proposedSuits[index]?.suitCandidateConfidence) || 0),
       source: 'hero-auto-rescue-r14',
     }));
