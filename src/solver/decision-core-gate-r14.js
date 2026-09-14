@@ -43,7 +43,14 @@ setDecisionGate((entry) => {
   }
 
   const liveStateKey = decisionStateKey(activeHandMachine?.handId, activeHandMachine?.state || {});
-  if (!entry.stateKey || entry.stateKey !== liveStateKey) {
+  const coreStateKey = decisionStateKey(core.handId, {
+    street: core.street,
+    hero: core.hero,
+    board: core.board,
+    pot: core.pot,
+    actions: core.actions,
+  });
+  if (!entry.stateKey || (entry.stateKey !== liveStateKey && entry.stateKey !== coreStateKey)) {
     diagnostics.blockedStale++;
     diagnostics.lastReason = 'stale-state-key';
     return insufficient(entry, 'A recomendação pertence a um snapshot anterior e foi descartada.', core);
