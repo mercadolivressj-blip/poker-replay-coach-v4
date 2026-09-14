@@ -9,6 +9,10 @@ const card = (rank, suit) => ({ rank, suit, confidence: 1 });
 function baseFixture() {
   const hero = [card('9','hearts'), card('8','hearts')];
   const board = [card('K','diamonds'), card('8','clubs'), card('7','spades')];
+  const seats = [
+    { seatIndex: 0, actorName: 'Villain', stack: 1.20, committed: 0, dealer: true, folded: false, hero: false, position: 'BTN', confidence: 0.9 },
+    { seatIndex: 1, actorName: 'Hero', stack: 0.80, committed: 0, dealer: false, folded: false, hero: true, position: 'BB', confidence: 0.95 },
+  ];
   const machine = {
     handId: 4,
     state: {
@@ -41,10 +45,13 @@ function baseFixture() {
     handId: 4,
     lastSeenAt: 950,
     lastLatencyMs: 900,
+    confidence: 0.94,
+    seatsConfidence: 0.90,
     boardConfidence: 0.90,
     potConfidence: 0.90,
     board,
     pot: 0.12,
+    seats,
   };
   const table = {
     handId: 4,
@@ -52,10 +59,7 @@ function baseFixture() {
     confidence: 0.90,
     dealerSeat: 0,
     heroPosition: 'BB',
-    seats: [
-      { seatIndex: 0, actorName: 'Villain', stack: 1.20, committed: 0, dealer: true, folded: false, hero: false, position: 'BTN', confidence: 0.9 },
-      { seatIndex: 1, actorName: 'Hero', stack: 0.80, committed: 0, dealer: false, folded: false, hero: true, position: 'BB', confidence: 0.95 },
-    ],
+    seats,
   };
   return { machine, authority, fast, full, table };
 }
@@ -83,7 +87,24 @@ function baseFixture() {
   assert.match(core.reason, /frame inteiro atrasado/i);
 }
 
-// 3) Current physical action mismatch is decision-critical and blocks strategy.
+// 3) Regression from the real replay: the full-frame reader can still show the
+// previous pot (for example 0.05) while board/seats/stacks are already current.
+// If the stable table tracker is not ready, those seats are still usable; the
+// canonical current pot comes from machine + fast and the stale full pot only
+// reduces confidence instead of causing LEITURA INSUFICIENTE.
+{
+  const f = baseFixture();
+  f.table = null;
+  f.full = { ...f.full, pot: 0.05 };
+  const core = evaluateDecisionCore({ ...f, at: 1500 });
+  assert.equal(core.ready, true);
+  assert.equal(core.tableSource, 'full-frame-current-fallback-pot-lag');
+  assert.equal(core.fullPotConflict, true);
+  assert.match(core.reason, /pote atrasado/i);
+  assert.equal(core.pot, 0.12);
+}
+
+// 4) Current physical action mismatch is decision-critical and blocks strategy.
 {
   const f = baseFixture();
   f.fast = { ...f.fast, actions: [{ type: 'fold', amount: null }, { type: 'call', amount: 0.04 }, { type: 'raise', amount: 0.10 }] };
@@ -92,7 +113,7 @@ function baseFixture() {
   assert.match(core.reason, /botões físicos/i);
 }
 
-// 4) Generic/population calls are allowed only when the fundamental layer opts
+// 5) Generic/population calls are allowed only when the fundamental layer opts
 // in explicitly. The refined resolver keeps its stricter actor requirement.
 {
   const base = {
@@ -111,7 +132,7 @@ function baseFixture() {
   assert.ok(values.some((value) => value.action === 'fold'));
 }
 
-// 5) Regression for the user's 98s/CO complaint: if the CURRENT state really is
+// 6) Regression for the user's 98s/CO complaint: if the CURRENT state really is
 // unopened, the deterministic positional policy must open 98s instead of using
 // a stale-history fold.
 {
@@ -148,7 +169,7 @@ function baseFixture() {
   assert.match(result.mode, /fundamental-unopened/);
 }
 
-// 6) Wiring regression: R14 no longer imports the old history-blocking safety
+// 7) Wiring regression: R14 no longer imports the old history-blocking safety
 // gate or separate preflop runtime. Fundamental current-state layer + refined
 // resolver are the two strategy layers.
 {
