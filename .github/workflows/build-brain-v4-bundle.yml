@@ -29,8 +29,8 @@ jobs:
           import fs from 'node:fs';
           import zlib from 'node:zlib';
           const code=fs.readFileSync('dist/brain-v4-bundle.mjs');
-          const gz=zlib.gzipSync(code,{level:9});
-          const b64=gz.toString('base64');
+          const br=zlib.brotliCompressSync(code,{params:{[zlib.constants.BROTLI_PARAM_QUALITY]:11,[zlib.constants.BROTLI_PARAM_MODE]:zlib.constants.BROTLI_MODE_TEXT}});
+          const b64=br.toString('base64');
           const loader=`import { gunzipSync } from 'node:zlib';
           import { Buffer } from 'node:buffer';
           let modulePromise;
@@ -47,7 +47,7 @@ jobs:
             return mod.default(req,res);
           }`;
           fs.writeFileSync('dist/brain-v4-loader.mjs',loader);
-          console.log('bundle bytes',code.length,'gzip bytes',gz.length,'loader bytes',Buffer.byteLength(loader));
+          console.log('bundle bytes',code.length,'brotli bytes',br.length,'loader bytes',Buffer.byteLength(loader));
           NODE
       - run: |
           git config user.name "github-actions[bot]"
