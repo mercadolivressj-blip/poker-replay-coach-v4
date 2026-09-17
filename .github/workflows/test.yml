@@ -21,6 +21,7 @@ jobs:
       - run: node tests/action-seat-state-v1.test.mjs
       - run: node tests/action-ocr-gate-v1.test.mjs
       - run: node tests/action-event-bridge-v1.test.mjs
+      - run: node tests/observed-ledger-v1.test.mjs
       - run: node tests/seat-identity-v1.test.mjs
       - run: node tests/action-inference-v1.test.mjs
       - run: node tests/action-text-v1.test.mjs
