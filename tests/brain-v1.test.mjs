@@ -23,7 +23,7 @@ const base = (patch={}) => ({
  assert.equal(r.details?.mixed ?? r.mixed ?? true,true);
 }
 {
- const r=decideBrain(base({heroCards:['Ah','Kd'],actionHistory:[],heroStack:'0.12',effectiveStack:'0.12',heroPosition:'BTN',legalActions:['FOLD','ALLIN']}),{format:'mtt'});
+ const r=decideBrain(base({heroCards:['Ah','Kd'],actionHistory:[],heroStack:'0.12',effectiveStack:'0.12',heroPosition:'BTN',legalActions:['FOLD','ALLIN']}),{format:'mtt',preflopNode:'rfi'});
  assert.equal(r.actionCode,'ALLIN');
  assert.match(r.engine,/MTT SHORT STACK/);
 }
