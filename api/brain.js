@@ -1,6 +1,6 @@
 import { VISION_VERSION, VISION_V1_FIELDS, normalizeVisionStateV1, validateVisionStateV1 } from '../src/core/vision-contract.js';
 import { decideBrain } from '../src/brain/decision.js';
-import { createStudySession, ingestVisionState } from '../src/brain/study-session.js';
+import { createStudySession, ingestVisionState, ingestCaptureEvents } from '../src/brain/study-session.js';
 import { combineActionSources } from '../src/brain/action-source.js';
 import { STRATEGY_V1_MANIFEST } from '../src/brain/strategy-manifest.js';
 
@@ -31,7 +31,8 @@ export default async function handler(req, res) {
         policyComplete: STRATEGY_V1_MANIFEST.policyComplete,
       },
       sessionRoundTrip: true,
-      supplementalActionSources: ['handHistoryText','manualActionHistory'],
+      supplementalActionSources: ['handHistoryText','manualActionHistory','localActionCapture'],
+      localCapturePolicy: 'provisional until authoritative action history confirms; never sovereign by itself',
       policy: 'deterministic-first; no Lovable strategy calls',
       note: 'MTT/ICM modules are explicitly marked approximation until independently audited.',
     });
@@ -67,10 +68,15 @@ export default async function handler(req, res) {
   delete decisionContext.useStudySession;
   delete decisionContext.handHistoryText;
   delete decisionContext.manualActionHistory;
+  delete decisionContext.captureEvents;
+  delete decisionContext.captureSeatMap;
 
   if (wantsSession) {
     const baseSession = context.session && typeof context.session === 'object' ? context.session : createStudySession();
     session = ingestVisionState(baseSession, state, { handId: context.handId ?? null });
+    if (Array.isArray(context.captureEvents) && context.captureEvents.length) {
+      session = ingestCaptureEvents(session, context.captureEvents, { seatMap: context.captureSeatMap || {} });
+    }
     decisionContext = {
       ...decisionContext,
       handId: session.handId || context.handId || null,
