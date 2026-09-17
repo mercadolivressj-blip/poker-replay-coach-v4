@@ -11,6 +11,7 @@ export function createMetadataTriggerState() {
     version:'metadata-trigger-v1',
     heroKey:'', street:'preflop', pot:'', actions:'', toCall:'',
     lastReadAt:0, lastReadHeroKey:'', lastReadStreet:null,
+    pendingReason:null,
   };
 }
 
@@ -19,6 +20,7 @@ export function markMetadataRead(triggerInput, visionState = {}, now = Date.now(
   t.lastReadAt=now;
   t.lastReadHeroKey=heroKey(visionState);
   t.lastReadStreet=boardStreet(visionState);
+  t.pendingReason=null;
   return t;
 }
 
@@ -40,16 +42,17 @@ export function observeMetadataTrigger(triggerInput, visionState = {}, now = Dat
   const toCallChanged=confirmedHand && prev.toCall!==toCall && (!!prev.toCall || !!toCall);
   const missingPosition=confirmedHand && !visionState.heroPosition && prev.lastReadHeroKey!==hk;
 
-  let reason=null;
-  if(newHand) reason='new-hand';
-  else if(firstConfirmedHand) reason='first-hand';
-  else if(streetChanged) reason='street-change';
-  else if(actionsChanged) reason='hero-actions-change';
-  else if(toCallChanged) reason='to-call-change';
-  else if(potChanged) reason='pot-change';
-  else if(missingPosition) reason='missing-position';
+  let detected=null;
+  if(newHand) detected='new-hand';
+  else if(firstConfirmedHand) detected='first-hand';
+  else if(streetChanged) detected='street-change';
+  else if(actionsChanged) detected='hero-actions-change';
+  else if(toCallChanged) detected='to-call-change';
+  else if(potChanged) detected='pot-change';
+  else if(missingPosition) detected='missing-position';
 
-  const throttled=reason && prev.lastReadAt>0 && now-prev.lastReadAt<minIntervalMs;
+  const reason=detected || prev.pendingReason || null;
+  const throttled=Boolean(reason && prev.lastReadAt>0 && now-prev.lastReadAt<minIntervalMs);
   const shouldRead=Boolean(reason && !throttled);
 
   next.heroKey=hk || prev.heroKey;
@@ -57,12 +60,13 @@ export function observeMetadataTrigger(triggerInput, visionState = {}, now = Dat
   next.pot=pot || prev.pot;
   next.actions=actions || prev.actions;
   next.toCall=toCall;
+  next.pendingReason=throttled ? reason : (shouldRead ? null : prev.pendingReason);
 
   return {
     state:next,
     shouldRead,
     reason:shouldRead ? reason : null,
-    pendingReason:throttled ? reason : null,
-    throttled:Boolean(throttled),
+    pendingReason:next.pendingReason,
+    throttled,
   };
 }
