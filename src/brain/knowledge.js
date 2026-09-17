@@ -24,7 +24,18 @@ function actorRead(store, actor) {
   return { actor, metrics, label: label?.label ?? 'SEM AMOSTRA', confidence: label?.confidence ?? 'baixa' };
 }
 
-export function buildBrainKnowledge(state = {}, { ledger = null, profiles = null } = {}) {
+function provisionalSummary(rows=[],street){
+  return (Array.isArray(rows)?rows:[])
+    .filter((c)=>c && c.status==='provisional' && (!street || !c.street || c.street===street))
+    .slice(-20)
+    .map((c)=>({
+      actor:c.actor??null,seatId:c.seatId??null,action:c.action??null,
+      amount:c.amount??null,confidence:c.confidence??null,source:c.source??null,
+      sovereign:false,status:'provisional',capturedAt:c.capturedAt??null,
+    }));
+}
+
+export function buildBrainKnowledge(state = {}, { ledger = null, profiles = null, captureCandidates = [] } = {}) {
   const street = streetFromBoard(state.board || []);
   const streetActions = currentStreetActions(ledger, street);
   const lastAggression = lastAggressiveAction(streetActions);
@@ -40,6 +51,7 @@ export function buildBrainKnowledge(state = {}, { ledger = null, profiles = null
   const facingBet = (state.legalActions || []).includes('CALL') && !(state.legalActions || []).includes('CHECK');
   const actors = uniq([...(ledger?.playersSeen || []), ...(state.seats || []).map((s) => s?.name || s?.player || s?.nick || s?.nickname)]);
   const playerReads = actors.map((actor) => actorRead(profiles, actor)).filter(Boolean);
+  const provisionalObserved = provisionalSummary(captureCandidates,street);
 
   const missing = [];
   if (!Array.isArray(state.heroCards) || state.heroCards.length !== 2) missing.push('heroCards');
@@ -52,7 +64,7 @@ export function buildBrainKnowledge(state = {}, { ledger = null, profiles = null
   if (street !== 'preflop' && state.pot == null) missing.push('pot');
 
   return {
-    version: 'brain-knowledge-v1',
+    version: 'brain-knowledge-v1.1',
     street,
     hero: {
       cards: Array.isArray(state.heroCards) ? state.heroCards : [],
@@ -89,6 +101,10 @@ export function buildBrainKnowledge(state = {}, { ledger = null, profiles = null
       facingBet,
       actionCount: ledger?.actions?.length ?? 0,
       currentStreetActions: streetActions.map((a) => ({ actor: a.actor, action: a.action, amount: a.amount ?? null, toAmount: a.toAmount ?? null })),
+      // Fast local reads are visible to audit/UI but remain non-sovereign until the
+      // authoritative ledger confirms them. Strategy modules must not silently
+      // promote these rows to confirmed history.
+      provisionalObserved,
     },
     postflop: street === 'preflop' ? null : {
       hand: hand ? { name: hand.name, tier: hand.tier, relative: hand.relative } : null,
@@ -100,6 +116,7 @@ export function buildBrainKnowledge(state = {}, { ledger = null, profiles = null
       missing,
       completeForDecision: missing.length === 0,
       hasLineContext: (ledger?.actions?.length ?? 0) > 0,
+      hasProvisionalLineEvidence: provisionalObserved.length > 0,
       hasPlayerSamples: playerReads.some((r) => (r.metrics?.hands ?? 0) >= 30),
     },
   };
