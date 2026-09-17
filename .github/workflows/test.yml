@@ -16,6 +16,7 @@ jobs:
       - run: node tests/brain-v1.test.mjs
       - run: node tests/hand-transition-v1.test.mjs
       - run: node tests/metadata-trigger-v1.test.mjs
+      - run: node tests/action-capture-v1.test.mjs
       - run: node tests/action-ledger-v1.test.mjs
       - run: node tests/action-source-v1.test.mjs
       - run: node tests/study-session-v1.test.mjs
