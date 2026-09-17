@@ -23,7 +23,10 @@ export function normalizeCaptureSeatMap(input) { return mapFromInput(input); }
 function candidateKey(c) {
   if (c.packetId) return `packet:${c.packetId}`;
   const hand = c.handId ?? 'unknown';
-  return [hand, c.street || 'preflop', c.seatId || '?', c.actor || '?', c.action || '?', c.amount ?? c.totalCommitted ?? ''].join('|');
+  // OCR text is trusted only for action TYPE. Never split duplicate actions because
+  // OCR happened to read a different stack/balance number from the same plate.
+  const valueKey = c.source === 'local-action-text' ? '' : (c.amount ?? c.totalCommitted ?? '');
+  return [hand, c.street || 'preflop', c.seatId || '?', c.actor || '?', c.action || '?', valueKey].join('|');
 }
 
 export function captureEventsToCandidates(events = [], {
@@ -38,12 +41,16 @@ export function captureEventsToCandidates(events = [], {
     if (!ACTIONS.has(action)) continue;
     const actor = clean(map[seatId] || e.actor || '');
     if (actor && heroActor && canon(actor) === canon(heroActor)) continue;
+    const source = clean(e.source) || (e.type === 'fold-candidate' ? 'action-capture-v1.2' : 'local-action-inference');
+    const ocrTypeOnly = source === 'local-action-text';
     out.push({
       version: 'capture-action-candidate-v1', status: 'provisional', sovereign: false,
-      source: clean(e.source) || (e.type === 'fold-candidate' ? 'action-capture-v1.2' : 'local-action-inference'),
+      source,
       handId, street: clean(e.street) || street || 'preflop', seatId, actor: actor || null,
-      action, amount:Number.isFinite(e.amount)?e.amount:null,
-      totalCommitted:Number.isFinite(e.totalCommitted)?e.totalCommitted:null,
+      // PokerStars plate OCR can see the player's remaining stack next to the action.
+      // Therefore OCR is never authoritative for amount. Financial/HH sources own size.
+      amount:!ocrTypeOnly && Number.isFinite(e.amount)?e.amount:null,
+      totalCommitted:!ocrTypeOnly && Number.isFinite(e.totalCommitted)?e.totalCommitted:null,
       capturedAt: Number(e.capturedAt ?? e.at) || Date.now(),
       confidence: Number.isFinite(e.confidence) ? Math.max(0, Math.min(1, e.confidence)) : null,
       packetId: clean(e.packetId) || null,
@@ -53,6 +60,7 @@ export function captureEventsToCandidates(events = [], {
         cardBefore: Number.isFinite(e.cardTextureBefore) ? e.cardTextureBefore : null,
         cardAfter: Number.isFinite(e.cardTextureAfter) ? e.cardTextureAfter : null,
         rawText: clean(e.raw ?? e.text) || null,
+        ocrObservedAmount:ocrTypeOnly && Number.isFinite(e.amount)?e.amount:null,
         previousCommitted:Number.isFinite(e.previousCommitted)?e.previousCommitted:null,
         maxCommittedBefore:Number.isFinite(e.maxCommittedBefore)?e.maxCommittedBefore:null,
       },
