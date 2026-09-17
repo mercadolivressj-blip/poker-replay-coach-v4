@@ -4,6 +4,7 @@
   "version": "4.3.0-rc.1",
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/generate-policy-v4-runtime.mjs",
     "serve": "python3 -m http.server 4173",
     "test": "node tests/run-public.mjs",
     "test:brain": "node tests/brain-v1.test.mjs",
