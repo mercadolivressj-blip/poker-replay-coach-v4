@@ -23,13 +23,39 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: npx --yes esbuild@0.25.9 api/brain.js --bundle --platform=node --format=esm --target=node22 --minify --outfile=dist/brain-v4-bundle.mjs
+      - name: Build compressed loader
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import zlib from 'node:zlib';
+          const code=fs.readFileSync('dist/brain-v4-bundle.mjs');
+          const gz=zlib.gzipSync(code,{level:9});
+          const b64=gz.toString('base64');
+          const loader=`import { gunzipSync } from 'node:zlib';
+          import { Buffer } from 'node:buffer';
+          let modulePromise;
+          async function loadBrain(){
+            if(!modulePromise){
+              const source=gunzipSync(Buffer.from('${b64}','base64'));
+              const data='data:text/javascript;base64,'+source.toString('base64');
+              modulePromise=import(data);
+            }
+            return modulePromise;
+          }
+          export default async function handler(req,res){
+            const mod=await loadBrain();
+            return mod.default(req,res);
+          }`;
+          fs.writeFileSync('dist/brain-v4-loader.mjs',loader);
+          console.log('bundle bytes',code.length,'gzip bytes',gz.length,'loader bytes',Buffer.byteLength(loader));
+          NODE
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist/brain-v4-bundle.mjs
+          git add -f dist/brain-v4-bundle.mjs dist/brain-v4-loader.mjs
           if git diff --cached --quiet; then
             echo "bundle unchanged"
             exit 0
           fi
-          git commit -m "build: refresh Brain V4 deploy bundle"
+          git commit -m "build: refresh compressed Brain V4 deploy bundle"
           git push origin HEAD:vision-v1-brain-integration
