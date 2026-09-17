@@ -1,6 +1,8 @@
 import { preflopDecision } from './preflop.js';
 import { postflopDecision } from './postflop.js';
 import { buildLedgerFromState, heroWasPreflopAggressor, ledgerSummary } from './action-ledger.js';
+import { buildBrainKnowledge } from './knowledge.js';
+import { STRATEGY_V1_MANIFEST } from './strategy-manifest.js';
 
 const ACTION_MAP={
  'DESISTIR':'FOLD','PASSAR':'CHECK','PAGAR':'CALL','AUMENTAR':'RAISE','ALL-IN':'ALLIN'
@@ -25,17 +27,25 @@ export function decideBrain(state,context={}){
  const street=decisionStreet(state.board);
  const ledger=buildLedgerFromState(state,{handId:context.handId??null,heroActor:context.heroActor??null});
  const heroPfa=heroWasPreflopAggressor(ledger);
+ const knowledge=buildBrainKnowledge(state,{ledger,profiles:context.profiles??null});
  const resolvedContext={
    ...context,
    ledger,
+   knowledge,
    heroIsPreflopAggressor: context.heroIsPreflopAggressor ?? heroPfa,
  };
  const raw=street==='preflop'?preflopDecision(state,resolvedContext):postflopDecision(state,resolvedContext);
  const safe=enforceLegal(raw,state);
  return {
    version:'brain-v1',
-   strategyVersion:'strategy-v1-external-port',
+   strategyVersion:STRATEGY_V1_MANIFEST.version,
+   strategyStatus:{
+     preflop:STRATEGY_V1_MANIFEST.preflop.status,
+     postflop:STRATEGY_V1_MANIFEST.postflop.status,
+     policyComplete:STRATEGY_V1_MANIFEST.policyComplete,
+   },
    ledgerVersion:'action-ledger-v1-external',
+   knowledgeVersion:knowledge.version,
    street,
    format:context.format||'cash',
    decision:safe?.decision??null,
@@ -45,6 +55,7 @@ export function decideBrain(state,context={}){
    reason:safe?.reason??'Estado insuficiente.',
    details:safe?.notes??safe?.details??null,
    ledger:ledgerSummary(ledger),
+   knowledge,
    stateKey:[state.heroCards?.join('')||'',state.board?.join('')||'',state.pot||'',state.toCall||'',(state.legalActions||[]).join('-'),state.heroPosition||'',state.heroStack||'',(state.actionHistory||[]).slice(-8).join('>')].join('|'),
    capturedAt:state.capturedAt,
  };
