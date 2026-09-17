@@ -1,128 +1,93 @@
 import crypto from 'node:crypto';
+import {
+  SYSTEM_HERO, SYSTEM_BOARD, SYSTEM_ACTIONS, SYSTEM_QUICK, SYSTEM_SEAT_TILES,
+  FROZEN_MODELS, FROZEN_VISION_REF,
+  normalizeLovableVision, heroReadConclusive, boardReadConclusive, toLegacyCards,
+} from '../src/vision/lovable-frozen.js';
 
-function extractOutputText(response) {
-  if (typeof response?.output_text === 'string') return response.output_text;
-  for (const item of response?.output || []) {
-    for (const part of item?.content || []) {
-      if (part?.type === 'output_text' && typeof part.text === 'string') return part.text;
-    }
-  }
-  return '';
-}
-
-const VALID_COUNTS = { hero: [2], board: [0, 3, 4, 5] };
+const KINDS = new Set(['hero','board','actions','quick','seat_tiles']);
+const PROMPTS = { hero:SYSTEM_HERO, board:SYSTEM_BOARD, actions:SYSTEM_ACTIONS, quick:SYSTEM_QUICK, seat_tiles:SYSTEM_SEAT_TILES };
+const MAX_TOKENS = { hero:160, board:160, actions:300, quick:600, seat_tiles:300 };
 
 function tokenMatches(expected, provided) {
   if (!expected) return true;
   if (typeof provided !== 'string') return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(provided);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const a=Buffer.from(expected), b=Buffer.from(provided);
+  return a.length===b.length && crypto.timingSafeEqual(a,b);
+}
+function splitDataUrl(image) {
+  const m=String(image??'').match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
+  return m ? { mimeType:m[1], data:m[2] } : null;
+}
+function textOfGemini(j) {
+  return (j?.candidates?.[0]?.content?.parts ?? []).map((p)=>typeof p?.text==='string'?p.text:'').join('').trim();
+}
+async function geminiCall({ apiKey, model, prompt, image, maxTokens, signal }) {
+  const inline=splitDataUrl(image);
+  if(!inline) throw new Error('bad-image');
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST', signal,
+    headers:{'content-type':'application/json','x-goog-api-key':apiKey},
+    body:JSON.stringify({
+      systemInstruction:{parts:[{text:prompt}]},
+      contents:[{role:'user',parts:[{text:'JSON agora.'},{inlineData:{mimeType:inline.mimeType,data:inline.data}}]}],
+      generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens:maxTokens},
+    }),
+  });
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){ const e=new Error(j?.error?.message||`Gemini HTTP ${r.status}`); e.status=r.status; throw e; }
+  const text=textOfGemini(j);
+  if(!text) throw new Error('empty-gemini');
+  return text;
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return res.status(501).json({ error: 'OPENAI_API_KEY not configured' });
-  const accessToken = process.env.VISION_ACCESS_TOKEN;
-  if (process.env.VERCEL_ENV === 'production' && !accessToken)
-    return res.status(501).json({ error: 'VISION_ACCESS_TOKEN not configured' });
-  const providedToken = req.headers?.['x-coach-token'] ?? req.headers?.['X-Coach-Token'];
-  if (!tokenMatches(accessToken, providedToken)) return res.status(401).json({ error: 'vision auth required' });
+export default async function handler(req,res){
+  res.setHeader('Cache-Control','no-store');
+  if(req.method!=='POST') return res.status(405).json({error:'method'});
 
-  const { kind, image, handId, expectedCount, fingerprint = null } = req.body || {};
-  if (!['hero', 'board'].includes(kind) || !Number.isInteger(handId))
-    return res.status(400).json({ error: 'invalid input' });
-  if (typeof image !== 'string' || !image.startsWith('data:image/'))
-    return res.status(400).json({ error: 'image must be a data URL' });
-  if (image.length > 2_500_000) return res.status(413).json({ error: 'image too large' });
-  if (fingerprint !== null && (typeof fingerprint !== 'string' || fingerprint.length > 256))
-    return res.status(400).json({ error: 'invalid fingerprint' });
+  const configuredKey=process.env.GEMINI_API_KEY || '';
+  const providedKey=typeof req.headers?.['x-gemini-key']==='string' ? req.headers['x-gemini-key'].trim() : '';
+  const apiKey=configuredKey || providedKey;
+  if(!apiKey) return res.status(501).json({error:'GEMINI_API_KEY not configured'});
 
-  const allowed = VALID_COUNTS[kind];
-  const expected = kind === 'hero' ? 2 : Number(expectedCount);
-  if (!allowed.includes(expected)) return res.status(400).json({ error: 'invalid expectedCount' });
+  const accessToken=process.env.VISION_ACCESS_TOKEN;
+  const providedToken=req.headers?.['x-coach-token'];
+  if(accessToken && !tokenMatches(accessToken,providedToken)) return res.status(401).json({error:'vision auth required'});
 
-  const schema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      cards: {
-        type: 'array',
-        minItems: expected,
-        maxItems: expected,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            rank: { type: 'string', enum: ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'] },
-            suit: { type: ['string', 'null'], enum: ['clubs', 'diamonds', 'hearts', 'spades', null] },
-            confidence: { type: 'number', minimum: 0, maximum: 1 },
-          },
-          required: ['rank', 'suit', 'confidence'],
-        },
-      },
-      confidence: { type: 'number', minimum: 0, maximum: 1 },
-    },
-    required: ['cards', 'confidence'],
-  };
+  const {kind,image,handId,expectedCount=null,fingerprint=null,mode='fast'}=req.body||{};
+  if(!KINDS.has(kind)||!Number.isInteger(handId)) return res.status(400).json({error:'invalid input'});
+  if(typeof image!=='string'||!image.startsWith('data:image/')) return res.status(400).json({error:'image must be a data URL'});
+  if(image.length>3_000_000) return res.status(413).json({error:'image too large'});
+  if(fingerprint!==null&&(typeof fingerprint!=='string'||fingerprint.length>256)) return res.status(400).json({error:'invalid fingerprint'});
 
-  const target =
-    kind === 'hero'
-      ? 'the exactly two face-up hero cards, left to right'
-      : `the exactly ${expected} community cards that are physically visible, left to right`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-  const t0 = Date.now();
-  try {
-    const body = {
-      model: 'gpt-5.6-sol',
-      reasoning: { effort: 'low' },
-      store: false,
-      max_output_tokens: 500,
-      input: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_text',
-              text:
-                `Poker replay/simulation crop only. Read ${target}. ` +
-                'Never infer a hidden/covered card, never use chip values or text outside card faces as ranks. ' +
-                'Rank T means ten. If a suit is genuinely not legible, return null suit and lower that card confidence. ' +
-                `The physical detector has already established expectedCount=${expected}; return exactly that many cards.`,
-            },
-            { type: 'input_image', image_url: image, detail: 'high' },
-          ],
-        },
-      ],
-      text: { format: { type: 'json_schema', name: 'poker_cards', strict: true, schema } },
-    };
-
-    const r = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    const j = await r.json();
-    if (!r.ok) return res.status(r.status).json({ error: j?.error?.message || 'vision failed' });
-    const text = extractOutputText(j);
-    let parsed;
-    try {
-      parsed = JSON.parse(text || '{}');
-    } catch {
-      return res.status(502).json({ error: 'invalid vision json' });
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),9000);
+  const t0=Date.now();
+  try{
+    const models=(kind==='hero'||kind==='board')&&mode!=='precise'
+      ? [FROZEN_MODELS.fast,FROZEN_MODELS.fallback]
+      : [kind==='hero'||kind==='board'?FROZEN_MODELS.fallback:FROZEN_MODELS.fast];
+    let normalized=null, usedModel=null, attempts=0;
+    for(const model of models){
+      attempts++;
+      const raw=await geminiCall({apiKey,model,prompt:PROMPTS[kind],image,maxTokens:MAX_TOKENS[kind],signal:controller.signal});
+      normalized=normalizeLovableVision(kind,raw); usedModel=model;
+      const done=kind==='hero'?heroReadConclusive(normalized):kind==='board'?boardReadConclusive(normalized):true;
+      if(done) break;
     }
-    if (!Array.isArray(parsed.cards) || parsed.cards.length !== expected)
-      return res.status(422).json({ error: 'card count mismatch' });
-    return res.status(200).json({ ...parsed, handId, expectedCount: expected, fingerprint, ms: Date.now() - t0 });
-  } catch (e) {
-    if (e?.name === 'AbortError') return res.status(504).json({ error: 'vision timeout' });
-    return res.status(502).json({ error: 'vision request failed' });
-  } finally {
-    clearTimeout(timer);
-  }
+    if(!normalized) return res.status(502).json({error:'empty normalized vision'});
+    const legacyCards=(kind==='hero'||kind==='board')?toLegacyCards(kind,normalized):[];
+    return res.status(200).json({
+      ...normalized,
+      cards:legacyCards,
+      handId, expectedCount, fingerprint,
+      readerModel:usedModel, attempts,
+      visionRef:FROZEN_VISION_REF,
+      ms:Date.now()-t0,
+    });
+  }catch(e){
+    if(e?.name==='AbortError') return res.status(504).json({error:'vision timeout'});
+    const status=Number(e?.status)||502;
+    return res.status(status>=400&&status<600?status:502).json({error:e?.message||'vision request failed'});
+  }finally{ clearTimeout(timer); }
 }
