@@ -50,7 +50,7 @@ const r=decideBrain(state,{format:'cash',handId:41,heroActor:'Hero',profiles,led
 assert.equal(r.knowledgeVersion,'brain-knowledge-v1.1');
 assert.equal(r.strategyVersion,'strategy-v1-migration');
 assert.equal(r.strategyStatus.preflop,'ported-and-regression-gated');
-assert.equal(r.strategyStatus.postflop,'source-not-vendored-in-github');
+assert.equal(r.strategyStatus.postflop,'exact-artifact-recovered-parity-pending');
 assert.equal(r.strategyStatus.policyComplete,false);
 assert.equal(r.knowledge.line.currentStreetLastAggression.actor,'Villain');
 assert.equal(r.knowledge.line.provisionalObserved[0].action,'RAISE');
