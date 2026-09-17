@@ -38,15 +38,23 @@ export function mttContext(state, context = {}) {
   const depthBB = effectiveDepthBB(state.heroStack, state.effectiveStack, state.blinds);
   const phase = tournamentPhase(context);
   const riskPremiumPct = estimatedRiskPremiumPct(context);
+  const explicitRiskPremium = Number(context.icmRiskPremiumPct);
+  const riskPremiumSource = Number.isFinite(explicitRiskPremium) && explicitRiskPremium >= 0
+    ? 'explicit-external-context'
+    : 'phase-heuristic';
   return {
     depthBB,
     stackRegime: stackRegime(depthBB),
     phase,
     riskPremiumPct,
+    riskPremiumSource,
+    certification: 'approximation-only',
+    icmCertified: false,
+    solverCertified: false,
     bountyFactor: Number.isFinite(Number(context.bountyFactor)) ? Number(context.bountyFactor) : null,
     // Calling off chips is affected more by ICM than first-in aggression.
     callThresholdAdjustment: riskPremiumPct,
     firstInAggressionAdjustment: phase === 'bubble' ? -2 : 0,
-    confidence: context.icmRiskPremiumPct != null ? 'explicit-context' : 'heuristic-context',
+    confidence: riskPremiumSource === 'explicit-external-context' ? 'explicit-context' : 'heuristic-context',
   };
 }
