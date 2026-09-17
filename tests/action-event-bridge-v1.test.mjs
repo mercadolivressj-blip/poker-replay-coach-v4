@@ -50,3 +50,28 @@ assert.equal(unknown[0].actor,null);
 assert.equal(unknown[0].sovereign,false);
 
 console.log('action-event-bridge-v1 regressions: OK');
+
+
+// One sovereign action may confirm at most one provisional candidate.
+// This protects replay streams that flash the same action more than once.
+{
+  const state2=state({actionHistory:['VillainB: calls US$ 0.04'],capturedAt:3000});
+  let s=ingestVisionState(createStudySession(),state(),{handId:2});
+  s=ingestCaptureEvents(s,[
+    {type:'action-candidate',seatId:'right-high',action:'CALL',capturedAt:2600,confidence:.9,source:'local-action-inference'},
+    {type:'action-candidate',seatId:'right-high',action:'CALL',capturedAt:2700,confidence:.88,source:'local-action-inference',packetId:'dup-call'},
+  ],{seatMap:{'right-high':'VillainB'}});
+  s=ingestVisionState(s,state2,{handId:2});
+  assert.equal(s.captureCandidates.filter(x=>x.status==='confirmed').length,1);
+  assert.equal(s.captureCandidates.filter(x=>x.status==='provisional').length,1);
+}
+
+// If both sides have an amount, a mismatched size must not be promoted.
+{
+  let s=ingestVisionState(createStudySession(),state(),{handId:3});
+  s=ingestCaptureEvents(s,[
+    {type:'action-candidate',seatId:'right-high',action:'CALL',amount:.02,capturedAt:3600,confidence:.9,source:'local-commitment'},
+  ],{seatMap:{'right-high':'VillainB'}});
+  s=ingestVisionState(s,state({actionHistory:['VillainB: calls US$ 0.04'],capturedAt:4000}),{handId:3});
+  assert.equal(s.captureCandidates[0].status,'provisional');
+}
