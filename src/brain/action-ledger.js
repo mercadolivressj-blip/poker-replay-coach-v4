@@ -42,10 +42,9 @@ function actorFromLine(line, action) {
 }
 
 function moneyTokens(line) {
-  const matches = [...line.matchAll(/(?:US\$|R\$|\$|€|£)?\s*(\d+(?:[.,]\d+)?)/gi)]
+  return [...line.matchAll(/(?:US\$|R\$|\$|€|£)?\s*(\d+(?:[.,]\d+)?)/gi)]
     .map((m) => Number(String(m[1]).replace(',','.')))
     .filter(Number.isFinite);
-  return matches;
 }
 
 export function parseActionLine(raw, fallbackStreet = 'preflop') {
@@ -62,104 +61,67 @@ export function parseActionLine(raw, fallbackStreet = 'preflop') {
   const toAmount = toMatch ? Number(toMatch[1].replace(',','.')) : null;
   const amount = nums.length ? nums[0] : null;
   return {
-    kind:'action',
-    street: fallbackStreet,
-    actor,
-    action,
-    amount,
-    toAmount: Number.isFinite(toAmount) ? toAmount : null,
-    allIn: action === 'ALLIN' || /all[ -]?in|shove/i.test(line),
-    raw: line,
+    kind:'action', street:fallbackStreet, actor, action, amount,
+    toAmount:Number.isFinite(toAmount) ? toAmount : null,
+    allIn:action === 'ALLIN' || /all[ -]?in|shove/i.test(line), raw:line,
   };
 }
 
 export function createLedger({ handId = null, heroActor = null, seats = [] } = {}) {
   return {
-    version:'action-ledger-v1-external',
-    handId,
-    heroActor: heroActor ? canonActor(heroActor) : null,
-    seats: Array.isArray(seats) ? seats : [],
-    actions:[],
-    seen:[],
-    street:'preflop',
-    preflopAggressor:null,
-    lastAggressor:null,
-    playersSeen:[],
+    version:'action-ledger-v1-external', handId,
+    heroActor:heroActor ? canonActor(heroActor) : null,
+    seats:Array.isArray(seats) ? seats : [], actions:[], seen:[], street:'preflop',
+    preflopAggressor:null, lastAggressor:null, playersSeen:[],
   };
 }
 
-function actionKey(a) {
-  return [a.street,a.actor,a.action,a.amount ?? '',a.toAmount ?? '',a.raw.toLowerCase()].join('|');
-}
+function actionKey(a) { return [a.street,a.actor,a.action,a.amount ?? '',a.toAmount ?? '',a.raw.toLowerCase()].join('|'); }
 
 function rebuildDerived(ledger) {
-  let pfa = null, last = null;
-  const players = new Set();
+  let pfa=null,last=null; const players=new Set();
   for (const a of ledger.actions) {
     players.add(a.actor);
-    if (a.action === 'BET' || a.action === 'RAISE' || a.action === 'ALLIN') {
-      last = a.actor;
-      if (a.street === 'preflop') pfa = a.actor;
-    }
+    if (['BET','RAISE','ALLIN'].includes(a.action)) { last=a.actor; if (a.street==='preflop') pfa=a.actor; }
   }
-  ledger.preflopAggressor = pfa;
-  ledger.lastAggressor = last;
-  ledger.playersSeen = [...players];
+  ledger.preflopAggressor=pfa; ledger.lastAggressor=last; ledger.playersSeen=[...players];
   return ledger;
 }
 
 export function applyActionHistory(ledgerInput, history = [], board = []) {
-  const ledger = ledgerInput ? {
-    ...ledgerInput,
-    actions:[...(ledgerInput.actions || [])],
-    seen:[...(ledgerInput.seen || [])],
-    playersSeen:[...(ledgerInput.playersSeen || [])],
-  } : createLedger();
-  const seen = new Set(ledger.seen);
-  let street = ledger.street || streetFromBoard(board);
+  const ledger=ledgerInput ? {...ledgerInput,actions:[...(ledgerInput.actions||[])],seen:[...(ledgerInput.seen||[])],playersSeen:[...(ledgerInput.playersSeen||[])]} : createLedger();
+  const seen=new Set(ledger.seen); let street=ledger.street || 'preflop';
   for (const raw of Array.isArray(history) ? history : []) {
-    const parsed = parseActionLine(raw, street);
-    if (!parsed) continue;
-    if (parsed.kind === 'street') { street = parsed.street; continue; }
-    parsed.street = street;
-    const key = actionKey(parsed);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    ledger.actions.push({ ...parsed, seq:ledger.actions.length + 1 });
+    const parsed=parseActionLine(raw,street); if(!parsed) continue;
+    if(parsed.kind==='street'){street=parsed.street;continue;}
+    parsed.street=street; const key=actionKey(parsed); if(seen.has(key))continue;
+    seen.add(key); ledger.actions.push({...parsed,seq:ledger.actions.length+1});
   }
-  ledger.seen = [...seen];
-  ledger.street = STREET_ORDER.indexOf(street) >= 0 ? street : streetFromBoard(board);
+  ledger.seen=[...seen]; ledger.street=STREET_ORDER.indexOf(street)>=0?street:streetFromBoard(board);
   return rebuildDerived(ledger);
 }
 
 export function buildLedgerFromState(state = {}, { handId = null, heroActor = null } = {}) {
-  const seats = Array.isArray(state.seats) ? state.seats : [];
-  let hero = heroActor;
-  if (!hero) {
-    const s = seats.find((x) => x && x.isHero);
-    hero = s?.name || s?.player || s?.nick || s?.nickname || null;
-  }
-  const ledger = createLedger({ handId, heroActor:hero, seats });
-  ledger.street = streetFromBoard(state.board);
-  return applyActionHistory(ledger, state.actionHistory, state.board);
+  const seats=Array.isArray(state.seats)?state.seats:[]; let hero=heroActor;
+  if(!hero){const s=seats.find((x)=>x&&x.isHero);hero=s?.name||s?.player||s?.nick||s?.nickname||null;}
+  const ledger=createLedger({handId,heroActor:hero,seats});
+  // actionHistory is a chronological hand log: start parsing at preflop even if the
+  // visual board is already on a later street. Street markers advance the ledger.
+  ledger.street='preflop';
+  const out=applyActionHistory(ledger,state.actionHistory,state.board);
+  // The CURRENT street is sovereignly derived from confirmed board cards; this does
+  // not relabel historical actions that were parsed before a street marker.
+  out.street=streetFromBoard(state.board);
+  return out;
 }
 
 export function ledgerSummary(ledger) {
-  const byStreet = { preflop:[], flop:[], turn:[], river:[] };
-  for (const a of ledger?.actions || []) (byStreet[a.street] || byStreet.preflop).push(a);
-  return {
-    version: ledger?.version || 'action-ledger-v1-external',
-    handId: ledger?.handId ?? null,
-    street: ledger?.street || 'preflop',
-    actionCount: ledger?.actions?.length || 0,
-    preflopAggressor: ledger?.preflopAggressor || null,
-    lastAggressor: ledger?.lastAggressor || null,
-    playersSeen: ledger?.playersSeen || [],
-    byStreet,
-  };
+  const byStreet={preflop:[],flop:[],turn:[],river:[]};
+  for(const a of ledger?.actions||[])(byStreet[a.street]||byStreet.preflop).push(a);
+  return {version:ledger?.version||'action-ledger-v1-external',handId:ledger?.handId??null,street:ledger?.street||'preflop',actionCount:ledger?.actions?.length||0,preflopAggressor:ledger?.preflopAggressor||null,lastAggressor:ledger?.lastAggressor||null,playersSeen:ledger?.playersSeen||[],byStreet};
 }
 
 export function heroWasPreflopAggressor(ledger) {
-  if (!ledger?.heroActor || !ledger?.preflopAggressor) return null;
-  return canonActor(ledger.heroActor).toLowerCase() === canonActor(ledger.preflopAggressor).toLowerCase();
+  if(!ledger?.heroActor||!ledger?.preflopAggressor)return null;
+  return canonActor(ledger.heroActor).toLowerCase()===canonActor(ledger.preflopAggressor).toLowerCase();
 }
