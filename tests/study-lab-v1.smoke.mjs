@@ -8,6 +8,8 @@ assert(html.includes('https://ssj-poker-hybrid-v1-r3-fast.vercel.app/api/vision/
 assert(!html.includes('id-preview--e06dd5f0-7e4c-44aa-a632-13a788f9bdd2.lovable.app'));
 assert(html.includes('OBSERVED LEDGER'));
 assert(html.includes('SOVEREIGN LEDGER'));
+assert(html.includes('metadataObservedAt:lastMetadataObservedAt'),'lab must forward freshness marker into Study Runtime');
+assert(html.includes('lastMetadataObservedAt=x.observedAt'),'full metadata read must stamp request-time freshness');
 const m=html.match(/<script type="module">([\s\S]*?)<\/script>/);
 assert(m,'module script missing');
 const body=m[1].replace(/^import .*;\s*$/gm,'');
