@@ -13,6 +13,18 @@ This ledger exists to prevent accidental reconstruction, approximation or false 
 - Last frozen-project commit recorded by historical handoff: `3efde306fbb1dda38584cb8ffee0c2245b6231f4`
 - Intended vendored artifact path: `src/strategy-v1/postflop-policy-model.json`
 
+## Additional historical evidence
+
+A prior 2026-09-15 certification conversation records:
+
+- the frozen model artifact was approximately **4.5 MB**;
+- training input names included `postflop_500k_train_set` and `/tmp/feat_train.csv`;
+- evaluation references included `/tmp/pb_post.csv` and `feat_test.csv`;
+- reports were named `audit/policy/postflop-v4-policy.md` and `audit/policy/decision-layer-v4.md`;
+- serialized tree thresholds containing `+inf` were repaired to finite JSON value `1e308`.
+
+These clues were searched in Library/history but still do not reveal a recoverable artifact path. Library JSON inventory contains no ~4.5 MB candidate.
+
 ## Exact source modules named by the historical migration plan
 
 - `src/lib/postflop.ts`
