@@ -25,6 +25,7 @@ export default async function handler(req, res) {
       brainVersion: 'brain-v1',
       runtimeVersion: 'study-runtime-v1',
       strategyVersion: STRATEGY_V1_MANIFEST.version,
+      frozenPolicyAvailable: STRATEGY_V1_MANIFEST.policyComplete === true,
       strategyStatus: {
         preflop: STRATEGY_V1_MANIFEST.preflop.status,
         postflop: STRATEGY_V1_MANIFEST.postflop.status,
