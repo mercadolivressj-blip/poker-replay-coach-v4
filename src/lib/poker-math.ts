@@ -1,0 +1,13 @@
+/** Matemática determinística do coach. */
+import { parseChips, bigBlindOf } from "./poker-state";
+const round1=(n:number)=>Math.round(n*10)/10;
+export const effectiveStackChips=(heroStack:string|null|undefined,effectiveStack:string|null|undefined,villainStacks:(string|null|undefined)[]=[]):number|null=>{const explicit=parseChips(effectiveStack);const hero=parseChips(heroStack);const villains=villainStacks.map(parseChips).filter((n):n is number=>!!n);if(explicit)return hero?Math.min(explicit,hero):explicit;if(!hero)return null;if(!villains.length)return hero;return Math.min(hero,Math.max(...villains));};
+export const spr=(pot:string|null|undefined,effStackChips:number|null):{spr:number;regime:"baixo"|"medio"|"alto"}|null=>{const p=parseChips(pot);if(!p||!effStackChips||effStackChips<=0)return null;const value=round1(effStackChips/p);return{spr:value,regime:value<=3?"baixo":value<=8?"medio":"alto"};};
+export const requiredEquity=(pot:number,call:number):number|null=>!(pot>0)||!(call>0)?null:Math.round((call/(pot+call))*1000)/10;
+export const bluffCatchBreakeven=(pot:string|null|undefined,toCall:string|null|undefined):{needBluffPct:number;pot:number;call:number}|null=>{const p=parseChips(pot),c=parseChips(toCall);if(!p||!c)return null;return{needBluffPct:Math.round((c/(p+c))*1000)/10,pot:p,call:c};};
+export const foldEquityNeeded=(pot:string|null|undefined,risk:string|null|undefined):number|null=>{const p=parseChips(pot),r=parseChips(risk);if(!p||!r)return null;return Math.round((r/(p+r))*1000)/10;};
+export const minDefenseFrequency=(pot:string|null|undefined,bet:string|null|undefined):number|null=>{const p=parseChips(pot),b=parseChips(bet);if(!p||!b)return null;return Math.round((p/(p+b))*1000)/10;};
+export const outsEquity=(cleanOuts:number,street:"flop"|"turn"|"river"|string):{equity:number;cardsToCome:number}|null=>{if(!Number.isFinite(cleanOuts)||cleanOuts<=0||street==="river")return null;const cardsToCome=street==="flop"?2:1;const unseen=street==="flop"?47:46;const equity=cardsToCome===1?round1((cleanOuts/unseen)*100):round1((1-((47-cleanOuts)/47)*((46-cleanOuts)/46))*100);return{equity,cardsToCome};};
+export const discountOuts=(rawOuts:number,contaminated:number):number=>Math.max(0,Math.round((rawOuts-contaminated*0.5)*10)/10);
+export const raiseSizing=(pot:string|null|undefined,villainBet:string|null|undefined):{pot:number;bet:number;minRaiseTo:number;valueRaiseTo:number}|null=>{const p=parseChips(pot),b=parseChips(villainBet);if(!p||!b)return null;return{pot:p,bet:b,minRaiseTo:b*2,valueRaiseTo:Math.round(b*3)};};
+export const effectiveDepthBB=(effStackChips:number|null,blinds:string|null|undefined):number|null=>{const bb=bigBlindOf(blinds);if(!effStackChips||!bb)return null;return round1(effStackChips/bb);};
