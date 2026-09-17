@@ -1,1 +1,274 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Poker Replay Vision Lab</title><style>body{margin:0;background:#07120d;color:#e9f5ee;font:14px system-ui}.wrap{max-width:1200px;margin:auto;padding:20px}.row{display:flex;gap:10px;flex-wrap:wrap}.card{background:#0d2017;border:1px solid #1f4635;border-radius:14px;padding:14px;margin:12px 0}button,input{background:#112d20;color:#fff;border:1px solid #2d6049;border-radius:9px;padding:10px}button{cursor:pointer;font-weight:700}video{width:100%;background:#000;border-radius:12px}.state{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.box{background:#081912;border:1px solid #193b2c;border-radius:10px;padding:10px}.big{font-size:24px;font-weight:900;color:#e7be3a}pre{white-space:pre-wrap;max-height:260px;overflow:auto;color:#9fc7b4}@media(max-width:700px){.state{grid-template-columns:1fr 1fr}}</style></head><body><div class="wrap"><h1>Poker Replay Vision Lab</h1><p>Replay gravado/pós-jogo. Harness standalone temporário, sem Lovable.</p><div class="card row"><input id="key" type="password" autocomplete="off" placeholder="Gemini API key (fica só nesta aba)" style="flex:1;min-width:260px"><button id="save">Usar chave</button><button id="share">Compartilhar replay</button><button id="stop">Parar</button></div><div class="card"><video id="v" autoplay muted playsinline></video></div><div class="card state"><div class="box">Hero<div id="hero" class="big">—</div></div><div class="box">Board<div id="board" class="big">—</div></div><div class="box">Pot<div id="pot" class="big">—</div></div><div class="box">Ações<div id="actions" class="big">—</div></div></div><div class="card"><pre id="log"></pre></div></div><canvas id="c" hidden></canvas><script>const v=document.querySelector('#v'),c=document.querySelector('#c'),log=document.querySelector('#log');let key=sessionStorage.getItem('geminiKey')||'',stream=null,running=false,busy=false,seq=0;document.querySelector('#key').value=key;const L=(m)=>{log.textContent='['+new Date().toLocaleTimeString()+'] '+m+'\n'+log.textContent};document.querySelector('#save').onclick=()=>{key=document.querySelector('#key').value.trim();key?sessionStorage.setItem('geminiKey',key):sessionStorage.removeItem('geminiKey');L(key?'Chave carregada apenas nesta aba.':'Chave removida.')};document.querySelector('#share').onclick=async()=>{stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:8},audio:false});v.srcObject=stream;running=true;seq++;L('Replay compartilhado.');loop(seq)};document.querySelector('#stop').onclick=()=>{running=false;seq++;stream?.getTracks().forEach(t=>t.stop());L('Parado.')};function crop(x,y,w,h,q=.82,maxScale=1.6){if(!v.videoWidth)return null;const sx=Math.round(v.videoWidth*x),sy=Math.round(v.videoHeight*y),sw=Math.round(v.videoWidth*w),sh=Math.round(v.videoHeight*h),scale=Math.min(maxScale,1280/sw);c.width=Math.round(sw*scale);c.height=Math.round(sh*scale);c.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}async function callModel(model,prompt,img,max=180){if(!key)throw new Error('Falta Gemini API key');const m=img.match(/^data:(image\/[^;]+);base64,(.+)$/);if(!m)throw new Error('Frame inválido');const body={systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:[{text:'Responda SOMENTE JSON.'},{inlineData:{mimeType:m[1],data:m[2]}}]}],generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens:max}};const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error?.message||('Gemini HTTP '+r.status));const t=(j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();try{return JSON.parse(t)}catch{return {raw:t}}}function heroConclusive(x){return x?.heroPresence==='present'&&Array.isArray(x.heroCards)&&x.heroCards.length===2&&x.heroCards[0]!==x.heroCards[1]}function boardConclusive(x){const n=Array.isArray(x?.board)?x.board.length:0;return (x?.boardPresence==='present'&&[3,4,5].includes(n))||(x?.boardPresence==='absent'&&n===0)}async function gemini(kind,prompt,img,max=180){let out=await callModel('gemini-3.1-flash-lite',prompt,img,max);if(kind==='hero'&&!heroConclusive(out))out=await callModel('gemini-3.8-flash',prompt,img,max);if(kind==='board'&&!boardConclusive(out))out=await callModel('gemini-3.8-flash',prompt,img,max);return out}const HERO=`Você lê SOMENTE as 2 cartas do HERO no crop inferior de uma mesa de poker gravada. Leia esquerda para direita. Formato de carta: rank + naipe s,h,d,c. Não chute. Se qualquer rank ou naipe estiver incerto, heroCards deve ser []. Diferencie 6 de 9 pela forma. Diferencie coração/ouros e espadas/paus pelo símbolo, não só cor. Retorne JSON: {"heroCards":[],"heroPresence":"present|absent|uncertain","confidence":0}`;const BOARD=`Você lê SOMENTE o board central de uma mesa de poker gravada. Retorne exatamente 0,3,4 ou 5 cartas no formato rank+naipe s,h,d,c. Se qualquer carta estiver parcial, animando ou incerta, board deve ser []. Não chute naipe. JSON: {"board":[],"boardPresence":"present|absent|uncertain","confidence":0}`;const ACTIONS=`Você lê SOMENTE a barra de ações do HERO em replay gravado. Liste apenas botões principais visíveis/clicáveis: FOLD,CHECK,CALL,BET,RAISE,ALLIN. Ignore atalhos Min/3BB/Pot/Max; Max não é ALLIN. Leia toCall somente do botão Call. JSON: {"legalActions":[],"toCall":null,"confidence":0}`;const QUICK=`Você lê pot e stack do HERO de uma mesa de poker gravada. Não leia cartas. JSON: {"pot":null,"heroStack":null,"blinds":null,"confidence":0}`;async function loop(gen){if(!running||gen!==seq)return;setTimeout(()=>loop(gen),650);if(busy||!v.videoWidth||!key)return;busy=true;try{const h=await gemini('hero',HERO,crop(.36,.52,.28,.24),160);if(!running||gen!==seq)return;const b=await gemini('board',BOARD,crop(.26,.30,.48,.16),160);if(!running||gen!==seq)return;const a=await gemini('actions',ACTIONS,crop(.38,.55,.61,.44,.76,1.5),220);if(!running||gen!==seq)return;const q=await gemini('quick',QUICK,crop(0,0,1,1,.72,1),160);if(!running||gen!==seq)return;document.querySelector('#hero').textContent=(h.heroCards||[]).join(' ')||'—';document.querySelector('#board').textContent=(b.board||[]).join(' ')||'—';document.querySelector('#pot').textContent=q.pot||'—';document.querySelector('#actions').textContent=(a.legalActions||[]).join(' · ')||'—';L('hero '+JSON.stringify(h)+' | board '+JSON.stringify(b))}catch(e){L('ERRO '+e.message)}finally{busy=false}}}</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Poker Replay Vision Lab · Fast Hero R2</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#04150e;color:#e9fff2;font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}.wrap{max-width:1220px;margin:auto;padding:18px}.card{background:#08251a;border:1px solid #145c3d;border-radius:16px;padding:14px;margin:12px 0}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,input{background:#0b2d20;color:#fff;border:1px solid #2b7452;border-radius:10px;padding:10px 12px}button{cursor:pointer;font-weight:800}button:hover{filter:brightness(1.15)}input{flex:1;min-width:280px}video{display:block;width:100%;max-height:52vh;background:#000;border-radius:12px}.state{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.box{background:#041c13;border:1px solid #155238;border-radius:12px;padding:12px;min-height:110px}.big{font-size:25px;font-weight:900;color:#f1d739;margin-top:10px}.small{font-size:12px;color:#a9dbc1;margin-top:8px;min-height:16px}.heroBox{border-color:#2d9467}.ok{color:#67f0a5}.warn{color:#f1d739}.bad{color:#ff8f8f}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.cropPreview{width:100%;min-height:120px;object-fit:contain;background:#000;border-radius:10px;border:1px solid #174d37}pre{margin:0;white-space:pre-wrap;max-height:320px;overflow:auto;color:#a9ffd0;background:#03120c;border-radius:10px;padding:12px}.badge{display:inline-block;border:1px solid #2d7452;border-radius:999px;padding:4px 8px;margin-left:6px;color:#b8e6ce}h1{margin:0 0 4px}p{margin:4px 0 0;color:#b6d4c5}@media(max-width:850px){.state{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}}@media(max-width:520px){.state{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Poker Replay Vision Lab <span class="badge">Fast Hero R2</span></h1>
+  <p>Replay gravado / pós-jogo. Hero tem prioridade absoluta. Crops congelados preservados.</p>
+
+  <div class="card row">
+    <input id="key" type="password" autocomplete="off" placeholder="Gemini API key (fica só nesta aba)">
+    <button id="save">Usar chave</button>
+    <button id="share">Compartilhar replay</button>
+    <button id="stop">Parar</button>
+    <button id="resetHero">Reset Hero</button>
+  </div>
+
+  <div class="card"><video id="v" autoplay muted playsinline></video></div>
+
+  <div class="card state">
+    <div class="box heroBox">Hero<div id="hero" class="big">—</div><div id="heroMeta" class="small">aguardando replay</div></div>
+    <div class="box">Board<div id="board" class="big">—</div><div id="boardMeta" class="small">secundário</div></div>
+    <div class="box">Pot<div id="pot" class="big">—</div><div id="potMeta" class="small">secundário</div></div>
+    <div class="box">Ações<div id="actions" class="big">—</div><div id="actionsMeta" class="small">secundário</div></div>
+  </div>
+
+  <div class="card grid2">
+    <div><strong>Crop exato enviado ao Hero</strong><div id="cropMeta" class="small">x=.36 y=.52 w=.28 h=.24</div><img id="heroCropPreview" class="cropPreview" alt="Hero crop"></div>
+    <div><strong>Model router</strong><div id="router" class="small">—</div><div class="small">Regra: 2.5 removido; indisponível/deprecated = desabilitado na sessão; 429/503/high demand = cooldown; timeout não altera crop.</div></div>
+  </div>
+
+  <div class="card"><pre id="log"></pre></div>
+</div>
+<canvas id="work" hidden></canvas>
+<canvas id="finger" hidden></canvas>
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const v = $('#v'), work = $('#work'), finger = $('#finger'), logEl = $('#log');
+const heroEl = $('#hero'), heroMetaEl = $('#heroMeta'), routerEl = $('#router');
+const cropPreviewEl = $('#heroCropPreview'), cropMetaEl = $('#cropMeta');
+let key = sessionStorage.getItem('geminiKey') || '';
+let stream = null, running = false, generation = 0, paidBusy = false;
+let heroConfirmed = false, confirmedHero = [], candidateKey = '', candidateCount = 0;
+let lastHeroFingerprint = '', lastHeroAttemptAt = 0, lastHeroSuccessAt = 0;
+let heroTimer = null, secondaryTimer = null, secondaryIndex = 0;
+$('#key').value = key;
+
+const HERO_CROP = Object.freeze({x:.36,y:.52,w:.28,h:.24,q:.82,maxScale:1.6,targetWidth:1280});
+const BOARD_CROP = Object.freeze({x:.26,y:.30,w:.48,h:.16,q:.82,maxScale:1.6,targetWidth:1280});
+const ACTIONS_CROP = Object.freeze({x:.38,y:.55,w:.61,h:.44,q:.76,maxScale:1.5,targetWidth:1280});
+const CARD_RE = /^[2-9TJQKA][shdc]$/;
+
+const MODEL_SPECS = [
+  {name:'gemini-3.1-flash-lite', timeout:2200},
+  {name:'gemini-3.5-flash-lite', timeout:3500},
+  {name:'gemini-3.8-flash', timeout:2800}
+];
+let availableNames = MODEL_SPECS.map(x=>x.name);
+let preferredModel = null;
+const disabled = new Map(); // model -> {until, reason}
+
+const HERO_PROMPT = `Você é SOMENTE visão. Leia as 2 cartas do HERO neste crop inferior de replay gravado. Leia esquerda para direita. Carta = rank+naipe: s,h,d,c. Ex.: 7c 4d. Se QUALQUER rank ou naipe estiver incerto, heroCards=[]. Nunca chute. heroPresence: present só se ambas legíveis; absent só se região claramente vazia; uncertain se há carta/animação mas ilegível. Retorne SOMENTE JSON: {"heroCards":[],"heroPresence":"present|absent|uncertain","confidence":0}`;
+const BOARD_PROMPT = `Leia SOMENTE o board central deste replay gravado. board deve ter exatamente 0,3,4 ou 5 cartas no formato rank+naipe s,h,d,c. Parcial/animando/incerto => board=[]. Não chute naipe. JSON: {"board":[],"boardPresence":"present|absent|uncertain","confidence":0}`;
+const ACTIONS_PROMPT = `Leia SOMENTE os botões principais realmente visíveis do HERO: FOLD,CHECK,CALL,BET,RAISE,ALLIN. Ignore Min,3BB,Pot,Max; Max NÃO é ALLIN. toCall somente do botão Call. JSON: {"legalActions":[],"toCall":null,"confidence":0}`;
+const QUICK_PROMPT = `Leia SOMENTE pot, heroStack e blinds desta mesa de poker gravada. NÃO leia cartas. JSON: {"pot":null,"heroStack":null,"blinds":null,"confidence":0}`;
+
+function L(msg, cls='') {
+  const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  const safe = line.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  logEl.innerHTML = `<span class="${cls}">${safe}</span>\n` + logEl.innerHTML;
+}
+function setMeta(el, text, cls='') { el.className = 'small '+cls; el.textContent = text; }
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function stopTimers(){ clearTimeout(heroTimer); clearTimeout(secondaryTimer); heroTimer=secondaryTimer=null; }
+
+function resetHeroState(reason='reset') {
+  heroConfirmed=false; confirmedHero=[]; candidateKey=''; candidateCount=0;
+  lastHeroFingerprint=''; lastHeroAttemptAt=0; lastHeroSuccessAt=0;
+  heroEl.textContent='—'; setMeta(heroMetaEl,'aguardando leitura rápida','warn');
+  $('#board').textContent='—'; $('#pot').textContent='—'; $('#actions').textContent='—';
+  setMeta($('#boardMeta'),'secundário pausado até Hero confirmar');
+  setMeta($('#potMeta'),'secundário pausado até Hero confirmar');
+  setMeta($('#actionsMeta'),'secundário pausado até Hero confirmar');
+  L(`Hero state reset: ${reason}`);
+}
+
+function currentModelStatus(){
+  const now=Date.now();
+  return MODEL_SPECS.map(s=>{
+    const d=disabled.get(s.name);
+    const st = !availableNames.includes(s.name) ? 'não listado' : !d ? 'ok' : d.until===Infinity ? `OFF (${d.reason})` : d.until>now ? `cooldown ${Math.ceil((d.until-now)/1000)}s` : 'ok';
+    return `${s.name}: ${st}${preferredModel===s.name?' ★':''}`;
+  }).join(' | ');
+}
+function refreshRouter(){ routerEl.textContent=currentModelStatus(); }
+
+async function discoverModels(){
+  if(!key) return;
+  try{
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',{headers:{'x-goog-api-key':key}});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error?.message||`HTTP ${r.status}`);
+    const supported=new Set((j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>(m.name||'').replace(/^models\//,'')));
+    const found=MODEL_SPECS.map(x=>x.name).filter(n=>supported.has(n));
+    if(found.length){availableNames=found; L(`Modelos detectados: ${found.join(', ')}`,'ok');}
+    else L('ListModels não encontrou os candidatos conhecidos; mantendo lista local.','warn');
+  }catch(e){L(`ListModels falhou; usando candidatos locais: ${e.message}`,'warn')}
+  refreshRouter();
+}
+
+function crop(spec){
+  if(!v.videoWidth || !v.videoHeight) return null;
+  const sx=Math.round(v.videoWidth*spec.x), sy=Math.round(v.videoHeight*spec.y), sw=Math.round(v.videoWidth*spec.w), sh=Math.round(v.videoHeight*spec.h);
+  const scale=Math.min(spec.maxScale, spec.targetWidth/sw);
+  const dw=Math.max(1,Math.round(sw*scale)), dh=Math.max(1,Math.round(sh*scale));
+  work.width=dw; work.height=dh;
+  const ctx=work.getContext('2d',{alpha:false});
+  ctx.drawImage(v,sx,sy,sw,sh,0,0,dw,dh);
+  const dataUrl=work.toDataURL('image/jpeg',spec.q);
+  finger.width=16; finger.height=8;
+  const fctx=finger.getContext('2d',{alpha:false});
+  fctx.drawImage(work,0,0,16,8);
+  const px=fctx.getImageData(0,0,16,8).data;
+  let fp=''; for(let i=0;i<px.length;i+=4){const y=Math.round((px[i]*.299+px[i+1]*.587+px[i+2]*.114)/16).toString(16);fp+=y;}
+  return {dataUrl,w:dw,h:dh,fingerprint:fp,bytes:Math.round((dataUrl.length*3/4))};
+}
+function fullFrame(){
+  if(!v.videoWidth || !v.videoHeight) return null;
+  const scale=Math.min(1,1120/v.videoWidth); const dw=Math.round(v.videoWidth*scale), dh=Math.round(v.videoHeight*scale);
+  work.width=dw; work.height=dh; work.getContext('2d',{alpha:false}).drawImage(v,0,0,v.videoWidth,v.videoHeight,0,0,dw,dh);
+  return {dataUrl:work.toDataURL('image/jpeg',.72),w:dw,h:dh};
+}
+
+function parseDataUrl(img){const m=img.match(/^data:(image\/[^;]+);base64,(.+)$/);if(!m)throw new Error('Frame inválido');return {mimeType:m[1],data:m[2]}}
+async function callModel(model,prompt,img,maxOutputTokens,timeoutMs){
+  if(!key) throw new Error('Falta Gemini API key');
+  const p=parseDataUrl(img); const ctrl=new AbortController(); const timer=setTimeout(()=>ctrl.abort(),timeoutMs); const t0=performance.now();
+  try{
+    const body={systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:[{text:'Responda SOMENTE JSON.'},{inlineData:p}]}],generationConfig:{responseMimeType:'application/json',temperature:0,maxOutputTokens}};
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{method:'POST',headers:{'content-type':'application/json','x-goog-api-key':key},body:JSON.stringify(body),signal:ctrl.signal});
+    const j=await r.json().catch(()=>({})); const latency=Math.round(performance.now()-t0);
+    if(!r.ok){const e=new Error(j.error?.message||`Gemini HTTP ${r.status}`);e.status=r.status;e.latency=latency;throw e;}
+    const text=(j.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').trim();
+    let out; try{out=JSON.parse(text)}catch{const e=new Error(`JSON inválido: ${text.slice(0,140)}`);e.latency=latency;throw e;}
+    out._model=model; out._latencyMs=latency; return out;
+  }catch(e){
+    if(e.name==='AbortError'){const x=new Error(`timeout ${timeoutMs}ms`);x.code='TIMEOUT';x.latency=Math.round(performance.now()-t0);throw x;}
+    if(e.latency==null)e.latency=Math.round(performance.now()-t0); throw e;
+  }finally{clearTimeout(timer)}
+}
+
+function classifyFailure(e){
+  const m=String(e.message||'').toLowerCase(); const status=e.status||0;
+  if(m.includes('no longer available to new users')||m.includes('model is no longer available')||m.includes('model not found')||m.includes('does not exist')||status===404) return {kind:'hard',cooldown:Infinity};
+  if(status===429||status===503||m.includes('high demand')||m.includes('resource exhausted')||m.includes('unavailable')) return {kind:'transient',cooldown:30000};
+  if(e.code==='TIMEOUT'||m.includes('timeout')) return {kind:'timeout',cooldown:8000};
+  return {kind:'other',cooldown:5000};
+}
+function orderedModels(){
+  const now=Date.now();
+  const specs=MODEL_SPECS.filter(s=>availableNames.includes(s.name)).filter(s=>{const d=disabled.get(s.name);return !d||d.until<=now;});
+  specs.sort((a,b)=>(a.name===preferredModel?-1:0)-(b.name===preferredModel?-1:0));
+  return specs;
+}
+async function routedCall(kind,prompt,img,max=160){
+  const specs=orderedModels();
+  if(!specs.length) throw new Error('Sem modelo fast disponível agora; aguarde cooldown ou confira a chave.');
+  let lastErr=null;
+  for(const spec of specs){
+    const t0=performance.now();
+    try{
+      if(kind==='hero') setMeta(heroMetaEl,`lendo ${spec.name}…`,'warn');
+      const out=await callModel(spec.name,prompt,img,max,spec.timeout);
+      preferredModel=spec.name; disabled.delete(spec.name); refreshRouter();
+      return out;
+    }catch(e){
+      lastErr=e; const c=classifyFailure(e); const elapsed=e.latency??Math.round(performance.now()-t0);
+      disabled.set(spec.name,{until:c.cooldown===Infinity?Infinity:Date.now()+c.cooldown,reason:c.kind});
+      L(`${kind==='hero'?'Hero':kind} ${spec.name} falhou em ${elapsed}ms: ${e.message}`,'bad'); refreshRouter();
+    }
+  }
+  throw lastErr||new Error('Falha em todos os modelos');
+}
+
+function validHero(out){
+  const a=Array.isArray(out?.heroCards)?out.heroCards:[];
+  return out?.heroPresence==='present'&&a.length===2&&a[0]!==a[1]&&a.every(x=>CARD_RE.test(x));
+}
+function acceptHero(out){
+  const cards=out.heroCards; const k=cards.join(' '); const conf=Number(out.confidence)||0;
+  heroEl.textContent=k; lastHeroSuccessAt=Date.now();
+  if(conf>=.90){heroConfirmed=true;confirmedHero=[...cards];candidateKey=k;candidateCount=1;setMeta(heroMetaEl,`CONFIRMADO · ${out._model} · ${out._latencyMs}ms · conf ${conf.toFixed(2)}`,'ok');L(`Hero CONFIRMADO ${k} · ${out._model} · ${out._latencyMs}ms`,'ok');return;}
+  if(candidateKey===k)candidateCount++;else{candidateKey=k;candidateCount=1;}
+  if(candidateCount>=2){heroConfirmed=true;confirmedHero=[...cards];setMeta(heroMetaEl,`CONFIRMADO por consenso · ${out._model} · ${out._latencyMs}ms`,'ok');L(`Hero CONFIRMADO por consenso ${k} · ${out._model} · ${out._latencyMs}ms`,'ok');}
+  else setMeta(heroMetaEl,`candidato 1/2 · ${out._model} · ${out._latencyMs}ms · conf ${conf.toFixed(2)}`,'warn');
+}
+
+async function heroTick(gen){
+  if(!running||gen!==generation)return;
+  const interval=heroConfirmed?900:220;
+  heroTimer=setTimeout(()=>heroTick(gen),interval);
+  if(!key||!v.videoWidth||paidBusy)return;
+  const cap=crop(HERO_CROP); if(!cap)return;
+  cropPreviewEl.src=cap.dataUrl; cropMetaEl.textContent=`x=.36 y=.52 w=.28 h=.24 · enviado ${cap.w}×${cap.h} · ~${Math.round(cap.bytes/1024)}KB`;
+  const now=Date.now(); const unchanged=cap.fingerprint===lastHeroFingerprint;
+  const minSameRetry=heroConfirmed?2500:700;
+  if(unchanged && now-lastHeroAttemptAt<minSameRetry)return;
+  lastHeroFingerprint=cap.fingerprint; lastHeroAttemptAt=now;
+  paidBusy=true;
+  try{
+    const out=await routedCall('hero',HERO_PROMPT,cap.dataUrl,140);
+    if(!running||gen!==generation)return;
+    if(validHero(out)){acceptHero(out);}
+    else{
+      const presence=out?.heroPresence??'null'; const conf=Number(out?.confidence)||0;
+      if(!heroConfirmed) heroEl.textContent='—';
+      setMeta(heroMetaEl,`inconclusivo · ${out._model} · ${out._latencyMs}ms · ${presence} · conf ${conf.toFixed(2)}`,'warn');
+      L(`Hero inconclusivo em ${out._latencyMs}ms · ${out._model} · ${JSON.stringify(out)}`,'warn');
+    }
+  }catch(e){if(running&&gen===generation)setMeta(heroMetaEl,`falha: ${e.message}`,'bad');}
+  finally{paidBusy=false;}
+}
+
+async function secondaryTick(gen){
+  if(!running||gen!==generation)return;
+  secondaryTimer=setTimeout(()=>secondaryTick(gen),500);
+  if(!heroConfirmed||!key||!v.videoWidth||paidBusy)return;
+  paidBusy=true;
+  const item=secondaryIndex++%3;
+  try{
+    if(item===0){
+      const cap=crop(BOARD_CROP), out=await routedCall('board',BOARD_PROMPT,cap.dataUrl,150); if(!running||gen!==generation)return;
+      $('#board').textContent=(out.board||[]).join(' ')||'—'; setMeta($('#boardMeta'),`${out._model} · ${out._latencyMs}ms`);
+    }else if(item===1){
+      const cap=crop(ACTIONS_CROP), out=await routedCall('actions',ACTIONS_PROMPT,cap.dataUrl,180); if(!running||gen!==generation)return;
+      $('#actions').textContent=(out.legalActions||[]).join(' · ')||'—'; setMeta($('#actionsMeta'),`${out._model} · ${out._latencyMs}ms`);
+    }else{
+      const cap=fullFrame(), out=await routedCall('pot',QUICK_PROMPT,cap.dataUrl,150); if(!running||gen!==generation)return;
+      $('#pot').textContent=out.pot||'—'; setMeta($('#potMeta'),`${out._model} · ${out._latencyMs}ms`);
+    }
+  }catch(e){L(`Secundário falhou: ${e.message}`,'bad')}
+  finally{paidBusy=false;}
+}
+
+$('#save').onclick=async()=>{
+  key=$('#key').value.trim(); if(key){sessionStorage.setItem('geminiKey',key);L('Chave carregada apenas nesta aba.','ok');await discoverModels();}else{sessionStorage.removeItem('geminiKey');L('Chave removida.');}
+};
+$('#share').onclick=async()=>{
+  try{
+    if(!key){L('Carregue a Gemini API key primeiro.','bad');return;}
+    if(stream)stream.getTracks().forEach(t=>t.stop());
+    stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:10},audio:false});
+    v.srcObject=stream; await v.play().catch(()=>{}); running=true; generation++; stopTimers(); resetHeroState('nova captura');
+    const gen=generation; L('Replay compartilhado. Fast Hero iniciou; lanes secundárias aguardam confirmação.','ok');
+    stream.getVideoTracks()[0]?.addEventListener('ended',()=>{if(gen===generation)stopAll('compartilhamento encerrado')},{once:true});
+    heroTick(gen); secondaryTick(gen);
+  }catch(e){L(`Falha ao compartilhar: ${e.message}`,'bad')}
+};
+function stopAll(reason='parado'){
+  running=false; generation++; stopTimers(); stream?.getTracks().forEach(t=>t.stop()); stream=null; paidBusy=false; setMeta(heroMetaEl,reason,'warn'); L(reason);
+}
+$('#stop').onclick=()=>stopAll('Parado pelo usuário.');
+$('#resetHero').onclick=()=>{generation++;stopTimers();resetHeroState('recalibração manual');const gen=generation;if(running){heroTick(gen);secondaryTick(gen)}};
+refreshRouter(); if(key)discoverModels();
+</script>
+</body>
+</html>
