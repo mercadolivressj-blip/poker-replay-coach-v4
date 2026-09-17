@@ -2,10 +2,23 @@ function freezeKey(kind, handId, expectedCount, fingerprint = '') { return `${ki
 export class VisionTeacher {
   constructor() {
     this.busy = false; this.last = null; this.enabled = true; this.done = new Set(); this.attempts = new Map(); this.lastError = null; this.generation = 0; this.controller = null;
-    try { this.accessToken = sessionStorage.getItem('prc.vision-token') || ''; this.geminiKey = sessionStorage.getItem('prc.gemini-key') || ''; } catch { this.accessToken=''; this.geminiKey=''; }
+    try {
+      this.accessToken = sessionStorage.getItem('prc.vision-token') || '';
+      this.geminiKey = sessionStorage.getItem('prc.gemini-key') || this.accessToken || '';
+    } catch { this.accessToken=''; this.geminiKey=''; }
   }
-  setAccessToken(token) { this.accessToken=String(token||'').trim(); try { if(this.accessToken)sessionStorage.setItem('prc.vision-token',this.accessToken); else sessionStorage.removeItem('prc.vision-token'); } catch{} this.resetSession(); }
-  setGeminiKey(key) { this.geminiKey=String(key||'').trim(); try { if(this.geminiKey)sessionStorage.setItem('prc.gemini-key',this.geminiKey); else sessionStorage.removeItem('prc.gemini-key'); } catch{} this.resetSession(); }
+  // The existing UI has one private credential field. In the standalone lab it doubles as
+  // GEMINI_API_KEY when the server has no env key; if VISION_ACCESS_TOKEN exists server-side,
+  // the same value may also be used as the access token. Nothing is persisted beyond this tab.
+  setAccessToken(token) {
+    const value=String(token||'').trim(); this.accessToken=value; this.geminiKey=value;
+    try {
+      if(value){ sessionStorage.setItem('prc.vision-token',value); sessionStorage.setItem('prc.gemini-key',value); }
+      else { sessionStorage.removeItem('prc.vision-token'); sessionStorage.removeItem('prc.gemini-key'); }
+    } catch{}
+    this.resetSession();
+  }
+  setGeminiKey(key) { this.setAccessToken(key); }
   resetSession() { this.generation++; this.controller?.abort(); this.controller=null; this.busy=false; this.last=null; this.done.clear(); this.attempts.clear(); this.lastError=null; this.enabled=true; }
   resetHand(handId) { this.generation++; this.controller?.abort(); this.controller=null; this.busy=false; this.last=null; this.lastError=null; for(const k of this.done) if(!k.includes(`:${handId}:`))this.done.delete(k); for(const k of this.attempts.keys())if(!k.includes(`:${handId}:`))this.attempts.delete(k); }
   shouldRead(kind,handId,expectedCount,fingerprint=''){ const key=freezeKey(kind,handId,expectedCount,fingerprint); return this.enabled&&!this.done.has(key)&&(this.attempts.get(key)||0)<2; }
