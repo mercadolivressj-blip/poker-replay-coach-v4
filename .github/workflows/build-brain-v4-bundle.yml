@@ -47,12 +47,37 @@ jobs:
             return mod.default(req,res);
           }`;
           fs.writeFileSync('dist/brain-v4-loader.mjs',loader);
-          console.log('bundle bytes',code.length,'brotli bytes',br.length,'loader bytes',Buffer.byteLength(loader));
+          fs.rmSync('dist/brain-v4-deploy',{recursive:true,force:true});
+          fs.mkdirSync('dist/brain-v4-deploy',{recursive:true});
+          const chunkSize=420000;
+          const parts=[];
+          for(let i=0;i<b64.length;i+=chunkSize) parts.push(b64.slice(i,i+chunkSize));
+          parts.forEach((part,i)=>fs.writeFileSync(`dist/brain-v4-deploy/chunk-${String(i).padStart(3,'0')}.js`,`export default ${JSON.stringify(part)};\n`));
+          const imports=parts.map((_,i)=>`import c${i} from './chunk-${String(i).padStart(3,'0')}.js';`).join('\n');
+          const joined=parts.map((_,i)=>`c${i}`).join(',');
+          const deployLoader=`${imports}
+          import { brotliDecompressSync } from 'node:zlib';
+          import { Buffer } from 'node:buffer';
+          let modulePromise;
+          async function loadBrain(){
+            if(!modulePromise){
+              const packed=[${joined}].join('');
+              const source=brotliDecompressSync(Buffer.from(packed,'base64'));
+              modulePromise=import('data:text/javascript;base64,'+source.toString('base64'));
+            }
+            return modulePromise;
+          }
+          export default async function handler(req,res){
+            const mod=await loadBrain();
+            return mod.default(req,res);
+          };`;
+          fs.writeFileSync('dist/brain-v4-deploy/brain.js',deployLoader);
+          console.log('bundle bytes',code.length,'brotli bytes',br.length,'loader bytes',Buffer.byteLength(loader),'deploy chunks',parts.length);
           NODE
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist/brain-v4-bundle.mjs dist/brain-v4-loader.mjs
+          git add -f dist/brain-v4-bundle.mjs dist/brain-v4-loader.mjs dist/brain-v4-deploy
           if git diff --cached --quiet; then
             echo "bundle unchanged"
             exit 0
