@@ -25,6 +25,16 @@ export const STRATEGY_V1_MANIFEST = Object.freeze({
     mixedStrategyThresholdPp: 10,
     lowSupportRuntimeFallback: false,
   }),
+  mtt: Object.freeze({
+    id: 'mtt-preflop-v1-approximation',
+    status: 'approximation-only-not-certified',
+    chartCertified: false,
+    icmCertified: false,
+    solverCertified: false,
+    provenance: 'hand-authored heuristic thresholds; no recovered certified MTT chart or ICM solver artifact',
+    explicitRiskPremiumSupported: true,
+    estimatedRiskPremiumIsHeuristic: true,
+  }),
   policyComplete: true,
   notes: Object.freeze([
     'Vision is external input only and is not modified by Strategy V1.',
