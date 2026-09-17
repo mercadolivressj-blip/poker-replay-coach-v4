@@ -1,5 +1,7 @@
 import { VISION_VERSION, VISION_V1_FIELDS, normalizeVisionStateV1, validateVisionStateV1 } from '../src/core/vision-contract.js';
 import { decideBrain } from '../src/brain/decision.js';
+import { createStudySession, ingestVisionState } from '../src/brain/study-session.js';
+import { STRATEGY_V1_MANIFEST } from '../src/brain/strategy-manifest.js';
 
 const json = (res, status, body) => {
   res.statusCode = status;
@@ -21,6 +23,13 @@ export default async function handler(req, res) {
       visionContract: VISION_VERSION,
       fields: VISION_V1_FIELDS,
       brainVersion: 'brain-v1',
+      strategyVersion: STRATEGY_V1_MANIFEST.version,
+      strategyStatus: {
+        preflop: STRATEGY_V1_MANIFEST.preflop.status,
+        postflop: STRATEGY_V1_MANIFEST.postflop.status,
+        policyComplete: STRATEGY_V1_MANIFEST.policyComplete,
+      },
+      sessionRoundTrip: true,
       policy: 'deterministic-first; no Lovable strategy calls',
       note: 'MTT/ICM modules are explicitly marked approximation until independently audited.',
     });
@@ -38,11 +47,31 @@ export default async function handler(req, res) {
   const check = validateVisionStateV1(state);
   if (!check.ok) return json(res, 422, { ok: false, error: 'INVALID_VISION_STATE', details: check.errors });
 
-  const result = decideBrain(state, context);
+  // Serverless-safe memory: caller may round-trip the returned session object.
+  // No hidden server state and no Lovable strategy/storage dependency.
+  const wantsSession = context.useStudySession === true || (context.session && typeof context.session === 'object');
+  let session = null;
+  let decisionContext = { ...context };
+  delete decisionContext.session;
+  delete decisionContext.useStudySession;
+
+  if (wantsSession) {
+    const baseSession = context.session && typeof context.session === 'object' ? context.session : createStudySession();
+    session = ingestVisionState(baseSession, state, { handId: context.handId ?? null });
+    decisionContext = {
+      ...decisionContext,
+      handId: session.handId || context.handId || null,
+      heroActor: session.ledger?.heroActor ?? context.heroActor ?? null,
+      profiles: session.profiles,
+    };
+  }
+
+  const result = decideBrain(state, decisionContext);
   return json(res, 200, {
     ok: true,
     visionVersion: state.version,
     brainVersion: result.version,
     result,
+    ...(session ? { session } : {}),
   });
 }
