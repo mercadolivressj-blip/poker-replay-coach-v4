@@ -103,6 +103,19 @@ export function createLedger({ handId = null, heroActor = null, seats = [] } = {
 
 function actionKey(a) { return [a.street,a.actor,a.action,a.amount ?? '',a.toAmount ?? '',a.raw.toLowerCase()].join('|'); }
 
+function stableActorName(ledger, actor) {
+  const cleanActor=canonActor(actor);
+  const key=cleanActor.toLowerCase();
+  if(!key)return cleanActor;
+  const previous=(ledger.actions||[]).find((a)=>canonActor(a?.actor).toLowerCase()===key)?.actor;
+  if(previous)return previous;
+  const seat=(ledger.seats||[]).find((s)=>{
+    const name=canonActor(s?.name??s?.player??s?.nick??s?.nickname??s?.actor);
+    return name.toLowerCase()===key;
+  });
+  return canonActor(seat?.name??seat?.player??seat?.nick??seat?.nickname??seat?.actor??cleanActor);
+}
+
 function rebuildDerived(ledger) {
   let pfa=null,last=null; const players=new Set();
   for (const a of ledger.actions) {
@@ -119,7 +132,7 @@ export function applyActionHistory(ledgerInput, history = [], board = []) {
   for (const raw of Array.isArray(history) ? history : []) {
     const parsed=parseActionLine(raw,street); if(!parsed) continue;
     if(parsed.kind==='street'){street=parsed.street;continue;}
-    parsed.street=street; const key=actionKey(parsed); if(seen.has(key))continue;
+    parsed.street=street; parsed.actor=stableActorName(ledger,parsed.actor); const key=actionKey(parsed); if(seen.has(key))continue;
     seen.add(key); ledger.actions.push({...parsed,seq:ledger.actions.length+1});
   }
   ledger.seen=[...seen]; ledger.street=STREET_ORDER.indexOf(street)>=0?street:streetFromBoard(board);
