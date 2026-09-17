@@ -19,5 +19,6 @@ const r2=runStudyRuntime(vision2,{session:r1.session,useStudySession:true});
 assert.equal(r2.session.ledger.actions.length,1);
 assert.equal(r2.session.captureCandidates[0].status,'confirmed');
 assert.equal(r2.session.observedLedger.actions.length,0);
-assert.equal(r2.result.ledger.count,1);
+assert.equal(r2.result.ledger.actionCount,1);
+assert.equal(r2.result.ledger.byStreet.preflop[0].actor,'VillainA');
 console.log('study-runtime-v1 regressions: OK');
