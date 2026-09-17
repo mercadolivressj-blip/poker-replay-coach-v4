@@ -14,12 +14,16 @@ export function runStudyRuntime(state, context={}){
   const provided=context.captureSeatMap&&typeof context.captureSeatMap==='object'?context.captureSeatMap:{};
   const captureSeatMap=Object.keys(provided).length?provided:seatIdentity.map;
   const base=context.session&&typeof context.session==='object'?context.session:createStudySession();
-  let session=ingestVisionState(base,state,{handId:context.handId??null,seatMap:captureSeatMap});
+  let session=ingestVisionState(base,state,{
+    handId:context.handId??null,
+    seatMap:captureSeatMap,
+    metadataObservedAt:context.metadataObservedAt??null,
+  });
   if(Array.isArray(context.captureEvents)&&context.captureEvents.length){
     session=ingestCaptureEvents(session,context.captureEvents,{seatMap:captureSeatMap});
   }
   const decisionContext={...context};
-  for(const k of ['session','useStudySession','captureEvents','captureSeatMap','captureLocalStacks','seatsOrderedFromHero','seatOrientation','handHistoryText','manualActionHistory']) delete decisionContext[k];
+  for(const k of ['session','useStudySession','captureEvents','captureSeatMap','captureLocalStacks','seatsOrderedFromHero','seatOrientation','handHistoryText','manualActionHistory','metadataObservedAt']) delete decisionContext[k];
   Object.assign(decisionContext,{
     handId:session.handId||context.handId||null,
     heroActor:session.ledger?.heroActor??context.heroActor??null,
