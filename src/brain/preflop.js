@@ -82,7 +82,10 @@ export function preflopDecision(state,context={}){
  const legal=state.legalActions||[]; const position=normalizePosition(state.heroPosition); const hc=handCode(state.heroCards);
  if(!hc||!position||!legal.length) return {decision:null,engine:'BRAIN GATE',reason:'Faltam cartas, posição ou ações legais confirmadas.',confidence:0,street:'preflop'};
  const depth=effectiveDepthBB(state.heroStack,state.effectiveStack,state.blinds);
- if((context.format||'cash')!=='cash') return mttApprox({state,context,legal,position,depth})||pack(null,'MTT PREFLOP V1 · APROXIMAÇÃO','Sem decisão confiável para este node.',0);
+ if((context.format||'cash')!=='cash'){
+   const approx=mttApprox({state,context,legal,position,depth})||pack(null,'MTT PREFLOP V1 · APROXIMAÇÃO','Sem decisão confiável para este node.',0);
+   return {...approx,certification:'approximation-only',chartCertified:false,icmCertified:false,solverCertified:false};
+ }
 
  // AUTHORITATIVE frozen Strategy V1 baseline first.
  const decisionKey=context.decisionKey||[context.handId??'',state.heroCards.join(''),position,(state.actionHistory||[]).join('>')].join('|');
