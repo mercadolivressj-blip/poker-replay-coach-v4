@@ -56,7 +56,14 @@ function percentileScore(cards){
 const posAdj={UTG:0,HJ:-2,CO:-5,BTN:-8,SB:-6,BB:0};
 
 function mttApprox({state,context,legal,position,depth}){
- const score=percentileScore(state.heroCards); const unopened=actionHistoryNode(state.actionHistory).node==='rfi';
+ const score=percentileScore(state.heroCards);
+ const history=Array.isArray(state.actionHistory)?state.actionHistory:[];
+ const explicitNode=String(context?.preflopNode??context?.node??'').trim().toLowerCase();
+ if(!history.length&&explicitNode!=='rfi'){
+   return pack(null,'MTT PREFLOP V1 · ESTADO INSUFICIENTE','Histórico/node pré-flop não confirmado; pote unopened não será presumido.',0);
+ }
+ const inferred=history.length?actionHistoryNode(history):{node:'rfi',versus:null};
+ const unopened=inferred.node==='rfi';
  const rp=Math.max(0,Number(context?.icmRiskPremiumPct)||0); const callPenalty=rp*0.35;
  if(depth!=null&&depth<=8){
    const threshold=(unopened?48:60)+(posAdj[position]||0)+(unopened?0:callPenalty);
