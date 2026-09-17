@@ -1,6 +1,7 @@
 import { VISION_VERSION, VISION_V1_FIELDS, normalizeVisionStateV1, validateVisionStateV1 } from '../src/core/vision-contract.js';
 import { decideBrain } from '../src/brain/decision.js';
 import { createStudySession, ingestVisionState } from '../src/brain/study-session.js';
+import { combineActionSources } from '../src/brain/action-source.js';
 import { STRATEGY_V1_MANIFEST } from '../src/brain/strategy-manifest.js';
 
 const json = (res, status, body) => {
@@ -30,6 +31,7 @@ export default async function handler(req, res) {
         policyComplete: STRATEGY_V1_MANIFEST.policyComplete,
       },
       sessionRoundTrip: true,
+      supplementalActionSources: ['handHistoryText','manualActionHistory'],
       policy: 'deterministic-first; no Lovable strategy calls',
       note: 'MTT/ICM modules are explicitly marked approximation until independently audited.',
     });
@@ -44,6 +46,15 @@ export default async function handler(req, res) {
   const rawVision = body.vision && typeof body.vision === 'object' ? body.vision : body;
   const context = body.vision && typeof body.context === 'object' && body.context ? body.context : {};
   const state = normalizeVisionStateV1(rawVision);
+
+  // Optional reliable action sources can enrich the same canonical VisionState contract.
+  // Vision remains eyes-only; merging and memory are owned here.
+  state.actionHistory = combineActionSources({
+    visionHistory: state.actionHistory,
+    handHistoryText: typeof context.handHistoryText === 'string' ? context.handHistoryText : '',
+    manualHistory: Array.isArray(context.manualActionHistory) ? context.manualActionHistory : [],
+  });
+
   const check = validateVisionStateV1(state);
   if (!check.ok) return json(res, 422, { ok: false, error: 'INVALID_VISION_STATE', details: check.errors });
 
@@ -54,6 +65,8 @@ export default async function handler(req, res) {
   let decisionContext = { ...context };
   delete decisionContext.session;
   delete decisionContext.useStudySession;
+  delete decisionContext.handHistoryText;
+  delete decisionContext.manualActionHistory;
 
   if (wantsSession) {
     const baseSession = context.session && typeof context.session === 'object' ? context.session : createStudySession();
