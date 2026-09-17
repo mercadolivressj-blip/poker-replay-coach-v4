@@ -46,6 +46,8 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
   forceFresh=false,
 }={}){
   const state=stateInput||createMetadataFinanceState();
+  const observedAt=Number(state.observedAt)||null;
+  if(observedAt!=null&&Number(now)<=observedAt)return {state,deltas:[],snapshot:normalizeSeatFinancialSnapshot(visionState.seats||[]),fresh:false,stale:true};
   const street=streetFromBoard(visionState.board||[]);
   const snapshot=normalizeSeatFinancialSnapshot(visionState.seats||[]);
   const previous={...(state.stacks||{})};
