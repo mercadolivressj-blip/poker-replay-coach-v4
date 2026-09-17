@@ -29,6 +29,8 @@ export default async function handler(req, res) {
       strategyStatus: {
         preflop: STRATEGY_V1_MANIFEST.preflop.status,
         postflop: STRATEGY_V1_MANIFEST.postflop.status,
+        mtt: STRATEGY_V1_MANIFEST.mtt.status,
+        mttIcmCertified: STRATEGY_V1_MANIFEST.mtt.icmCertified,
         policyComplete: STRATEGY_V1_MANIFEST.policyComplete,
       },
       sessionRoundTrip: true,
