@@ -1,5 +1,6 @@
 import { preflopDecision } from './preflop.js';
 import { postflopDecision } from './postflop.js';
+import { buildLedgerFromState, heroWasPreflopAggressor, ledgerSummary } from './action-ledger.js';
 
 const ACTION_MAP={
  'DESISTIR':'FOLD','PASSAR':'CHECK','PAGAR':'CALL','AUMENTAR':'RAISE','ALL-IN':'ALLIN'
@@ -22,11 +23,19 @@ export function enforceLegal(decision,state){
 
 export function decideBrain(state,context={}){
  const street=decisionStreet(state.board);
- const raw=street==='preflop'?preflopDecision(state,context):postflopDecision(state,context);
+ const ledger=buildLedgerFromState(state,{handId:context.handId??null,heroActor:context.heroActor??null});
+ const heroPfa=heroWasPreflopAggressor(ledger);
+ const resolvedContext={
+   ...context,
+   ledger,
+   heroIsPreflopAggressor: context.heroIsPreflopAggressor ?? heroPfa,
+ };
+ const raw=street==='preflop'?preflopDecision(state,resolvedContext):postflopDecision(state,resolvedContext);
  const safe=enforceLegal(raw,state);
  return {
    version:'brain-v1',
    strategyVersion:'strategy-v1-external-port',
+   ledgerVersion:'action-ledger-v1-external',
    street,
    format:context.format||'cash',
    decision:safe?.decision??null,
@@ -35,7 +44,8 @@ export function decideBrain(state,context={}){
    confidence:safe?.confidence??0,
    reason:safe?.reason??'Estado insuficiente.',
    details:safe?.notes??safe?.details??null,
-   stateKey:[state.heroCards?.join('')||'',state.board?.join('')||'',state.pot||'',state.toCall||'',(state.legalActions||[]).join('-'),state.heroPosition||'',state.heroStack||''].join('|'),
+   ledger:ledgerSummary(ledger),
+   stateKey:[state.heroCards?.join('')||'',state.board?.join('')||'',state.pot||'',state.toCall||'',(state.legalActions||[]).join('-'),state.heroPosition||'',state.heroStack||'',(state.actionHistory||[]).slice(-8).join('>')].join('|'),
    capturedAt:state.capturedAt,
  };
 }
