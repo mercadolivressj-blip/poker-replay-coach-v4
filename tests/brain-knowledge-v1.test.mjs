@@ -14,7 +14,7 @@ const state={
   confidence:.99, readerModel:'flash-lite', capturedAt:Date.now(),
 };
 const profiles={version:'player-model-v1',players:{
-  Villain:{actor:'Villain',hands:40,vpipHands:20,pfrHands:8,threeBetHands:2,postflopAggressive:15,postflopCalls:20,postflopChecks:5,postflopFolds:4,showdowns:0,lastHandId:40}
+  Villain:{actor:'Villain',hands:40,vpipHands:20,pfrHands:6,threeBetHands:2,postflopAggressive:15,postflopCalls:20,postflopChecks:5,postflopFolds:4,showdowns:0,lastHandId:40}
 }};
 
 const ledger=buildLedgerFromState(state,{handId:41,heroActor:'Hero'});
