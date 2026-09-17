@@ -5,7 +5,11 @@ const STREET_ORDER=['preflop','flop','turn','river'];
 const MARKER={preflop:'PREFLOP',flop:'FLOP',turn:'TURN',river:'RIVER'};
 const CONFIDENCE_PCT={alta:90,media:75,baixa:55};
 
-const money=(v)=>{\n  if(v==null||String(v).trim()==='')return null;\n  const n=Number(v);\n  return Number.isFinite(n)?n:null;\n};
+const money=(v)=>{
+  if(v==null||String(v).trim()==='')return null;
+  const n=Number(v);
+  return Number.isFinite(n)?n:null;
+};
 
 export function policyHistoryFromLedger(ledger){
   const actions=Array.isArray(ledger?.actions)?ledger.actions:[];
