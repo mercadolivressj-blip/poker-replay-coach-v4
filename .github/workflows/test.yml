@@ -18,6 +18,7 @@ jobs:
       - run: node tests/metadata-trigger-v1.test.mjs
       - run: node tests/action-capture-v1.test.mjs
       - run: node tests/action-band-v1.test.mjs
+      - run: node tests/action-ocr-gate-v1.test.mjs
       - run: node tests/action-event-bridge-v1.test.mjs
       - run: node tests/seat-identity-v1.test.mjs
       - run: node tests/action-inference-v1.test.mjs
