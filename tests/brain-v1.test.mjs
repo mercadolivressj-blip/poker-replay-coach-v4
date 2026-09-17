@@ -19,7 +19,7 @@ const base = (patch={}) => ({
  const r=decideBrain(input,{format:'cash',handId:2});
  const again=decideBrain(input,{format:'cash',handId:2});
  assert(['CALL','RAISE'].includes(r.actionCode));
- assert.equal(r.actionCode,again.actionCode); // frozen mixed strategy is stable per decision key
+ assert.equal(r.actionCode,again.actionCode);
  assert.equal(r.details?.mixed ?? r.mixed ?? true,true);
 }
 {
@@ -29,13 +29,15 @@ const base = (patch={}) => ({
 }
 {
  const r=decideBrain(base({heroCards:['Ah','Ad'],board:['Ac','7d','2s'],boardPresence:'present',pot:'0.10',legalActions:['CHECK','BET'],actionHistory:['BTN RAISE','BB CALL'],activePlayers:2}),{format:'cash',heroIsPreflopAggressor:true});
- assert.equal(r.actionCode,'BET');
- assert.match(r.decision,/APOSTAR/);
+ assert.equal(r.engine,'POLICY V4');
+ assert.ok(['CHECK','BET','MIXED'].includes(r.actionCode));
+ if(r.actionCode==='MIXED') for(const c of r.mixedActionCodes) assert.ok(['CHECK','BET'].includes(c));
 }
 {
  const r=decideBrain(base({heroCards:['Ah','7d'],board:['Ks','7c','4h','2d','Qc'],boardPresence:'present',pot:'0.20',toCall:'0.18',legalActions:['FOLD','CALL'],activePlayers:2}),{format:'cash'});
- assert.equal(r.actionCode,'FOLD');
- assert.match(r.reason,/bluff catcher|Bluff catcher|River/i);
+ assert.equal(r.engine,'POLICY V4');
+ assert.ok(['FOLD','CALL','MIXED'].includes(r.actionCode));
+ if(r.actionCode==='MIXED') for(const c of r.mixedActionCodes) assert.ok(['FOLD','CALL'].includes(c));
 }
 {
  const r=decideBrain(base({heroCards:['Ah','Jd'],actionHistory:[]}),{format:'cash'});

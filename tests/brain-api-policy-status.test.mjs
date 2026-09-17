@@ -11,8 +11,8 @@ const res=makeRes();
 await handler({method:'GET',body:null},res);
 assert.equal(res.statusCode,200);
 assert.equal(res.body.ok,true);
-assert.equal(res.body.frozenPolicyAvailable,false);
-assert.equal(res.body.strategyStatus.policyComplete,false);
-assert.notEqual(res.body.strategyStatus.postflop,'active');
+assert.equal(res.body.frozenPolicyAvailable,true);
+assert.equal(res.body.strategyStatus.policyComplete,true);
+assert.equal(res.body.strategyStatus.postflop,'active-frozen-policy-v4');
 
-console.log('brain API frozen-policy status: OK');
+console.log('brain API frozen-policy active status: OK');
