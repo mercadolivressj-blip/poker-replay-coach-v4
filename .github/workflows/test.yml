@@ -34,7 +34,7 @@ jobs:
       - run: node tests/study-session-v1.test.mjs
       - run: node tests/study-runtime-v1.test.mjs
       - run: node tests/study-sizing-v1.test.mjs
-      - run: node tests/study-lab-v1.smoke.mjs
+      - run: node tests/study-lab-v1.smoke.mjs\n      - run: node tests/study-public-runtime-v1.test.mjs
       - run: node tests/player-model-v1.test.mjs
       - run: node tests/brain-knowledge-v1.test.mjs
       - run: node tests/strategy-v1-preflop.test.mjs
