@@ -115,8 +115,10 @@ export function observeSeatSamples(stateInput,samples,now=Date.now(),opts={}){
     const canFire=now-(prev.lastEventAt||0)>=refractoryMs;
     let type=null;
 
-    // Hero disappearance means hand transition/showdown evidence, never Hero fold.
-    if(!s.isHero&&canFire&&strongDrop) type='fold-candidate';
+    // A confirmed present -> absent transition is semantic and occurs only once,
+    // so it must outrank the visual cooldown. Otherwise the precursor animation
+    // can emit CHANGE and suppress a real fast fold 80-150 ms later.
+    if(!s.isHero&&strongDrop) type='fold-candidate';
     else if(!s.isHero&&canFire&&motion>=motionThreshold) type='seat-change';
 
     if(type){
