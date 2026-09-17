@@ -43,13 +43,19 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
   epsilon=.005,
   confidence=.78,
   includeHero=false,
+  forceFresh=false,
 }={}){
   const state=stateInput||createMetadataFinanceState();
   const street=streetFromBoard(visionState.board||[]);
   const snapshot=normalizeSeatFinancialSnapshot(visionState.seats||[]);
   const previous={...(state.stacks||{})};
-  if(!materiallyChanged(previous,snapshot,epsilon)){
-    return {state:{...state,street},deltas:[],snapshot};
+  const changed=materiallyChanged(previous,snapshot,epsilon);
+  if(!changed&&!forceFresh){
+    // Important: do not advance the financial street from a stale cached seat snapshot.
+    return {state,deltas:[],snapshot,fresh:false};
+  }
+  if(!Object.keys(snapshot).length){
+    return {state,deltas:[],snapshot,fresh:false};
   }
 
   const nextStacks={...previous};
@@ -91,6 +97,7 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
     state:{version:'metadata-finance-v1',street,stacks:nextStacks,observedAt:now,deltas:history},
     deltas,
     snapshot,
+    fresh:true,
   };
 }
 
