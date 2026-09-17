@@ -14,6 +14,7 @@ jobs:
       - run: npm test
       - run: node tests/runtime-contract.test.mjs
       - run: node tests/brain-v1.test.mjs
+      - run: node tests/brain-api-policy-status.test.mjs
       - run: node tests/hand-transition-v1.test.mjs
       - run: node tests/metadata-trigger-v1.test.mjs
       - run: node tests/action-capture-v1.test.mjs
