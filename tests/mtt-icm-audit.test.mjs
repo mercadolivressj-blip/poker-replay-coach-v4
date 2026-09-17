@@ -45,7 +45,13 @@ const short={
   heroStack:'0.12',effectiveStack:'0.12',blinds:'0.01/0.02',
   seats:[],actionHistory:[],confidence:.99,readerModel:'test',capturedAt:1,
 };
-const r=decideBrain(short,{format:'mtt'});
+const missingNode=decideBrain(short,{format:'mtt'});
+assert.equal(missingNode.decision,null);
+assert.equal(missingNode.actionCode,null);
+assert.match(missingNode.engine,/ESTADO INSUFICIENTE/);
+assert.match(missingNode.reason,/não confirmado|não será presumido/i);
+
+const r=decideBrain(short,{format:'mtt',preflopNode:'rfi'});
 assert.equal(r.actionCode,'ALLIN');
 assert.match(r.engine,/APROXIMAÇÃO/);
 assert.doesNotMatch(r.engine,/SOLVER|ICM/i);
