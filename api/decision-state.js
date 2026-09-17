@@ -1,111 +1,59 @@
 import crypto from 'node:crypto';
+import { geminiJson } from './_gemini.js';
 
 const RANKS = ['2','3','4','5','6','7','8','9','T','J','Q','K','A'];
 const SUITS = ['clubs','diamonds','hearts','spades'];
 const ACTIONS = ['fold','check','call','bet','raise','allin'];
 
-function extractOutputText(response) {
-  if (typeof response?.output_text === 'string') return response.output_text;
-  for (const item of response?.output || []) {
-    for (const part of item?.content || []) {
-      if (part?.type === 'output_text' && typeof part.text === 'string') return part.text;
-    }
-  }
-  return '';
-}
-
 function tokenMatches(expected, provided) {
   if (!expected) return true;
   if (typeof provided !== 'string') return false;
-  const a = Buffer.from(expected);
-  const b = Buffer.from(provided);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const a = Buffer.from(expected), b = Buffer.from(provided);
+  return a.length === b.length && crypto.timingSafeEqual(a,b);
 }
 
-const cardSchema = {
-  type: 'object', additionalProperties: false,
-  properties: {
-    rank: { type: 'string', enum: RANKS },
-    suit: { type: 'string', enum: SUITS },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
-  },
-  required: ['rank','suit','confidence'],
-};
+const cardSchema={type:'object',properties:{rank:{type:'string',enum:RANKS},suit:{type:'string',enum:SUITS},confidence:{type:'number',minimum:0,maximum:1}},required:['rank','suit','confidence']};
+const actionSchema={type:'object',properties:{type:{type:'string',enum:ACTIONS},amount:{type:['number','null'],minimum:0}},required:['type','amount']};
+function schema(){return {type:'object',properties:{hero:{type:'array',minItems:0,maxItems:2,items:cardSchema},board:{type:'array',minItems:0,maxItems:5,items:cardSchema},pot:{type:['number','null'],minimum:0},heroToAct:{type:['boolean','null']},heroActions:{type:'array',maxItems:5,items:actionSchema},aggressorName:{type:['string','null'],maxLength:64},aggressorCommitted:{type:['number','null'],minimum:0},heroCommitted:{type:['number','null'],minimum:0},confidence:{type:'number',minimum:0,maximum:1},heroConfidence:{type:'number',minimum:0,maximum:1},boardConfidence:{type:'number',minimum:0,maximum:1},potConfidence:{type:'number',minimum:0,maximum:1},actionsConfidence:{type:'number',minimum:0,maximum:1},aggressorConfidence:{type:'number',minimum:0,maximum:1}},required:['hero','board','pot','heroToAct','heroActions','aggressorName','aggressorCommitted','heroCommitted','confidence','heroConfidence','boardConfidence','potConfidence','actionsConfidence','aggressorConfidence']};}
 
-const actionSchema = {
-  type: 'object', additionalProperties: false,
-  properties: {
-    type: { type: 'string', enum: ACTIONS },
-    amount: { type: ['number','null'], minimum: 0 },
-  },
-  required: ['type','amount'],
-};
+function prompt(){return [
+  'Poker REPLAY / post-game study screenshot. Read ONLY the current decision-critical public state. Never provide strategy.',
+  'Inspect the whole image, but answer compactly and do not spend time cataloguing every seat.',
+  'Hero hole cards are MANUAL-ONLY in this runtime. Do NOT inspect, infer or return Hero cards. Always return hero=[] and heroConfidence=0.',
+  'Board: return community cards left-to-right; valid lengths are 0, 3, 4 or 5. If any board card is partial/animating/unreadable, return board=[] for this read instead of guessing.',
+  'Pot: read ONLY the CENTRAL visible text label beginning with Pote:/Pot:. A separate chip-stack amount directly under the board is a live wager/commitment, NOT the pot.',
+  'Examples: Pote: US$ 0,50 with chip stack US$ 0,31 => pot=0.50. Pote: US$ 0,92 with chip stack US$ 0,67 => pot=0.92. Pote: 630 => 630. Pote: 2.508 => 2508.',
+  'heroToAct=true only if bottom Hero controls clearly show an active decision.',
+  'heroActions: read CURRENT Hero decision buttons only. Cash examples: Pago US$ 0,04 => call 0.04; Aumento para US$ 0,10 => raise 0.10. Tournament examples: Pago 120 => call 120; Aumento para 240 => raise 240; Passo => check; Desisto => fold.',
+  'Ignore sizing shortcut chips such as Min/3BB/Pot/Max. Max alone is NOT all-in.',
+  'Never return impossible button combinations such as CHECK+CALL or BET+RAISE.',
+  'aggressorName: exact visible player nickname responsible for the largest live wager Hero faces. Never return an action word.',
+  'Preflop forced blinds are NOT aggression. If only SB/BB are posted and nobody raised above BB, aggressorName=null and aggressorCommitted=null.',
+  'Use null / lower confidence instead of guessing.'
+].join('\n');}
 
-function schema() {
-  return {
-    type: 'object', additionalProperties: false,
-    properties: {
-      hero: { type: 'array', minItems: 0, maxItems: 2, items: cardSchema },
-      board: { type: 'array', minItems: 0, maxItems: 5, items: cardSchema },
-      pot: { type: ['number','null'], minimum: 0 },
-      heroToAct: { type: ['boolean','null'] },
-      heroActions: { type: 'array', maxItems: 5, items: actionSchema },
-      aggressorName: { type: ['string','null'], maxLength: 64 },
-      aggressorCommitted: { type: ['number','null'], minimum: 0 },
-      heroCommitted: { type: ['number','null'], minimum: 0 },
-      confidence: { type: 'number', minimum: 0, maximum: 1 },
-      heroConfidence: { type: 'number', minimum: 0, maximum: 1 },
-      boardConfidence: { type: 'number', minimum: 0, maximum: 1 },
-      potConfidence: { type: 'number', minimum: 0, maximum: 1 },
-      actionsConfidence: { type: 'number', minimum: 0, maximum: 1 },
-      aggressorConfidence: { type: 'number', minimum: 0, maximum: 1 },
-    },
-    required: ['hero','board','pot','heroToAct','heroActions','aggressorName','aggressorCommitted','heroCommitted','confidence','heroConfidence','boardConfidence','potConfidence','actionsConfidence','aggressorConfidence'],
-  };
+function weak(parsed){
+  const board=Array.isArray(parsed?.board)?parsed.board:[];
+  const actions=Array.isArray(parsed?.heroActions)?parsed.heroActions:[];
+  return ![0,3,4,5].includes(board.length) || Number(parsed?.confidence||0)<0.74 || (parsed?.heroToAct===true && actions.length<2);
 }
 
-function prompt() {
-  return [
-    'Poker REPLAY / post-game study screenshot. Read ONLY the current decision-critical public state. Never provide strategy.',
-    'Inspect the whole image, but answer compactly and do not spend time cataloguing every seat.',
-    'Hero hole cards are MANUAL-ONLY in this coach. Do NOT inspect, infer or return Hero cards. Always return hero=[] and heroConfidence=0.',
-    'Board: return the community cards left-to-right; valid lengths are 0, 3, 4 or 5.',
-    'Pot: read ONLY the CENTRAL visible text label beginning with "Pote:". It may be CASH (for example "Pote: US$ 0,17") or TOURNAMENT CHIPS (for example "Pote: 630" or "Pote: 2.508").',
-    'CRITICAL POT DISAMBIGUATION: PokerStars can show a separate chip-stack amount directly UNDER the board, such as "US$ 0,31" or "US$ 0,67". That number is a live wager/committed amount, NOT the pot. Never use it for pot unless the same number is explicitly printed after the word "Pote:".',
-    'Example from the replay: if the screen says "Pote: US$ 0,50" above the board and a chip stack below it says "US$ 0,31", return pot=0.50, not 0.31.',
-    'For tournament chips, preserve the full chip magnitude: "Pote: 630" => 630; "Pote: 2.508" in pt-BR thousands formatting => 2508. Never turn 630 into 390/63/6.30 and never turn 2.508 into 2.508 chips.',
-    'For cash, Portuguese decimal comma is decimal: "US$ 0,08" => 0.08. Re-read the literal Pote: label once before answering.',
-    'Cross-check the pot against visible committed chips: the central pot cannot be smaller than the sum of clearly visible live contributions already in the pot. If this conflicts with your first read, re-read the literal Pote: label and lower potConfidence instead of guessing.',
-    'heroToAct=true only if the bottom hero controls clearly show an active decision.',
-    'heroActions: read the CURRENT visible hero decision buttons. Include exact numeric amounts when printed.',
-    'Cash examples: "Pago US$ 0,04" => call 0.04; "Aumento para US$ 0,10" => raise 0.10.',
-    'Tournament examples: "Pago 120" => call 120; "Aumento para 240" => raise 240; "PAGO 747" => call 747. "Passo" => check; "Desisto" => fold.',
-    'aggressorName: return ONLY the exact visible PLAYER NICKNAME of the opponent responsible for the largest live wager Hero is facing. Never return an action word or button label such as Aumento, Raise, Pago, Call, Desisto, Fold, Aposta, Bet, Passo or Check. If you cannot match the wager to a readable nickname, return null.',
-    'PREFLOP FORCED-BLIND RULE: mandatory SB/BB postings are NOT aggression. If the only live commitments are the posted small blind and big blind and nobody has raised above the big blind, return aggressorName=null and aggressorCommitted=null. Never call the BB the aggressor merely because BB > SB.',
-    'Use explicit Bet/Raise action text attached to a player or a commitment clearly ABOVE the posted big blind to identify a real preflop aggressor.',
-    'aggressorCommitted: current total amount visibly committed by that opponent on this street. heroCommitted: current amount visibly committed by Hero on this street.',
-    'Use null / lower confidence instead of guessing.',
-  ].join('\n');
-}
-
-export default async function handler(req, res) {
+export default async function handler(req,res){
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST') return res.status(405).json({error:'method'});
-  const key=process.env.OPENAI_API_KEY||process.env.CHATGPT; if(!key) return res.status(501).json({error:'OpenAI API key not configured'});
   const accessToken=process.env.VISION_ACCESS_TOKEN;
-  if(process.env.VERCEL_ENV==='production'&&accessToken){ const provided=req.headers?.['x-coach-token']??req.headers?.['X-Coach-Token']; if(!tokenMatches(accessToken,provided)) return res.status(401).json({error:'coach auth required'}); }
+  if(process.env.VERCEL_ENV==='production'&&accessToken){const provided=req.headers?.['x-coach-token']??req.headers?.['X-Coach-Token'];if(!tokenMatches(accessToken,provided))return res.status(401).json({error:'coach auth required'});}
   const {mode,image,handId,fingerprint=null}=req.body||{};
   if(mode!=='replay') return res.status(400).json({error:'replay mode required'});
   if(!Number.isInteger(handId)||handId<1) return res.status(400).json({error:'invalid handId'});
   if(typeof image!=='string'||!image.startsWith('data:image/')) return res.status(400).json({error:'image required'});
   if(image.length>2_000_000) return res.status(413).json({error:'image too large'});
-  const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),7000); const t0=Date.now();
+  const t0=Date.now();
   try{
-    const r=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:'gpt-5.6-luna',reasoning:{effort:'none'},store:false,max_output_tokens:520,input:[{role:'user',content:[{type:'input_text',text:prompt()},{type:'input_image',image_url:image,detail:'high'}]}],text:{format:{type:'json_schema',name:'poker_replay_decision_state',strict:true,schema:schema()}}}),signal:controller.signal});
-    const j=await r.json(); if(!r.ok) return res.status(r.status).json({error:j?.error?.message||'decision vision failed'});
-    let parsed; try{parsed=JSON.parse(extractOutputText(j)||'{}');}catch{return res.status(502).json({error:'invalid decision json'});}
+    const result=await geminiJson({prompt:prompt(),images:[image],schema:schema(),timeoutMs:7600,shouldFallback:weak});
+    const parsed=result.parsed||{};
     const board=Array.isArray(parsed.board)&&[0,3,4,5].includes(parsed.board.length)?parsed.board:[];
     const heroActions=Array.isArray(parsed.heroActions)?parsed.heroActions.filter(a=>a&&ACTIONS.includes(a.type)).map(a=>({type:a.type,amount:Number.isFinite(a.amount)?a.amount:null})):[];
-    return res.status(200).json({handId,fingerprint,model:'gpt-5.6-luna',hero:[],board,pot:Number.isFinite(parsed.pot)&&parsed.pot>0?parsed.pot:null,heroToAct:typeof parsed.heroToAct==='boolean'?parsed.heroToAct:null,heroActions,aggressorName:typeof parsed.aggressorName==='string'&&parsed.aggressorName.trim()?parsed.aggressorName.trim().slice(0,64):null,aggressorCommitted:Number.isFinite(parsed.aggressorCommitted)?parsed.aggressorCommitted:null,heroCommitted:Number.isFinite(parsed.heroCommitted)?parsed.heroCommitted:null,confidence:Number(parsed.confidence)||0,heroConfidence:0,boardConfidence:Number(parsed.boardConfidence)||0,potConfidence:Number(parsed.potConfidence)||0,actionsConfidence:Number(parsed.actionsConfidence)||0,aggressorConfidence:Number(parsed.aggressorConfidence)||0,ms:Date.now()-t0});
-  }catch(e){ if(e?.name==='AbortError') return res.status(504).json({error:'decision vision timeout'}); return res.status(502).json({error:'decision vision request failed'}); } finally{ clearTimeout(timer); }
+    return res.status(200).json({handId,fingerprint,model:result.model,fallback:Boolean(result.fallback),hero:[],board,pot:Number.isFinite(parsed.pot)&&parsed.pot>0?parsed.pot:null,heroToAct:typeof parsed.heroToAct==='boolean'?parsed.heroToAct:null,heroActions,aggressorName:typeof parsed.aggressorName==='string'&&parsed.aggressorName.trim()?parsed.aggressorName.trim().slice(0,64):null,aggressorCommitted:Number.isFinite(parsed.aggressorCommitted)?parsed.aggressorCommitted:null,heroCommitted:Number.isFinite(parsed.heroCommitted)?parsed.heroCommitted:null,confidence:Number(parsed.confidence)||0,heroConfidence:0,boardConfidence:Number(parsed.boardConfidence)||0,potConfidence:Number(parsed.potConfidence)||0,actionsConfidence:Number(parsed.actionsConfidence)||0,aggressorConfidence:Number(parsed.aggressorConfidence)||0,ms:Date.now()-t0});
+  }catch(e){const status=Number(e?.status)||502;if(e?.name==='AbortError')return res.status(504).json({error:'decision vision timeout'});return res.status(status).json({error:e?.message||'Gemini decision vision failed'});}
 }
