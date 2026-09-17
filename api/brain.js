@@ -32,6 +32,7 @@ export default async function handler(req, res) {
         policyComplete: STRATEGY_V1_MANIFEST.policyComplete,
       },
       sessionRoundTrip: true,
+      observedLedger: true,
       seatIdentity: 'explicit-slot -> unique-stack-match -> opt-in ordered mapping; no guessing',
       supplementalActionSources: ['handHistoryText','manualActionHistory','localActionCapture','localActionText','localCommitmentInference'],
       localCapturePolicy: 'provisional until authoritative action history confirms; never sovereign by itself',
@@ -84,6 +85,7 @@ export default async function handler(req, res) {
       heroActor: session.ledger?.heroActor ?? context.heroActor ?? null,
       profiles: session.profiles,
       ledger: session.ledger,
+      observedLedger: session.observedLedger,
       captureCandidates: session.captureCandidates || [],
     };
   }
