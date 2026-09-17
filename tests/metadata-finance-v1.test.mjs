@@ -46,6 +46,13 @@ assert.equal(rec.matched,0);
 assert.equal(rec.ambiguous.length,1);
 assert.equal(rec.candidates.every(c=>c.amount==null),true);
 
+// A delayed metadata response must never move the financial baseline backwards.
+out=observeMetadataFinance(finance,{board:[],seats:seats('1.70','2.10')},3000,{forceFresh:true});
+assert.equal(out.fresh,false);
+assert.equal(out.stale,true);
+assert.equal(out.state.observedAt,3500);
+assert.equal(out.state.stacks.VillainA,1.88);
+
 // Stack increases are payouts/rebuys/transition, not actions.
 out=observeMetadataFinance(finance,{board:[],seats:seats('2.30','2.10')},5000);
 assert.equal(out.deltas.length,0);
