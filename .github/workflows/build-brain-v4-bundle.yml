@@ -1,0 +1,35 @@
+name: build-brain-v4-bundle
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - '.github/workflows/build-brain-v4-bundle.yml'
+      - 'api/brain.js'
+      - 'src/brain/**'
+      - 'src/strategy-v1/**'
+      - 'scripts/generate-policy-v4-runtime.mjs'
+permissions:
+  contents: write
+jobs:
+  bundle:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx --yes esbuild@0.25.9 api/brain.js --bundle --platform=node --format=esm --target=node22 --minify --outfile=dist/brain-v4-bundle.mjs
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f dist/brain-v4-bundle.mjs
+          if git diff --cached --quiet; then
+            echo "bundle unchanged"
+            exit 0
+          fi
+          git commit -m "build: refresh Brain V4 deploy bundle"
+          git push origin HEAD:vision-v1-brain-integration
