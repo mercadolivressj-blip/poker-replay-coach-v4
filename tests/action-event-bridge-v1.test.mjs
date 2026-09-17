@@ -20,7 +20,9 @@ const events=[
   {type:'fold-candidate',seatId:'left-high',label:'Seat L2',at:1500,confidence:.96,packetId:'fold-1',cardMode:'back'},
   {type:'seat-change',seatId:'right-high',label:'Seat R2',at:1510,confidence:.5},
   {type:'fold-candidate',seatId:'hero',label:'Hero',at:1520,confidence:.99},
-  {type:'action-candidate',seatId:'right-high',label:'Seat R2',action:'CALL',amount:.04,capturedAt:1530,confidence:.81,packetId:'call-1',source:'local-action-text',raw:'Pago US$ 0,04'},
+  // OCR may read the player's remaining stack next to the word Pago. Type is useful;
+  // amount is diagnostic only and must not become strategic sizing evidence.
+  {type:'action-candidate',seatId:'right-high',label:'Seat R2',action:'CALL',amount:1.94,capturedAt:1530,confidence:.81,packetId:'call-1',source:'local-action-text',raw:'Pago US$ 1,94'},
 ];
 session=ingestCaptureEvents(session,events,{seatMap:{'left-high':'VillainA','right-high':'VillainB'}});
 assert.equal(session.ledger.actions.length,0,'local visual event must not enter sovereign ledger by itself');
@@ -29,8 +31,9 @@ assert.equal(session.captureCandidates.every(c=>c.status==='provisional'&&c.sove
 assert.equal(session.captureCandidates.find(c=>c.action==='FOLD').actor,'VillainA');
 const call=session.captureCandidates.find(c=>c.action==='CALL');
 assert.equal(call.actor,'VillainB');
-assert.equal(call.amount,.04);
-assert.equal(call.evidence.rawText,'Pago US$ 0,04');
+assert.equal(call.amount,null,'OCR amount must never be trusted as action size');
+assert.equal(call.evidence.ocrObservedAmount,1.94);
+assert.equal(call.evidence.rawText,'Pago US$ 1,94');
 assert.deepEqual(captureBridgeSummary(session.captureCandidates),{total:2,provisional:2,confirmed:0,rejected:0});
 
 // Authoritative action history later confirms both actor/action/street pairs.
