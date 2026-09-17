@@ -17,6 +17,8 @@ For `context.format !== "cash"`, the Brain uses a hand-authored MTT approximatio
 - legacy position ranges in uncovered cases;
 - an optional externally supplied `icmRiskPremiumPct` that increases the continuation threshold in some facing-action spots.
 
+Missing preflop history is **not** treated as proof that the pot is unopened. With empty history, the Brain requires an explicit confirmed `preflopNode: "rfi"` (or equivalent `node`) before applying first-in thresholds; otherwise it returns an insufficient-state gate.
+
 Every MTT result is tagged:
 
 - `certification: "approximation-only"`
@@ -88,4 +90,5 @@ Until those gates exist, the correct public/runtime status remains:
 - heuristic vs explicit risk-premium provenance remains distinct;
 - an explicit risk premium does not imply solver/ICM certification;
 - short-stack MTT recommendations retain `APROXIMAÇÃO`;
-- Brain and API expose the uncertified status.
+- Brain and API expose the uncertified status;
+- missing action history cannot silently become an unopened/RFI node.
