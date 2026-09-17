@@ -53,6 +53,9 @@ This ledger exists to prevent accidental reconstruction, approximation or false 
   - `poker-replay-coach-v4-standalone.zip`
 - Recursive checksum scan of the materialized archives; no file matched the frozen SHA.
 - Historical Vercel standalone/probe deployments; available deployments do not preserve the missing source model.
+- Connected Google Drive searches for `postflop-policy-model`, `postflop-policy`, Policy V4, PokerBench, the frozen SHA, Hero Card Rescue and historical standalone/export names; no relevant artifact was found.
+- Real diagnostic `replay-diagnostic-2026-09-15T21-12-17-350Z`; strategy records do not preserve Policy V4 probabilities/features/outputs and therefore cannot serve as frozen Policy V4 parity fixtures.
+- Library searches for `blind10k` / `Integrated10k`; only aggregate certification numbers survived, not per-spot outputs.
 
 Historical handoff mentions local-only directories such as `poker-replay-engine-v0.9` and standalone `v1.9/v2.x`, but no persisted Library export of those directories has been found.
 
