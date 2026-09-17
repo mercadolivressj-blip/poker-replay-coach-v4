@@ -23,8 +23,6 @@ export function normalizeCaptureSeatMap(input) { return mapFromInput(input); }
 function candidateKey(c) {
   if (c.packetId) return `packet:${c.packetId}`;
   const hand = c.handId ?? 'unknown';
-  // OCR text is trusted only for action TYPE. Never split duplicate actions because
-  // OCR happened to read a different stack/balance number from the same plate.
   const valueKey = c.source === 'local-action-text' ? '' : (c.amount ?? c.totalCommitted ?? '');
   return [hand, c.street || 'preflop', c.seatId || '?', c.actor || '?', c.action || '?', valueKey].join('|');
 }
@@ -47,6 +45,7 @@ export function captureEventsToCandidates(events = [], {
       version: 'capture-action-candidate-v1', status: 'provisional', sovereign: false,
       source,
       handId, street: clean(e.street) || street || 'preflop', seatId, actor: actor || null,
+      action,
       // PokerStars plate OCR can see the player's remaining stack next to the action.
       // Therefore OCR is never authoritative for amount. Financial/HH sources own size.
       amount:!ocrTypeOnly && Number.isFinite(e.amount)?e.amount:null,
