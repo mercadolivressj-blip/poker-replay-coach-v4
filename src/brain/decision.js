@@ -15,6 +15,14 @@ function actionCode(label){
  return null;
 }
 
+function detailedLedgerSummary(ledger){
+ const base=ledgerSummary(ledger);
+ return {...base,actions:(ledger?.actions||[]).slice(-30).map(a=>({
+   seq:a.seq,street:a.street,actor:a.actor,action:a.action,
+   amount:a.amount??null,toAmount:a.toAmount??null,allIn:Boolean(a.allIn),raw:a.raw??null,
+ }))};
+}
+
 export function decisionStreet(board){ const n=Array.isArray(board)?board.length:0; return n>=5?'river':n===4?'turn':n>=3?'flop':'preflop'; }
 
 export function enforceLegal(decision,state){
@@ -62,7 +70,7 @@ export function decideBrain(state,context={}){
    confidence:safe?.confidence??0,
    reason:safe?.reason??'Estado insuficiente.',
    details:safe?.notes??safe?.details??null,
-   ledger:ledgerSummary(ledger),
+   ledger:detailedLedgerSummary(ledger),
    observedLedger:observedLedgerSummary(context.observedLedger),
    knowledge,
    stateKey:[state.heroCards?.join('')||'',state.board?.join('')||'',state.pot||'',state.toCall||'',(state.legalActions||[]).join('-'),state.heroPosition||'',state.heroStack||'',(state.actionHistory||[]).slice(-8).join('>')].join('|'),
