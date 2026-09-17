@@ -35,3 +35,27 @@ assert.equal(r.result.ledger.actions[0].action,'RAISE');
 assert.equal(r.result.ledger.actions[0].amount,.06);
 
 console.log('study-sizing-v1 regressions: OK');
+
+
+// Once a financial snapshot was ambiguous, later confirmation/removal of one candidate
+// must not allow that old delta to size the remaining action retroactively.
+{
+  let x=runStudyRuntime(base('1.94',[],10000),{
+    useStudySession:true,metadataObservedAt:10000,
+    captureEvents:[
+      {type:'action-candidate',seatId:'left-high',action:'CALL',at:10400,confidence:.82,source:'local-action-text',raw:'Pago'},
+      {type:'action-candidate',seatId:'left-high',action:'RAISE',at:10800,confidence:.84,source:'local-action-text',raw:'Aumento',packetId:'raise-ambiguous'},
+    ],
+  });
+  x=runStudyRuntime(base('1.88',[],12000),{session:x.session,useStudySession:true,metadataObservedAt:12000});
+  assert.equal(x.actionEvidence.ambiguousFinancial,1);
+  assert.equal(x.session.captureCandidates.every(v=>v.amount==null),true);
+
+  // HH confirms only CALL. The old 0.06 delta must stay blocked instead of
+  // getting reassigned to the still-provisional RAISE.
+  x=runStudyRuntime(base('1.88',['VillainA calls 0.06'],13000),{session:x.session,useStudySession:true,metadataObservedAt:13000});
+  const raise=x.session.captureCandidates.find(v=>v.action==='RAISE');
+  assert.equal(raise.status,'provisional');
+  assert.equal(raise.amount,null);
+  assert.equal(x.session.financialAmbiguous.length,1);
+}
