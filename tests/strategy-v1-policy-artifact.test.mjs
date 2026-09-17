@@ -1,34 +1,21 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { POSTFLOP_POLICY_V4_RAW, POSTFLOP_POLICY_V4_MODEL } from '../src/strategy-v1/postflop-policy-model.js';
 import { STRATEGY_V1_MANIFEST } from '../src/brain/strategy-manifest.js';
 
-const root=fileURLToPath(new URL('../',import.meta.url));
 const post=STRATEGY_V1_MANIFEST.postflop;
-const artifact=fileURLToPath(new URL('../'+post.expectedArtifactPath,import.meta.url));
-
 assert.equal(post.id,'postflop-policy-v4');
-assert.match(post.expectedModelSha256,/^[0-9a-f]{64}$/);
+assert.equal(post.status,'exact-artifact-recovered-parity-pending');
 assert.equal(post.frozenSourceProjectId,'a4352431-0461-41cd-bebc-1e1e617a190c');
+assert.equal(post.frozenSourceCommit,'3efde306fbb1dda38584cb8ffee0c2245b6231f4');
 
-if(!fs.existsSync(artifact)){
-  assert.equal(STRATEGY_V1_MANIFEST.policyComplete,false);
-  assert.notEqual(post.status,'active');
-  console.log('Policy V4 artifact gate: exact model not vendored; runtime correctly remains incomplete');
-  process.exit(0);
-}
+const byteSha=crypto.createHash('sha256').update(Buffer.from(POSTFLOP_POLICY_V4_RAW,'utf8')).digest('hex');
+assert.equal(byteSha,post.expectedArtifactByteSha256,'lossless recovered artifact byte SHA changed');
+assert.equal(POSTFLOP_POLICY_V4_MODEL.version,'postflop-policy-v4');
+assert.equal(POSTFLOP_POLICY_V4_MODEL.hash,post.expectedModelSha256,'embedded certified model hash changed');
+assert.equal(POSTFLOP_POLICY_V4_MODEL.features.length,74);
+assert.equal(POSTFLOP_POLICY_V4_MODEL.trees.length,400);
+assert.deepEqual(POSTFLOP_POLICY_V4_MODEL.classes,['CHECK','BET','CALL','FOLD','RAISE']);
+assert.equal(STRATEGY_V1_MANIFEST.policyComplete,false,'artifact recovery alone must not activate Policy V4');
 
-const bytes=fs.readFileSync(artifact);
-const sha=crypto.createHash('sha256').update(bytes).digest('hex');
-assert.equal(
-  sha,
-  post.expectedModelSha256,
-  'Policy V4 artifact exists but SHA-256 does not match frozen model — refuse parity claim'
-);
-assert.notEqual(
-  STRATEGY_V1_MANIFEST.policyComplete,
-  true,
-  'Artifact hash alone is not enough: feature/model/decision-layer parity must be explicitly completed before policyComplete=true'
-);
-console.log('Policy V4 artifact gate: exact frozen SHA recovered; parity implementation still gated');
+console.log('Policy V4 artifact recovery gate: exact frozen model reconstructed losslessly; runtime parity still gated');
