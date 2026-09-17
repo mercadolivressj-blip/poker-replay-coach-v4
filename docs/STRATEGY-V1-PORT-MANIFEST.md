@@ -1,6 +1,6 @@
 # Strategy V1 exact-port manifest
 
-Source of truth: frozen `Poker Vision Gateway` Lovable clone, commit lineage validated on 2026-09-17.
+Source of truth: frozen `Hero Card Rescue` project (`a4352431-0461-41cd-bebc-1e1e617a190c`). The exact Policy V4 model artifact is still missing from the external repository; see `docs/POLICY-V4-RECOVERY.md`.
 
 The old standalone `src/strategy.js` is **not** authoritative and must not be connected to Vision V1.
 
@@ -40,6 +40,9 @@ The port is not considered connected until it reproduces:
 ## Integration status
 
 - VisionState v1 validator: DONE
-- `/api/brain` ingress: DONE (accepts/normalizes state, deliberately emits no strategy yet)
-- Strategy V1 exact port: IN PROGRESS
-- Live Vision V1 → Strategy V1 decision: BLOCKED until parity tests pass
+- `/api/brain` ingress: DONE
+- Cash preflop frozen baseline port: DONE / regression-gated
+- Replay Study Runtime + provisional postflop heuristic: ACTIVE, explicitly **not** Policy V4
+- Exact Policy V4 artifact recovery: BLOCKED — frozen model bytes not recovered
+- Policy V4 exact port/parity: BLOCKED until artifact SHA + feature/inference/Decision Layer parity pass
+- `policyComplete`: MUST remain `false` until all exact-port gates pass
