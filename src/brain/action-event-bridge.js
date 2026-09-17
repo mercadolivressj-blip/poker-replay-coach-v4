@@ -1,5 +1,6 @@
 const clean = (v) => String(v ?? '').trim();
 const canon = (v) => clean(v).toLowerCase();
+const ACTIONS = new Set(['FOLD','CHECK','CALL','BET','RAISE','ALLIN']);
 
 function mapFromInput(input) {
   if (!input) return {};
@@ -17,41 +18,33 @@ function mapFromInput(input) {
   return out;
 }
 
-export function normalizeCaptureSeatMap(input) {
-  return mapFromInput(input);
-}
+export function normalizeCaptureSeatMap(input) { return mapFromInput(input); }
 
 function candidateKey(c) {
   if (c.packetId) return `packet:${c.packetId}`;
   const hand = c.handId ?? 'unknown';
-  return [hand, c.street || 'preflop', c.seatId || '?', c.action || '?'].join('|');
+  return [hand, c.street || 'preflop', c.seatId || '?', c.actor || '?', c.action || '?', c.amount ?? c.totalCommitted ?? ''].join('|');
 }
 
 export function captureEventsToCandidates(events = [], {
-  seatMap = {},
-  handId = null,
-  street = 'preflop',
-  heroActor = null,
+  seatMap = {}, handId = null, street = 'preflop', heroActor = null,
 } = {}) {
-  const map = normalizeCaptureSeatMap(seatMap);
-  const out = [];
+  const map = normalizeCaptureSeatMap(seatMap); const out = [];
   for (const e of Array.isArray(events) ? events : []) {
-    if (!e || e.type !== 'fold-candidate') continue;
+    if (!e || !['fold-candidate','action-candidate'].includes(e.type)) continue;
     const seatId = clean(e.seatId);
     if (!seatId || seatId === 'hero' || seatId === 'table') continue;
+    const action = e.type === 'fold-candidate' ? 'FOLD' : clean(e.action).toUpperCase();
+    if (!ACTIONS.has(action)) continue;
     const actor = clean(map[seatId] || e.actor || '');
     if (actor && heroActor && canon(actor) === canon(heroActor)) continue;
     out.push({
-      version: 'capture-action-candidate-v1',
-      status: 'provisional',
-      sovereign: false,
-      source: clean(e.source) || 'action-capture-v1.2',
-      handId,
-      street: clean(e.street) || street || 'preflop',
-      seatId,
-      actor: actor || null,
-      action: 'FOLD',
-      capturedAt: Number(e.at) || Date.now(),
+      version: 'capture-action-candidate-v1', status: 'provisional', sovereign: false,
+      source: clean(e.source) || (e.type === 'fold-candidate' ? 'action-capture-v1.2' : 'local-action-inference'),
+      handId, street: clean(e.street) || street || 'preflop', seatId, actor: actor || null,
+      action, amount:Number.isFinite(e.amount)?e.amount:null,
+      totalCommitted:Number.isFinite(e.totalCommitted)?e.totalCommitted:null,
+      capturedAt: Number(e.capturedAt ?? e.at) || Date.now(),
       confidence: Number.isFinite(e.confidence) ? Math.max(0, Math.min(1, e.confidence)) : null,
       packetId: clean(e.packetId) || null,
       evidence: {
@@ -59,6 +52,9 @@ export function captureEventsToCandidates(events = [], {
         cardMode: clean(e.cardMode) || null,
         cardBefore: Number.isFinite(e.cardTextureBefore) ? e.cardTextureBefore : null,
         cardAfter: Number.isFinite(e.cardTextureAfter) ? e.cardTextureAfter : null,
+        rawText: clean(e.raw ?? e.text) || null,
+        previousCommitted:Number.isFinite(e.previousCommitted)?e.previousCommitted:null,
+        maxCommittedBefore:Number.isFinite(e.maxCommittedBefore)?e.maxCommittedBefore:null,
       },
     });
   }
@@ -70,59 +66,34 @@ export function remapCaptureCandidates(candidates = [], seatMap = {}, heroActor 
   return (Array.isArray(candidates) ? candidates : []).map((c) => {
     if (!c || c.status === 'confirmed') return c;
     const actor = clean(c.actor || map[c.seatId] || '');
-    if (actor && heroActor && canon(actor) === canon(heroActor)) {
-      return { ...c, actor, status: 'rejected', sovereign: false, rejectReason: 'hero-seat-mismatch' };
-    }
+    if (actor && heroActor && canon(actor) === canon(heroActor)) return { ...c, actor, status: 'rejected', sovereign: false, rejectReason: 'hero-seat-mismatch' };
     return actor ? { ...c, actor } : c;
   });
 }
 
 export function mergeCaptureCandidates(previous = [], incoming = []) {
-  const out = [];
-  const seen = new Set();
+  const out = []; const seen = new Set();
   for (const c of [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(incoming) ? incoming : [])]) {
-    if (!c || typeof c !== 'object') continue;
-    const key = candidateKey(c);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
+    if (!c || typeof c !== 'object') continue; const key = candidateKey(c);
+    if (seen.has(key)) continue; seen.add(key); out.push(c);
   }
-  return out.slice(-80);
+  return out.slice(-120);
 }
 
 function authoritativeMatch(candidate, ledger) {
   if (!candidate?.actor || !ledger?.actions?.length) return null;
-  return ledger.actions.find((a) =>
-    a &&
-    a.action === candidate.action &&
-    canon(a.actor) === canon(candidate.actor) &&
-    (!candidate.street || !a.street || a.street === candidate.street)
-  ) || null;
+  return ledger.actions.find((a) => a && a.action === candidate.action && canon(a.actor) === canon(candidate.actor) && (!candidate.street || !a.street || a.street === candidate.street)) || null;
 }
 
 export function confirmCaptureCandidates(candidates = [], ledger = null) {
   return (Array.isArray(candidates) ? candidates : []).map((c) => {
     if (!c || c.status === 'confirmed' || c.status === 'rejected') return c;
-    const match = authoritativeMatch(c, ledger);
-    if (!match) return c;
-    return {
-      ...c,
-      status: 'confirmed',
-      sovereign: true,
-      confirmedBy: 'action-ledger',
-      confirmedSeq: match.seq ?? null,
-      confirmedRaw: match.raw ?? null,
-      confirmedAt: Date.now(),
-    };
+    const match = authoritativeMatch(c, ledger); if (!match) return c;
+    return { ...c, status: 'confirmed', sovereign: true, confirmedBy: 'action-ledger', confirmedSeq: match.seq ?? null, confirmedRaw: match.raw ?? null, confirmedAt: Date.now() };
   });
 }
 
 export function captureBridgeSummary(candidates = []) {
   const list = Array.isArray(candidates) ? candidates : [];
-  return {
-    total: list.length,
-    provisional: list.filter((c) => c?.status === 'provisional').length,
-    confirmed: list.filter((c) => c?.status === 'confirmed').length,
-    rejected: list.filter((c) => c?.status === 'rejected').length,
-  };
+  return { total:list.length, provisional:list.filter(c=>c?.status==='provisional').length, confirmed:list.filter(c=>c?.status==='confirmed').length, rejected:list.filter(c=>c?.status==='rejected').length };
 }
