@@ -1,6 +1,7 @@
 import { preflopDecision } from './preflop.js';
 import { postflopDecision } from './postflop.js';
 import { buildLedgerFromState, heroWasPreflopAggressor, ledgerSummary } from './action-ledger.js';
+import { observedLedgerSummary } from './observed-ledger.js';
 import { buildBrainKnowledge } from './knowledge.js';
 import { STRATEGY_V1_MANIFEST } from './strategy-manifest.js';
 
@@ -25,8 +26,6 @@ export function enforceLegal(decision,state){
 
 export function decideBrain(state,context={}){
  const street=decisionStreet(state.board);
- // Study Session owns the accumulated authoritative line. Fall back to a ledger
- // rebuilt from the current VisionState only when no session ledger was supplied.
  const ledger=context.ledger && typeof context.ledger==='object'
    ? context.ledger
    : buildLedgerFromState(state,{handId:context.handId??null,heroActor:context.heroActor??null});
@@ -53,6 +52,7 @@ export function decideBrain(state,context={}){
      policyComplete:STRATEGY_V1_MANIFEST.policyComplete,
    },
    ledgerVersion:'action-ledger-v1-external',
+   observedLedgerVersion:'observed-ledger-v1',
    knowledgeVersion:knowledge.version,
    street,
    format:context.format||'cash',
@@ -63,6 +63,7 @@ export function decideBrain(state,context={}){
    reason:safe?.reason??'Estado insuficiente.',
    details:safe?.notes??safe?.details??null,
    ledger:ledgerSummary(ledger),
+   observedLedger:observedLedgerSummary(context.observedLedger),
    knowledge,
    stateKey:[state.heroCards?.join('')||'',state.board?.join('')||'',state.pot||'',state.toCall||'',(state.legalActions||[]).join('-'),state.heroPosition||'',state.heroStack||'',(state.actionHistory||[]).slice(-8).join('>')].join('|'),
    capturedAt:state.capturedAt,
