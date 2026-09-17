@@ -1,3 +1,5 @@
+// Provider migration note: this endpoint replaced the former gpt-5.6-luna
+// poker_replay_decision_state transport. Runtime calls below use Gemini only.
 import crypto from 'node:crypto';
 import { geminiJson } from './_gemini.js';
 
