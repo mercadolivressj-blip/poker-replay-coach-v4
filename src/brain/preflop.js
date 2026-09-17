@@ -1,5 +1,6 @@
 import { effectiveDepthBB } from './math.js';
 import { rankValue } from './cards.js';
+import { preflopBaselineDecision } from '../strategy-v1/preflop-baseline.js';
 
 const ORDER='23456789TJQKA';
 const idx=(r)=>ORDER.indexOf(String(r||'').toUpperCase());
@@ -20,6 +21,7 @@ function expand(token){
 }
 const range=(s)=>new Set(s.split(',').map(x=>x.trim()).filter(Boolean).flatMap(expand));
 
+// LEGACY/FALLBACK tables only. Frozen 100z baseline above has authority in its audited nodes.
 const RFI={
  UTG:range('22+,A2s+,KTs+,QTs+,JTs,T9s,98s,87s,76s,AJo+,KQo'),
  HJ:range('22+,A2s+,K9s+,Q9s+,J9s+,T8s+,97s+,86s+,75s+,65s,ATo+,KJo+,QJo'),
@@ -65,7 +67,6 @@ function mttApprox({state,context,legal,position,depth}){
    const threshold=52+(posAdj[position]||0);
    if(score>=threshold && (legal.includes('RAISE')||legal.includes('ALLIN'))) return pack(legal.includes('RAISE')?'AUMENTAR':'ALL-IN','MTT SHORT STACK V1 · APROXIMAÇÃO',`~${depth.toFixed(1)}bb unopened: mão acima do limiar agressivo da posição.`,62);
  }
- // Deep/medium MTT: reuse position discipline but lower confidence; no solver claim.
  const hc=handCode(state.heroCards);
  if(unopened&&position&&hc&&RFI[position]?.has(hc)){
    if(legal.includes('RAISE')) return pack('AUMENTAR','MTT PREFLOP V1 · APROXIMAÇÃO',`Range base por posição aceita ${hc}; MTT/ICM ainda não validado por chart próprio.`,58);
@@ -75,26 +76,41 @@ function mttApprox({state,context,legal,position,depth}){
  return null;
 }
 
-function pack(decision,engine,reason,confidence){return {decision,engine,reason,confidence,source:'deterministic',street:'preflop'};}
+function pack(decision,engine,reason,confidence,extra={}){return {decision,engine,reason,confidence,source:'deterministic',street:'preflop',...extra};}
 
 export function preflopDecision(state,context={}){
  const legal=state.legalActions||[]; const position=normalizePosition(state.heroPosition); const hc=handCode(state.heroCards);
  if(!hc||!position||!legal.length) return {decision:null,engine:'BRAIN GATE',reason:'Faltam cartas, posição ou ações legais confirmadas.',confidence:0,street:'preflop'};
  const depth=effectiveDepthBB(state.heroStack,state.effectiveStack,state.blinds);
  if((context.format||'cash')!=='cash') return mttApprox({state,context,legal,position,depth})||pack(null,'MTT PREFLOP V1 · APROXIMAÇÃO','Sem decisão confiável para este node.',0);
+
+ // AUTHORITATIVE frozen Strategy V1 baseline first.
+ const decisionKey=context.decisionKey||[context.handId??'',state.heroCards.join(''),position,(state.actionHistory||[]).join('>')].join('|');
+ const exact=preflopBaselineDecision({
+   heroCards:state.heroCards,board:state.board||[],heroPosition:state.heroPosition,legalActions:legal,
+   actionHistory:state.actionHistory||[],node:context.preflopNode??context.node,versus:context.versus??null,
+   multiway:context.preflopMultiway===true,depthBB:depth,format:'cash',tableSize:context.tableSize||'6max',decisionKey
+ });
+ if(exact?.kind==='decision') return pack(exact.advice,exact.engine,exact.reason,88,{actionCode:exact.actionCode,baselineAction:exact.baselineAction,distribution:exact.distribution,mixed:exact.mixed,decisionKey,roll:exact.roll});
+ if(exact?.kind==='inconsistent') return pack(null,'PREFLOP V1 · ESTADO INCONSISTENTE',exact.reason,0,{baselineAction:exact.baselineAction});
+
+ // Missing action history is missing critical context, not an excuse to assume RFI.
+ if(!(state.actionHistory||[]).length) return pack(null,'BRAIN GATE','Histórico pré-flop ainda não confirmado; aguardando node antes de decidir.',0);
+
+ // Legacy fallback remains only for uncovered/non-authoritative nodes.
  const node=actionHistoryNode(state.actionHistory);
- if(depth==null||depth<90||depth>110) return pack(null,'PREFLOP V1 · FORA DA FAIXA','Baseline cash atual só assume autoridade direta em ~90–110bb.',0);
+ if(depth==null||depth<90||depth>110) return pack(null,'PREFLOP V1 · FORA DA FAIXA','Baseline cash direta só assume autoridade em ~90–110bb; spot segue fora da faixa validada.',0);
  if(node.node==='rfi'){
-   const yes=RFI[position]?.has(hc); if(yes&&legal.includes('RAISE')) return pack('AUMENTAR','PREFLOP V1 · CASH 6MAX 100BB',`${position} RFI: ${hc} está na range versionada.`,82);
-   if(!yes&&legal.includes('FOLD')) return pack('DESISTIR','PREFLOP V1 · CASH 6MAX 100BB',`${position} RFI: ${hc} não está na range versionada.`,82);
-   if(legal.includes('CHECK')) return pack('PASSAR','PREFLOP V1 · CASH 6MAX 100BB','Check grátis disponível.',80);
+   const yes=RFI[position]?.has(hc); if(yes&&legal.includes('RAISE')) return pack('AUMENTAR','PREFLOP LEGACY · FALLBACK',`${position} RFI: ${hc} está na tabela legada; baseline direta não cobriu o estado estruturado.`,55);
+   if(!yes&&legal.includes('FOLD')) return pack('DESISTIR','PREFLOP LEGACY · FALLBACK',`${position} RFI: ${hc} não está na tabela legada.`,55);
+   if(legal.includes('CHECK')) return pack('PASSAR','PREFLOP LEGACY · FALLBACK','Check grátis disponível.',55);
  }
  if(node.node==='vs_open'&&node.versus){
    const d=DEF[`${position}:${node.versus}`]; if(d){
-     if(d.r.has(hc)&&legal.includes('RAISE')) return pack('AUMENTAR','PREFLOP V1 · CASH 6MAX 100BB',`${position} vs ${node.versus}: ${hc} pertence à faixa de 3-bet.`,82);
-     if(d.c.has(hc)&&legal.includes('CALL')) return pack('PAGAR','PREFLOP V1 · CASH 6MAX 100BB',`${position} vs ${node.versus}: ${hc} pertence à faixa de call.`,78);
-     if(legal.includes('FOLD')) return pack('DESISTIR','PREFLOP V1 · CASH 6MAX 100BB',`${position} vs ${node.versus}: fora das faixas de continuação versionadas.`,82);
+     if(d.r.has(hc)&&legal.includes('RAISE')) return pack('AUMENTAR','PREFLOP LEGACY · FALLBACK',`${position} vs ${node.versus}: ${hc} pertence à faixa legada de 3-bet.`,55);
+     if(d.c.has(hc)&&legal.includes('CALL')) return pack('PAGAR','PREFLOP LEGACY · FALLBACK',`${position} vs ${node.versus}: ${hc} pertence à faixa legada de call.`,52);
+     if(legal.includes('FOLD')) return pack('DESISTIR','PREFLOP LEGACY · FALLBACK',`${position} vs ${node.versus}: fora das faixas legadas de continuação.`,55);
    }
  }
- return pack(null,'PREFLOP V1 · NODE NÃO COBERTO','Node não coberto pela baseline atual; nenhuma jogada será inventada.',0);
+ return pack(null,'PREFLOP V1 · NODE NÃO COBERTO','Node não coberto pela baseline auditada; nenhuma jogada será inventada.',0);
 }
