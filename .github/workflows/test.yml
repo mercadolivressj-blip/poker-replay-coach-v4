@@ -40,4 +40,5 @@ jobs:
       - run: node tests/strategy-v1-preflop.test.mjs
       - run: node tests/strategy-v1-policy-artifact.test.mjs
       - run: node tests/strategy-v1-policy-port.test.mjs
+      - run: node tests/strategy-v1-policy-adapter.test.mjs
       - run: node tests/strategy-v1-postflop-gate.test.mjs
