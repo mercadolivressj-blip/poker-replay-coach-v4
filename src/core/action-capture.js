@@ -1,10 +1,10 @@
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const C=(x,y,w,h)=>{const nx=clamp(x),ny=clamp(y);return{x:nx,y:ny,w:clamp(w,0.002,1-nx),h:clamp(h,0.002,1-ny)}};
 
-// PokerStars 6-max layout calibrated from the validated replay window.
-// `region` watches the player plate/avatar/action text. `cardRegion` watches only
-// the two hole-card backs. Coordinates are relative to the detected felt, so the
-// layout scales/moves with the table instead of being tied to the monitor.
+// PokerStars 6-max layout calibrated from the replay window.
+// `region` watches the player plate/avatar/action text. `cardRegion` watches the
+// hole-card area. Coordinates are relative to the detected felt, so the layout
+// scales/moves with the table instead of being tied to the monitor.
 export function seatRegionsFromFelt(f){
   if(!f) return [];
   const R=(id,label,x,y,w,h,cx,cy,cw,ch,isHero=false)=>({
@@ -13,8 +13,6 @@ export function seatRegionsFromFelt(f){
     cardRegion:C(f.x+cx*f.w,f.y+cy*f.h,cw*f.w,ch*f.h),
   });
   return [
-    // Hero cards sit above the bottom plate. Hero is observed for hand-transition
-    // evidence but can never become a local fold candidate.
     R('hero','Hero', .34,1.04,.32,.27, .39,.92,.22,.22,true),
     R('left-low','Seat L1', -.24,.61,.36,.28, -.16,.50,.22,.20),
     R('left-high','Seat L2', -.20,-.13,.36,.28, -.12,-.18,.22,.20),
@@ -65,11 +63,44 @@ export function cardTextureScore(sig){
   return clamp((sig.edgeMean||0)*1.9+(sig.coloredFrac||0)*.55+(sig.brightFrac||0)*.35);
 }
 
+// Opponent hole cards in this PokerStars theme use a very distinctive red back
+// with a pale border. Detecting that directly is much more stable than generic
+// texture: chips, avatars and action animations can move without looking like a
+// pair of red card backs. This is deliberately cheap enough to run every frame.
+export function cardBackPresenceScore(data,w,h,rect){
+  if(!data||!w||!h||!rect) return 0;
+  const {x0,y0,x1,y1}=rectPx(rect,w,h);
+  let red=0,light=0,darkRed=0,edge=0,edgeN=0,n=0;
+  for(let y=y0;y<y1;y+=2){
+    let prev=null;
+    for(let x=x0;x<x1;x+=2){
+      const i=(y*w+x)*4,r=data[i],g=data[i+1],b=data[i+2];
+      const l=lum(r,g,b),s=saturation(r,g,b);
+      const isRed=r>82&&r>g*1.22&&r>b*1.16&&s>.22;
+      const isDarkRed=r>58&&r>g*1.28&&r>b*1.20&&s>.28;
+      const isLight=l>.70&&s<.28;
+      if(isRed)red++; if(isDarkRed)darkRed++; if(isLight)light++;
+      if(prev!=null){edge+=Math.abs(l-prev);edgeN++;} prev=l; n++;
+    }
+  }
+  if(!n)return 0;
+  const redFrac=red/n,darkRedFrac=darkRed/n,lightFrac=light/n,edgeMean=edge/Math.max(1,edgeN);
+  // A real back normally contributes both red fill and a light border; require
+  // red to dominate so white board/face cards do not create opponent presence.
+  const redEvidence=redFrac*4.8+darkRedFrac*2.2;
+  const borderEvidence=Math.min(.16,lightFrac*.65);
+  const shapeEvidence=Math.min(.12,edgeMean*.85);
+  return clamp(redEvidence+borderEvidence+shapeEvidence);
+}
+
 export function sampleSeats(data,w,h,felt){
   return seatRegionsFromFelt(felt).map((seat)=>{
     const signature=regionSignature(data,w,h,seat.region);
-    const cardSignature=regionSignature(data,w,h,seat.cardRegion,{gx:5,gy:3});
-    return {...seat,signature,cardTexture:cardTextureScore(cardSignature)};
+    if(seat.isHero){
+      const cardSignature=regionSignature(data,w,h,seat.cardRegion,{gx:5,gy:3});
+      return {...seat,signature,cardMode:'texture',cardTexture:cardTextureScore(cardSignature)};
+    }
+    return {...seat,signature,cardMode:'back',cardTexture:cardBackPresenceScore(data,w,h,seat.cardRegion)};
   });
 }
 
@@ -78,15 +109,13 @@ const emptySeatState=()=>({
   cardPresent:null,presentVotes:0,absentVotes:0,
 });
 export function createActionCaptureState(seats=[]){
-  return {version:'action-capture-v1.1',seats:Object.fromEntries(seats.map(s=>[s.id,emptySeatState()])),tableTransitionAt:0};
+  return {version:'action-capture-v1.2',seats:Object.fromEntries(seats.map(s=>[s.id,emptySeatState()])),tableTransitionAt:0};
 }
 
 export function observeSeatSamples(stateInput,samples,now=Date.now(),opts={}){
   const motionThreshold=opts.motionThreshold??0.09;
   const foldDrop=opts.foldDrop??0.12;
   const refractoryMs=opts.refractoryMs??420;
-  const presentThreshold=opts.cardPresentThreshold??0.40;
-  const absentThreshold=opts.cardAbsentThreshold??0.29;
   const confirmFrames=opts.confirmFrames??2;
   const state=stateInput||createActionCaptureState(samples);
   const next={...state,seats:{...state.seats}};
@@ -97,6 +126,10 @@ export function observeSeatSamples(stateInput,samples,now=Date.now(),opts={}){
     const prev=state.seats[s.id]||emptySeatState();
     const motion=prev.signature?signatureDistance(prev.signature,s.signature):0;
     const before=prev.cardTexture; const after=s.cardTexture;
+    // Card-back detector has a much wider separation between red backs and felt.
+    // Generic texture thresholds remain for Hero transition evidence/tests.
+    const presentThreshold=s.cardMode==='back'?(opts.backPresentThreshold??0.28):(opts.cardPresentThreshold??0.40);
+    const absentThreshold=s.cardMode==='back'?(opts.backAbsentThreshold??0.16):(opts.cardAbsentThreshold??0.29);
     let presentVotes=prev.presentVotes||0,absentVotes=prev.absentVotes||0,cardPresent=prev.cardPresent;
 
     if(after>=presentThreshold){presentVotes++;absentVotes=0;}
@@ -111,13 +144,12 @@ export function observeSeatSamples(stateInput,samples,now=Date.now(),opts={}){
 
     const baseline=prev.stableCardTexture??before;
     const drop=baseline!=null&&after!=null?baseline-after:0;
-    const strongDrop=becameAbsent&&drop>=foldDrop;
+    // For red-back mode, present->absent is itself strong evidence; the red signal
+    // has already passed hysteresis. Texture mode retains the historical drop gate.
+    const strongDrop=becameAbsent&&(s.cardMode==='back'||drop>=foldDrop);
     const canFire=now-(prev.lastEventAt||0)>=refractoryMs;
     let type=null;
 
-    // A confirmed present -> absent transition is semantic and occurs only once,
-    // so it must outrank the visual cooldown. Otherwise the precursor animation
-    // can emit CHANGE and suppress a real fast fold 80-150 ms later.
     if(!s.isHero&&strongDrop) type='fold-candidate';
     else if(!s.isHero&&canFire&&motion>=motionThreshold) type='seat-change';
 
@@ -126,12 +158,13 @@ export function observeSeatSamples(stateInput,samples,now=Date.now(),opts={}){
         type,seatId:s.id,label:s.label,at:now,motion:Number(motion.toFixed(4)),
         cardTextureBefore:baseline==null?null:Number(baseline.toFixed(4)),
         cardTextureAfter:after==null?null:Number(after.toFixed(4)),
-        confidence:type==='fold-candidate'?Math.min(.94,.58+Math.max(0,drop)):Math.min(.82,.4+motion),
+        cardMode:s.cardMode||'texture',
+        confidence:type==='fold-candidate'?Math.min(.96,.70+Math.max(0,drop)*.8):Math.min(.82,.4+motion),
       });
     }
 
     let stable=prev.stableCardTexture;
-    if(cardPresent===true && motion<motionThreshold*.72){
+    if(cardPresent===true && motion<motionThreshold*.85){
       stable=stable==null?after:(stable*.78+after*.22);
     } else if(cardPresent!==true && presentVotes===0){
       stable=null;
