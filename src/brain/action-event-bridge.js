@@ -87,15 +87,37 @@ export function mergeCaptureCandidates(previous = [], incoming = []) {
   return out.slice(-120);
 }
 
-function authoritativeMatch(candidate, ledger) {
+function amountCompatible(candidate, action, epsilon=.005) {
+  if(!Number.isFinite(candidate?.amount) || !Number.isFinite(action?.amount)) return true;
+  return Math.abs(Number(candidate.amount)-Number(action.amount))<=epsilon;
+}
+
+function authoritativeMatch(candidate, ledger, usedIndexes=new Set()) {
   if (!candidate?.actor || !ledger?.actions?.length) return null;
-  return ledger.actions.find((a) => a && a.action === candidate.action && canon(a.actor) === canon(candidate.actor) && (!candidate.street || !a.street || a.street === candidate.street)) || null;
+  for(let i=0;i<ledger.actions.length;i++){
+    if(usedIndexes.has(i))continue;
+    const a=ledger.actions[i];
+    if(!a || a.action!==candidate.action)continue;
+    if(canon(a.actor)!==canon(candidate.actor))continue;
+    if(candidate.street&&a.street&&a.street!==candidate.street)continue;
+    if(!amountCompatible(candidate,a))continue;
+    return {action:a,index:i};
+  }
+  return null;
 }
 
 export function confirmCaptureCandidates(candidates = [], ledger = null) {
+  const usedIndexes=new Set();
   return (Array.isArray(candidates) ? candidates : []).map((c) => {
-    if (!c || c.status === 'confirmed' || c.status === 'rejected') return c;
-    const match = authoritativeMatch(c, ledger); if (!match) return c;
+    if (!c || c.status === 'rejected') return c;
+    if(c.status==='confirmed'){
+      const idx=(ledger?.actions||[]).findIndex(a=>a?.seq===c.confirmedSeq);
+      if(idx>=0)usedIndexes.add(idx);
+      return c;
+    }
+    const found=authoritativeMatch(c,ledger,usedIndexes); if (!found) return c;
+    usedIndexes.add(found.index);
+    const match=found.action;
     return { ...c, status: 'confirmed', sovereign: true, confirmedBy: 'action-ledger', confirmedSeq: match.seq ?? null, confirmedRaw: match.raw ?? null, confirmedAt: Date.now() };
   });
 }
