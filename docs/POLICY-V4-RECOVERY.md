@@ -1,91 +1,72 @@
 # Policy V4 — Recovery Ledger
 
-Status: **artifact exact not recovered yet**.
+Status: **exact frozen artifact and source recovered; active runtime parity gated**.
 
-This ledger exists to prevent accidental reconstruction, approximation or false parity claims.
+This ledger records both the failed recovery search and the final recovered provenance so Strategy V1 cannot silently drift or be reconstructed from approximations.
 
 ## Frozen identity
 
 - Policy: `postflop-policy-v4`
-- Expected SHA-256: `bb98bc8a27ec4bb634ff380ec1315c3bc4cc7605a81a65ce0ece2848a4e27181`
+- Certified model SHA-256: `bb98bc8a27ec4bb634ff380ec1315c3bc4cc7605a81a65ce0ece2848a4e27181`
+- Lossless recovered artifact byte SHA-256: `d0e45d38963d77c0833b468d1f5dcf47f817347f4a7e6bce7c1431fa1b0bd573`
 - Frozen source project: `Hero Card Rescue`
 - Frozen source project ID: `a4352431-0461-41cd-bebc-1e1e617a190c`
-- Last frozen-project commit recorded by historical handoff: `3efde306fbb1dda38584cb8ffee0c2245b6231f4`
-- Intended vendored artifact path: `src/strategy-v1/postflop-policy-model.json`
+- Frozen source commit: `3efde306fbb1dda38584cb8ffee0c2245b6231f4`
+- Vendored artifact entrypoint: `src/strategy-v1/postflop-policy-model.js`
+- Artifact encoding: lossless JS chunks under `src/strategy-v1/postflop-policy-model/`
+- Frozen source modules: `src/strategy-v1/frozen-source/`
 
-## Additional historical evidence
+## Recovery result
 
-A prior 2026-09-15 certification conversation records:
+The exact model payload was recovered losslessly and is reconstructed by `postflop-policy-model.js`. The artifact gate verifies:
 
-- the frozen model artifact was approximately **4.5 MB**;
-- training input names included `postflop_500k_train_set` and `/tmp/feat_train.csv`;
-- evaluation references included `/tmp/pb_post.csv` and `feat_test.csv`;
-- reports were named `audit/policy/postflop-v4-policy.md` and `audit/policy/decision-layer-v4.md`;
-- serialized tree thresholds containing `+inf` were repaired to finite JSON value `1e308`.
+- version `postflop-policy-v4`;
+- certified embedded model hash;
+- recovered raw-byte transport hash;
+- 74 features;
+- 400 trees/iterations;
+- classes `CHECK / BET / CALL / FOLD / RAISE`.
 
-These clues were searched in Library/history but still do not reveal a recoverable artifact path. Library JSON inventory contains no ~4.5 MB candidate.
+The frozen TypeScript strategy modules were also recovered and are transformed into an isolated JS runtime by `scripts/generate-policy-v4-runtime.mjs`. The generated runtime is not hand-authored strategy logic.
 
-## Exact source modules named by the historical migration plan
+## Final Decision Layer V4 semantics
 
-- `src/lib/postflop.ts`
-- `src/lib/postflop-decision.ts`
-- `src/lib/postflop-policy-decision.ts`
-- `src/lib/postflop-policy.ts`
-- `src/lib/postflop-policy-features.ts`
-- `src/lib/postflop-policy-model.json`
-- `src/lib/hand-strength.ts`
-- `src/lib/hand-eval.ts`
-- `src/lib/board-texture.ts`
-- `src/lib/poker-math.ts`
-- `src/lib/poker-state.ts`
-- `src/lib/raise-mapping.ts`
+The recovered final source is authoritative over older historical notes.
 
-## Recovery locations checked
+- mixed strategy threshold: top-two allowed actions less than or equal to 10 percentage points apart;
+- legal-action mask applies to the primary and mixed secondary action;
+- low model support does **not** replace an in-distribution legal Policy V4 action with a heuristic;
+- the older 45% minimum-support fallback is historical audit context only and was removed in the final frozen source;
+- fallback remains for out-of-distribution / insufficient nuclear state / no legal policy action, and multiway remains outside the trained heads-up authority.
 
-- Current/default GitHub branch.
-- `vision-v1-brain-integration`.
-- `hybrid-lovable-vision-v1`.
-- `feature/dynamic-coach-brain-v1`.
-- `feature/gemini-standalone-final`.
-- `feature/state-transaction-r14`.
-- `feature/pokerstars-suit-scanner-r9`.
-- Other surviving replay/coach feature branches.
-- Git commit object lookup for recorded frozen-project SHA; it is not present in this GitHub repository.
-- PR #11 migration discussion and PR #12 discussion; no attached artifact was found.
-- Current GitHub Actions artifacts; none contain the frozen model.
-- Library exact-name/content searches for the model and companion Policy files.
-- Library generated archives:
-  - `poker-strategy-engine-v0.1.zip`
-  - `poker-strategy-engine-v0.2.zip`
-  - `poker-strategy-engine-v0.6.zip`
-  - `poker-strategy-engine-v0.7.zip`
-  - `poker-replay-engine-v0.8.zip`
-  - `poker-replay-standalone-v1.zip`
-  - `poker-replay-standalone-v1.2.zip`
-  - `poker-replay-coach-v4-standalone.zip`
-- Recursive checksum scan of the materialized archives; no file matched the frozen SHA.
-- Historical Vercel standalone/probe deployments; available deployments do not preserve the missing source model.
-- Connected Google Drive searches for `postflop-policy-model`, `postflop-policy`, Policy V4, PokerBench, the frozen SHA, Hero Card Rescue and historical standalone/export names; no relevant artifact was found.
-- Real diagnostic `replay-diagnostic-2026-09-15T21-12-17-350Z`; strategy records do not preserve Policy V4 probabilities/features/outputs and therefore cannot serve as frozen Policy V4 parity fixtures.
-- Library searches for `blind10k` / `Integrated10k`; only aggregate certification numbers survived, not per-spot outputs.
+See `docs/POLICY-V4-MIGRATION-TRUTH.md` and the frozen oracles in `tests/oracles/policy-v4/`.
 
-Historical handoff mentions local-only directories such as `poker-replay-engine-v0.9` and standalone `v1.9/v2.x`, but no persisted Library export of those directories has been found.
+## Active parity gates
 
-## Hard rule
+The branch keeps `policyComplete=true` only while the exact-port gates remain green:
 
-Do not rebuild Policy V4 from its reported training hyperparameters or metrics. Those facts are insufficient to reproduce an exact Gradient Boosting model.
+1. `tests/strategy-v1-policy-artifact.test.mjs` — recovered model identity and byte integrity;
+2. `tests/strategy-v1-frozen-source-integrity.test.mjs` — exact Git-blob integrity for all 13 recovered frozen-source modules;
+3. `tests/strategy-v1-policy-port.test.mjs` — 74-feature ordering, inference, legal masking, OOD and final low-support semantics;
+4. `tests/strategy-v1-policy-adapter.test.mjs` — Brain adapter / ledger history / replay-facing semantics;
+5. `tests/strategy-v1-postflop-gate.test.mjs` — active Brain path and sovereign external legal mask;
+6. frozen source oracles under `tests/oracles/policy-v4/`.
 
-The policy remains unavailable until the exact artifact is recovered and its SHA-256 matches.
+The Brain manifest must fail closed if these assumptions are no longer true. Do not silently replace the frozen model or source with a retrained/reconstructed approximation.
 
-After recovery, parity work must still separately verify:
+## Historical recovery search
 
-1. feature extraction;
-2. model inference;
-3. probability mapping;
-4. OOD behavior;
-5. legal action mask;
-6. mixed-strategy threshold;
-7. Decision Layer V4 fallback semantics;
-8. frozen regression outputs.
+Before the exact source was recovered, searches were performed across the default branch, replay/coach feature branches, Git history, PR discussions, Actions artifacts, Library handoffs, historical ZIP exports, Vercel deployments and connected Drive locations. Those searches initially found only certification metadata and aggregate metrics, not a model payload.
 
-Only after all gates pass may `policyComplete` be changed to `true`.
+Historical clues included an approximately 4.5 MB model, PokerBench training/evaluation filenames, Policy V4 audit reports, and the recorded certified hash. Those clues were useful for provenance but were explicitly **not** treated as enough to recreate the Gradient Boosting model.
+
+A real replay diagnostic also confirmed historical runtime decisions labeled `engine: "POLICY V4"`, but diagnostics contain decisions rather than model bytes and were never used as a substitute for exact recovery.
+
+## Hard rules
+
+- Do not retrain or rebuild Policy V4 from reported hyperparameters/metrics and call it parity.
+- Do not alter the recovered frozen source as an optimization.
+- Do not bypass the sovereign legal-action mask.
+- Do not describe the model as GTO-perfect, solver-perfect, universal or best-in-world.
+- Certified label remains: **ELITE VALIDADO PARA ACTION-SELECTION NO ESCOPO POKERBENCH**.
+- Product scope remains replay/simulation/post-game study only.
