@@ -38,7 +38,9 @@ The brain ingress lives at `POST /api/brain`.
 
 Do **not** connect the old standalone heuristic `src/strategy.js` to Vision V1. It is simpler than the validated Strategy V1 and would be a regression.
 
-The next milestone is an **exact port** of the validated deterministic Strategy V1 / Policy V4 stack from the frozen Lovable project into this branch. Only after parity tests pass should `/api/brain` return a real decision.
+The next milestone is an **exact port** of the frozen Strategy V1 / Policy V4 stack from the frozen Lovable project into this branch.
+
+During migration, `/api/brain` may return the explicitly provisional `POSTFLOP BRAIN V1` heuristic for replay/study diagnostics, but it must keep `policyComplete: false` and must never identify that heuristic as Policy V4. Only after the exact model artifact is recovered, its SHA-256 matches the frozen checksum, and feature/inference/Decision Layer parity tests pass may the postflop runtime be labeled as the frozen Policy V4 stack.
 
 ## Safety against regressions
 
