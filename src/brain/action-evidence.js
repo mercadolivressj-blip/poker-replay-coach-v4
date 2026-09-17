@@ -22,10 +22,13 @@ export function reconcileActionSizing(candidates=[],financialDeltas=[],opts={}){
 
   for(const d of deltas){
     if(!d||!Number.isFinite(d.amount)||d.amount<=0)continue;
+    if(d.crossStreet===true||!d.street){ambiguous.push({...d,reason:'financial-window-crossed-street'});continue;}
     const matches=[];
     for(let i=0;i<rows.length;i++){
       const c=rows[i];
       if(!c||c.status!=='provisional'||c.sovereign===true)continue;
+      if(c?.evidence?.financial)continue;
+      if(Number.isFinite(c.amount))continue;
       if(!MONEY_ACTIONS.has(clean(c.action).toUpperCase()))continue;
       if(c.street&&d.street&&c.street!==d.street)continue;
       if(!sameSubject(c,d)||!inWindow(c,d,opts))continue;
