@@ -34,17 +34,27 @@ The boundary is `VisionState v1` (`vision-v1`). Both sides must keep this shape 
 The GitHub validator lives at `src/core/vision-contract.js`.
 The brain ingress lives at `POST /api/brain`.
 
-## Migration rule
+## Strategy migration status
 
 Do **not** connect the old standalone heuristic `src/strategy.js` to Vision V1. It is simpler than the validated Strategy V1 and would be a regression.
 
-The next milestone is an **exact port** of the frozen Strategy V1 / Policy V4 stack from the frozen Lovable project into this branch.
+The frozen Strategy V1 / Policy V4 stack has now been recovered and exact-port gated in this branch:
 
-During migration, `/api/brain` may return the explicitly provisional `POSTFLOP BRAIN V1` heuristic for replay/study diagnostics, but it must keep `policyComplete: false` and must never identify that heuristic as Policy V4. Only after the exact model artifact is recovered, its SHA-256 matches the frozen checksum, and feature/inference/Decision Layer parity tests pass may the postflop runtime be labeled as the frozen Policy V4 stack.
+- exact Policy V4 artifact recovered with immutable model and transport hashes;
+- frozen postflop source recovered from the recorded Hero Card Rescue commit;
+- 74-feature / 400-tree runtime generated from frozen source;
+- final Decision Layer V4 semantics regression-gated;
+- Policy V4 is the active postflop Brain path for covered heads-up states;
+- sovereign external legal-action masking remains mandatory.
+
+`policyComplete` is therefore `true` on this integration branch. See `docs/POLICY-V4-RECOVERY.md` and `docs/STRATEGY-V1-PORT-MANIFEST.md`.
+
+MTT/ICM remains a separate approximation-only module and is **not** covered by the Policy V4 certification. See `docs/MTT-ICM-AUDIT.md`.
 
 ## Safety against regressions
 
 - `main` stays untouched until parity is proven.
 - all work happens on branch `vision-v1-brain-integration`.
 - vision changes are out of scope.
-- a Strategy V1 port must be tested against the frozen audit fixtures before being connected to live VisionState input.
+- the recovered Strategy V1 port remains protected by artifact, frozen-source, adapter and active-runtime regression gates.
+- MTT/ICM cannot be promoted beyond approximation without independent source/provenance and oracle coverage.
