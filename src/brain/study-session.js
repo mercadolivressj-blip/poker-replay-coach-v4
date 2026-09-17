@@ -12,15 +12,24 @@ function heroActorFromSeats(seats = []) {
   return s?.name || s?.player || s?.nick || s?.nickname || null;
 }
 
+function financialDeltaKey(d){
+  return [d?.source||'',d?.actor||'',d?.seatId||'',d?.street||'',d?.fromObservedAt??'',d?.capturedAt??'',d?.amount??''].join('|');
+}
+
 function deriveSession(sessionInput,{seatMap={}}={}){
   const s={...sessionInput};
   let candidates=remapCaptureCandidates(s.captureCandidates||[],seatMap,s.ledger?.heroActor??null);
-  const reconciled=reconcileActionSizing(candidates,s.finance?.deltas||[]);
+  const priorAmbiguous=Array.isArray(s.financialAmbiguous)?s.financialAmbiguous:[];
+  const blocked=new Set(priorAmbiguous.map(financialDeltaKey));
+  const eligibleDeltas=(s.finance?.deltas||[]).filter(d=>!blocked.has(financialDeltaKey(d)));
+  const reconciled=reconcileActionSizing(candidates,eligibleDeltas);
   candidates=confirmCaptureCandidates(reconciled.candidates,s.ledger);
   return {
     ...s,
     captureCandidates:candidates,
-    financialAmbiguous:reconciled.ambiguous,
+    financialAmbiguous:[...priorAmbiguous,...reconciled.ambiguous]
+      .filter((d,i,a)=>a.findIndex(x=>financialDeltaKey(x)===financialDeltaKey(d))===i)
+      .slice(-80),
     observedLedger:buildObservedLedger(candidates,{handId:s.handId??null}),
   };
 }
