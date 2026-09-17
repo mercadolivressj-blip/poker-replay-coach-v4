@@ -83,6 +83,8 @@ export default async function handler(req, res) {
       handId: session.handId || context.handId || null,
       heroActor: session.ledger?.heroActor ?? context.heroActor ?? null,
       profiles: session.profiles,
+      ledger: session.ledger,
+      captureCandidates: session.captureCandidates || [],
     };
   }
 
