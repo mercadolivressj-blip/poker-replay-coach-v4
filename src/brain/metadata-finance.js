@@ -39,6 +39,7 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
   const previous={...(state.stacks||{})};
   const nextStacks={...previous};
   const deltas=[];
+  const fromObservedAt=Number(state.observedAt)||null;
 
   for(const row of Object.values(snapshot)){
     const actor=row.actor;
@@ -61,6 +62,7 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
       stackAfter:Number(row.stack.toFixed(4)),
       allIn:row.stack<=epsilon,
       confidence:Math.max(0,Math.min(1,Number(confidence)||0)),
+      fromObservedAt,
       capturedAt:now,
       sovereign:false,
       status:'provisional',
