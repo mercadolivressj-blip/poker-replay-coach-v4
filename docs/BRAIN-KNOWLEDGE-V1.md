@@ -1,96 +1,51 @@
 # BRAIN KNOWLEDGE V1
 
-## Ownership
+Brain Knowledge V1 is the external normalized context snapshot consumed by the replay-study brain. It is deliberately separated from Lovable vision internals.
 
-- Lovable Vision V1 is **eyes only**.
-- GitHub/Vercel owns state, memory, strategy, player models and decisions.
-- No strategy call may be delegated to Lovable.
+## What the brain can know
 
-## Knowledge snapshot
+The snapshot may contain:
 
-`src/brain/knowledge.js` builds a deterministic `brain-knowledge-v1` snapshot from confirmed `VisionState v1`, Action Ledger and optional Player Profiles.
-
-It exposes:
-
+- hero cards and board;
 - street;
-- Hero cards, position, stack and effective stack;
-- effective depth in BB;
-- blinds, pot, to-call and legal actions;
-- active-player count and multiway flag;
-- pot odds / required equity;
-- SPR and SPR regime;
-- preflop aggressor and last aggressor;
-- latest aggression on the current street;
-- whether Hero is facing a bet;
-- current-street action sequence;
-- postflop hand class, relative strength, board texture and draws;
-- cautious opponent metrics/labels when a profile has enough sample;
-- explicit completeness/missing-data flags.
+- hero position;
+- hero/effective stack and effective depth in BB;
+- blinds;
+- pot and to-call;
+- legal actions;
+- pot odds and required equity;
+- SPR;
+- player count / active-player count and multiway status;
+- chronological action ledger;
+- preflop aggressor, last aggressor, and current-street last aggression;
+- hand class, relative hand strength, board texture, and draw analysis;
+- persistent player reads from Study Session V1 / Player Model V1;
+- explicit completeness flags listing missing context.
 
-## Sources
+## Action evidence sources
 
-### Frozen hot-path eyes
+Action history can be assembled from independently trustworthy sources and merged chronologically:
 
-The stable R3 baseline continuously reads only:
+- `visionHistory` from event-triggered metadata reads;
+- `handHistoryText` from PokerStars replay/hand-history text;
+- `manualActionHistory` for study fixtures and controlled tests.
 
-1. Hero cards;
-2. Board;
-3. Quick state (pot / Hero stack / blinds);
-4. Hero legal actions / to-call.
+Fast visual seat events are handled separately by **Action Capture V1**. Action Capture V1 samples local seat regions at high frequency and emits evidence candidates such as `seat-change` and `fold-candidate`. These candidates are **not sovereign actions** and do not enter Action Ledger as confirmed FOLD/CALL/BET/RAISE events until reconciled with a trustworthy source. This prevents a transient animation or visual false positive from contaminating strategy state.
 
-These four lanes must remain independent and must not be changed merely to add strategy context.
+Action Capture V1 also maintains a short rolling frame ring so a fast 1–2 second event can be preserved for later reconciliation even when remote vision is slower.
 
-### Metadata / action context
+## Strategy boundary
 
-`VisionState v1` can also carry:
+Knowledge is context, not authority. Player reads and local visual candidates must not silently mutate the frozen strategy baseline. Strategy V1 migration status remains explicit in `strategy-manifest.js`.
 
-- players / activePlayers;
-- heroPosition;
-- effectiveStack;
-- seats;
-- actionHistory.
+- frozen cash preflop baseline: ported and regression-gated;
+- frozen postflop Policy V4 source/model: not vendored in GitHub yet;
+- MTT/ICM: approximation only until separately audited.
 
-Those fields are optional. If a reliable producer has not supplied them, Brain Knowledge marks them as missing. It must not infer a villain action from Hero legal-action buttons.
+## Runtime invariants
 
-`actionHistory` is parsed by Action Ledger V1 into chronological actions with actors and streets. The ledger deduplicates repeated snapshots and derives PFA / last aggressor.
-
-## Session memory
-
-`Study Session V1` owns hand lifecycle and Player Profiles. `/api/brain` supports a stateless `session` round-trip:
-
-- request: `{ vision, context: { useStudySession: true, session } }`
-- response: `{ result, session }`
-
-The client can persist the returned session (for example in memory/localStorage) and send it back on the next decision. This avoids hidden server state and any Lovable storage dependency.
-
-## Opponent profiles
-
-Player Model V1 accumulates observed data such as VPIP, PFR, 3-bet and postflop aggression. Labels are conservative:
-
-- fewer than 30 hands: `SEM AMOSTRA`;
-- 30–99 hands: low confidence;
-- 100+ hands: at most medium confidence in V1.
-
-Profiles are context, not permission to override the frozen baseline. Exploit rules require their own audited policy before changing decisions.
-
-## Strategy migration status
-
-Frozen certification known from the migration record:
-
-- preflop: `cash6max-100z-highrake-v1`;
-- postflop policy target: `postflop-policy-v4`;
-- model SHA-256: `bb98bc8a27ec4bb634ff380ec1315c3bc4cc7605a81a65ce0ece2848a4e27181`;
-- Decision Layer: V4;
-- minimum policy support: 45%;
-- mixed-strategy threshold: <= 10 percentage points.
-
-The Policy V4 source/model is **not currently vendored in GitHub**. Therefore the runtime is correctly labeled `strategy-v1-migration`; the current postflop fallback is provisional and must never be presented as Policy V4.
-
-## Invariants
-
-1. Bad/inconclusive vision never erases confirmed state.
-2. Legal-action mask is sovereign.
-3. Missing context is reported, not guessed.
-4. Player reads require sample size.
-5. Lovable never decides.
-6. Policy V4 is not claimed active until source + model checksum + parity tests pass.
+1. Missing information is represented as missing, never guessed.
+2. Legal actions remain sovereign at the final decision boundary.
+3. Local visual candidates are evidence only until confirmed.
+4. Session memory can be round-tripped through `/api/brain` without hidden server state.
+5. No strategy decision is delegated to Lovable.
