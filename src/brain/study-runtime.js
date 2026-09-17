@@ -1,6 +1,8 @@
 import { createStudySession, ingestVisionState, ingestCaptureEvents } from './study-session.js';
 import { resolveSeatIdentity } from './seat-identity.js';
 import { decideBrain } from './decision.js';
+import { metadataFinanceSummary } from './metadata-finance.js';
+import { actionEvidenceSummary } from './action-evidence.js';
 
 export function runStudyRuntime(state, context={}){
   const seatIdentity=resolveSeatIdentity(state?.seats||[],{
@@ -12,7 +14,7 @@ export function runStudyRuntime(state, context={}){
   const provided=context.captureSeatMap&&typeof context.captureSeatMap==='object'?context.captureSeatMap:{};
   const captureSeatMap=Object.keys(provided).length?provided:seatIdentity.map;
   const base=context.session&&typeof context.session==='object'?context.session:createStudySession();
-  let session=ingestVisionState(base,state,{handId:context.handId??null});
+  let session=ingestVisionState(base,state,{handId:context.handId??null,seatMap:captureSeatMap});
   if(Array.isArray(context.captureEvents)&&context.captureEvents.length){
     session=ingestCaptureEvents(session,context.captureEvents,{seatMap:captureSeatMap});
   }
@@ -27,5 +29,13 @@ export function runStudyRuntime(state, context={}){
     captureCandidates:session.captureCandidates||[],
   });
   const result=decideBrain(state,decisionContext);
-  return {version:'study-runtime-v1',seatIdentity,captureSeatMap,session,result};
+  return {
+    version:'study-runtime-v1.1',
+    seatIdentity,
+    captureSeatMap,
+    finance:metadataFinanceSummary(session.finance),
+    actionEvidence:actionEvidenceSummary(session.captureCandidates||[],session.financialAmbiguous||[]),
+    session,
+    result,
+  };
 }
