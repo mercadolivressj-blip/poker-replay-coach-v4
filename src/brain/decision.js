@@ -25,9 +25,17 @@ export function enforceLegal(decision,state){
 
 export function decideBrain(state,context={}){
  const street=decisionStreet(state.board);
- const ledger=buildLedgerFromState(state,{handId:context.handId??null,heroActor:context.heroActor??null});
+ // Study Session owns the accumulated authoritative line. Fall back to a ledger
+ // rebuilt from the current VisionState only when no session ledger was supplied.
+ const ledger=context.ledger && typeof context.ledger==='object'
+   ? context.ledger
+   : buildLedgerFromState(state,{handId:context.handId??null,heroActor:context.heroActor??null});
  const heroPfa=heroWasPreflopAggressor(ledger);
- const knowledge=buildBrainKnowledge(state,{ledger,profiles:context.profiles??null});
+ const knowledge=buildBrainKnowledge(state,{
+   ledger,
+   profiles:context.profiles??null,
+   captureCandidates:context.captureCandidates??[],
+ });
  const resolvedContext={
    ...context,
    ledger,
