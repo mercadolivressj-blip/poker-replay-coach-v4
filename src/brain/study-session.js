@@ -1,6 +1,7 @@
 import { createLedger, applyActionHistory, streetFromBoard } from './action-ledger.js';
 import { createPlayerProfiles, finalizeHandIntoProfiles } from './player-model.js';
 import { captureEventsToCandidates, remapCaptureCandidates, mergeCaptureCandidates, confirmCaptureCandidates } from './action-event-bridge.js';
+import { buildObservedLedger } from './observed-ledger.js';
 
 const heroKey = (state) => Array.isArray(state?.heroCards) && state.heroCards.length === 2 ? state.heroCards.join('') : '';
 
@@ -9,12 +10,17 @@ function heroActorFromSeats(seats = []) {
   return s?.name || s?.player || s?.nick || s?.nickname || null;
 }
 
+function withObserved(session){
+  return {...session,observedLedger:buildObservedLedger(session?.captureCandidates||[],{handId:session?.handId??null})};
+}
+
 export function createStudySession() {
   return {
-    version:'study-session-v1',
+    version:'study-session-v1.1',
     handId:0,
     heroKey:'',
     ledger:null,
+    observedLedger:buildObservedLedger([], {handId:0}),
     profiles:createPlayerProfiles(),
     captureCandidates:[],
     completedHands:0,
@@ -38,7 +44,7 @@ export function beginNewHand(sessionInput,state={},explicitHandId=null) {
   s.ledger.street=streetFromBoard(state.board);
   s.ledger=applyActionHistory(s.ledger,state.actionHistory||[],state.board||[]);
   s.ledger.street=streetFromBoard(state.board);
-  return s;
+  return withObserved(s);
 }
 
 export function ingestVisionState(sessionInput,state={},context={}) {
@@ -49,7 +55,7 @@ export function ingestVisionState(sessionInput,state={},context={}) {
   const explicitChanged=explicit!=null && s.ledger && explicit!==s.handId;
   const cardsChanged=s.heroKey && incomingKey && s.heroKey!==incomingKey;
   if(needsFirst || explicitChanged || cardsChanged) s=beginNewHand(s,state,explicit);
-  else if(!s.ledger) return {...s,lastCapturedAt:state.capturedAt??Date.now()};
+  else if(!s.ledger) return withObserved({...s,lastCapturedAt:state.capturedAt??Date.now()});
   else {
     const ledger={...s.ledger,seats:Array.isArray(state.seats)&&state.seats.length?state.seats:s.ledger.seats};
     const actor=heroActorFromSeats(state.seats);
@@ -60,12 +66,12 @@ export function ingestVisionState(sessionInput,state={},context={}) {
   if(s.captureCandidates?.length) {
     s={...s,captureCandidates:confirmCaptureCandidates(s.captureCandidates,s.ledger)};
   }
-  return s;
+  return withObserved(s);
 }
 
 export function ingestCaptureEvents(sessionInput,events=[],context={}) {
   const s=sessionInput || createStudySession();
-  if(!s.ledger || !Array.isArray(events) || !events.length) return s;
+  if(!s.ledger || !Array.isArray(events) || !events.length) return withObserved(s);
   const seatMap=context.seatMap || {};
   const existing=remapCaptureCandidates(s.captureCandidates||[],seatMap,s.ledger.heroActor);
   const incoming=captureEventsToCandidates(events,{
@@ -75,7 +81,7 @@ export function ingestCaptureEvents(sessionInput,events=[],context={}) {
     heroActor:s.ledger.heroActor,
   });
   const merged=mergeCaptureCandidates(existing,incoming);
-  return {...s,captureCandidates:confirmCaptureCandidates(merged,s.ledger)};
+  return withObserved({...s,captureCandidates:confirmCaptureCandidates(merged,s.ledger)});
 }
 
 export function resetStudySession(sessionInput,{keepProfiles=true}={}) {
