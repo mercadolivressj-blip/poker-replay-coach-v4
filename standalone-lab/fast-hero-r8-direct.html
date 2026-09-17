@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SSJ Vision Lab R8 — Gemini Direct</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;background:#03140d;color:#eafff2;font-family:Inter,system-ui,Arial,sans-serif} .wrap{max-width:1280px;margin:auto;padding:18px}
+    h1{margin:0;font-size:26px}.sub{color:#9acdb0;margin-top:4px;font-size:13px}.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+    .badge{border:1px solid #1f7b52;background:#0a2a1d;color:#7df0ad;padding:8px 11px;border-radius:999px;font-size:12px;font-weight:700}
+    .row{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}.btn{border:1px solid #2b7654;background:#0c3122;color:#fff;padding:10px 14px;border-radius:9px;cursor:pointer}.btn.primary{background:#9c7b13;border-color:#bd9a24}.btn:disabled{opacity:.45;cursor:not-allowed}
+    .card{background:#08271b;border:1px solid #176240;border-radius:14px;padding:14px}.video{width:100%;aspect-ratio:16/9;object-fit:contain;background:#000;border-radius:10px}
+    .main{display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:14px}.state dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:10px 16px}.state dt{color:#88ad9a;text-transform:uppercase;font-size:12px}.state dd{margin:0;font-family:ui-monospace,monospace;font-weight:700;text-align:right}
+    .lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.lane h3{margin:0 0 7px}.lane .big{font-size:23px;font-weight:900;color:#f3df42;min-height:30px}.meta{font-size:12px;color:#a8d8bf}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#526c5e;margin-left:5px}.dot.busy{background:#f0bf27}.dot.ok{background:#58dc93}.err{color:#ff8d8d;font-size:12px;margin-top:4px}
+    .previews{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.preview img{width:100%;max-height:290px;object-fit:contain;background:#000;border-radius:8px}.label{font-size:12px;color:#a8d8bf;margin-bottom:7px}
+    pre{margin:0;max-height:330px;overflow:auto;white-space:pre-wrap;background:#02110b;border-radius:9px;padding:12px;color:#a9ffd0;font:12px ui-monospace,monospace}
+    @media(max-width:900px){.main{grid-template-columns:1fr}.lanes{grid-template-columns:1fr 1fr}} @media(max-width:560px){.lanes,.previews{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div><h1>SSJ Vision Lab</h1><div class="sub">Mesmo pipeline visual validado, agora com backend próprio e Gemini direto.</div></div><div id="backendBadge" class="badge">SSJ VISION BACKEND · verificando…</div></div>
+  <div class="row"><button id="share" class="btn primary">Compartilhar replay</button><button id="stop" class="btn" disabled>Parar</button><button id="reset" class="btn">Reiniciar</button></div>
+  <div class="main">
+    <div class="card"><video id="video" class="video" autoplay muted playsinline></video></div>
+    <div class="card state"><div class="label">Estado lido</div><dl>
+      <dt>Herói</dt><dd id="heroState">—</dd><dt>Board</dt><dd id="boardState">—</dd><dt>Pote</dt><dd id="potState">—</dd><dt>Stack herói</dt><dd id="stackState">—</dd><dt>Blinds</dt><dd id="blindsState">—</dd><dt>Ações</dt><dd id="actionsState">—</dd><dt>Para pagar</dt><dd id="callState">—</dd><dt>Backend</dt><dd id="backendState">—</dd>
+    </dl></div>
+  </div>
+  <div class="lanes">
+    <div class="card lane"><h3>Hero <span id="heroDot" class="dot"></span></h3><div id="heroValue" class="big">—</div><div id="heroMeta" class="meta">aguardando</div><div id="heroErr" class="err"></div></div>
+    <div class="card lane"><h3>Board <span id="boardDot" class="dot"></span></h3><div id="boardValue" class="big">—</div><div id="boardMeta" class="meta">aguardando</div><div id="boardErr" class="err"></div></div>
+    <div class="card lane"><h3>Quick <span id="quickDot" class="dot"></span></h3><div id="quickValue" class="big">—</div><div id="quickMeta" class="meta">aguardando</div><div id="quickErr" class="err"></div></div>
+    <div class="card lane"><h3>Actions <span id="actionsDot" class="dot"></span></h3><div id="actionsValue" class="big">—</div><div id="actionsMeta" class="meta">aguardando</div><div id="actionsErr" class="err"></div></div>
+  </div>
+  <div class="previews"><div class="card preview"><div class="label">Recorte Hero congelado · x=.36 y=.52 w=.28 h=.24</div><img id="heroPreview" alt="Hero crop" /></div><div class="card preview"><div class="label">Recorte Board congelado · x=.26 y=.30 w=.48 h=.16</div><img id="boardPreview" alt="Board crop" /></div></div>
+  <div class="card" style="margin-top:14px"><pre id="log"></pre></div>
+</div>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const API_BASE='https://ssj-vision-backend-direct.vercel.app';
+const video = $('video');
+let stream = null, running = false, generation = 0;
+const state = { hero:[], board:[], pot:null, heroStack:null, blinds:null, actions:[], toCall:null };
+const confirmed = { hero:[], board:[], actions:[] };
+const votes = { hero:{key:'',n:0}, board:{key:'',n:0}, actions:{key:'',n:0} };
+const lane = { hero:{busy:false,reads:0}, board:{busy:false,reads:0}, quick:{busy:false,reads:0}, actions:{busy:false,reads:0} };
+function log(text, bad=false){ const line=document.createElement('div'); line.textContent='['+new Date().toLocaleTimeString()+'] '+text; if(bad) line.style.color='#ff8d8d'; $('log').prepend(line); while($('log').children.length>70)$('log').lastChild.remove(); }
+function esc(v){ return v==null?'—':String(v); }
+function render(){ $('heroState').textContent=state.hero.join(' ')||'—'; $('boardState').textContent=state.board.join(' ')||'—'; $('potState').textContent=esc(state.pot); $('stackState').textContent=esc(state.heroStack); $('blindsState').textContent=esc(state.blinds); $('actionsState').textContent=state.actions.join(', ')||'—'; $('callState').textContent=esc(state.toCall); $('heroValue').textContent=state.hero.join(' ')||'—'; $('boardValue').textContent=state.board.join(' ')||'—'; $('quickValue').textContent=state.pot||'—'; $('actionsValue').textContent=state.actions.join(' · ')||'—'; }
+function setLane(name,{busy,ms,model,error,text}={}){ if(typeof busy==='boolean'){lane[name].busy=busy; $(name+'Dot').className='dot '+(busy?'busy':'ok');} if(ms!=null){lane[name].reads++; $(name+'Meta').textContent=`leituras ${lane[name].reads} · ${ms} ms · ${model||'—'}`;} if(text)$(name+'Meta').textContent=text; $(name+'Err').textContent=error||''; }
+function dataUrlCrop(nx,ny,nw,nh,maxScale,quality){ if(!video.videoWidth)return null; const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.round(video.videoWidth*nw),sh=Math.round(video.videoHeight*nh); const scale=Math.min(maxScale,1280/sw); const c=document.createElement('canvas'); c.width=Math.round(sw*scale); c.height=Math.round(sh*scale); c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height); return c.toDataURL('image/jpeg',quality); }
+function fullFrame(maxWidth,quality){ if(!video.videoWidth)return null; const s=Math.min(1,maxWidth/video.videoWidth); const c=document.createElement('canvas'); c.width=Math.round(video.videoWidth*s); c.height=Math.round(video.videoHeight*s); c.getContext('2d').drawImage(video,0,0,c.width,c.height); return c.toDataURL('image/jpeg',quality); }
+const caps = { hero:()=>dataUrlCrop(.36,.52,.28,.24,1.6,.82), board:()=>dataUrlCrop(.26,.30,.48,.16,1.6,.82), actions:()=>dataUrlCrop(.38,.55,.61,.44,1.5,.76), quick:()=>fullFrame(1120,.72) };
+function legalCards(a){return Array.isArray(a)&&a.every(c=>/^[2-9TJQKA][hdcs]$/.test(c))&&new Set(a).size===a.length}
+function acceptVote(name,key,need){const v=votes[name]; if(v.key===key)v.n++; else{v.key=key;v.n=1} return v.n>=need;}
+function cardCollision(cards,other){return cards.some(c=>other.includes(c));}
+async function apiRead(scope,image){ const t=performance.now(); const r=await fetch(API_BASE+'/api/vision/read',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({scope,mode:'fast',image})}); const j=await r.json().catch(()=>({})); const ms=Math.round(performance.now()-t); if(!r.ok) throw Object.assign(new Error(j.error||('HTTP '+r.status)),{status:r.status,ms}); return {...j,clientMs:ms}; }
+function applyHero(r){ const cards=Array.isArray(r.heroCards)?r.heroCards:[]; if(r.heroPresence!=='present'||cards.length!==2||!legalCards(cards)||cardCollision(cards,confirmed.board)){ log(`Hero inconclusivo · ${r.readerModel||'—'} · ${r.totalMs||r.clientMs}ms`); return; } const key=cards.join(' '); const need=(r.confidence||0)>=.9?1:(confirmed.hero.length?3:2); if(acceptVote('hero',key,need)){confirmed.hero=[...cards]; state.hero=[...cards]; log(`Hero CONFIRMADO ${key} · ${r.readerModel} · ${r.totalMs||r.clientMs}ms`); render();} }
+function applyBoard(r){ const cards=Array.isArray(r.board)?r.board:[]; const valid=legalCards(cards); const conclusive=(r.boardPresence==='absent'&&cards.length===0)||(r.boardPresence==='present'&&[3,4,5].includes(cards.length)); if(!valid||!conclusive||cardCollision(cards,confirmed.hero)){ log(`Board inconclusivo · ${r.readerModel||'—'} · ${r.totalMs||r.clientMs}ms`); return; } const key=cards.join(' ')||'EMPTY'; const need=confirmed.board.length?2:1; if(acceptVote('board',key,need)){confirmed.board=[...cards];state.board=[...cards];log(`Board CONFIRMADO ${key} · ${r.readerModel} · ${r.totalMs||r.clientMs}ms`);render();} }
+function applyQuick(r){ if(r.pot)state.pot=r.pot;if(r.heroStack)state.heroStack=r.heroStack;if(r.blinds)state.blinds=r.blinds;render();log(`Quick pot=${r.pot||'—'} stack=${r.heroStack||'—'} · ${r.totalMs||r.clientMs}ms`); }
+function applyActions(r){ const a=Array.isArray(r.legalActions)?r.legalActions:[]; if(!a.length)return; const key=a.join('|')+'|'+(r.toCall||''); const need=confirmed.actions.length?2:1; if(acceptVote('actions',key,need)){confirmed.actions=[...a];state.actions=[...a];state.toCall=r.toCall||null;render();log(`Actions ${a.join(',')} call=${r.toCall||'—'} · ${r.totalMs||r.clientMs}ms`);} }
+async function doLane(name,gen){ const image=caps[name](); if(!image||!running||gen!==generation)return; if(name==='hero')$('heroPreview').src=image; if(name==='board')$('boardPreview').src=image; lane[name].busy=true; setLane(name,{busy:true,text:'lendo…'}); try{const r=await apiRead(name,image); if(!running||gen!==generation)return; const ms=r.totalMs||r.clientMs; setLane(name,{busy:false,ms,model:r.readerModel}); if(name==='hero')applyHero(r); else if(name==='board')applyBoard(r); else if(name==='quick')applyQuick(r); else applyActions(r);}catch(e){if(gen===generation){setLane(name,{busy:false,error:e.message,text:'falha — mantendo confirmado'});log(`${name} falhou: ${e.message}${e.ms?' · '+e.ms+'ms':''}`,true);}}finally{lane[name].busy=false;} }
+function startLoop(name,interval,gen){ (async()=>{while(running&&gen===generation){if(!lane[name].busy)void doLane(name,gen); await new Promise(r=>setTimeout(r,interval));}})(); }
+async function start(){ try{stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:10},audio:false});video.srcObject=stream;await video.play().catch(()=>{});generation++;running=true;$('share').disabled=true;$('stop').disabled=false;Object.values(lane).forEach(x=>x.busy=false);const g=generation;log('Replay compartilhado. 4 lanes independentes iniciadas.');startLoop('hero',220,g);startLoop('board',240,g);startLoop('quick',250,g);startLoop('actions',180,g);stream.getVideoTracks()[0]?.addEventListener('ended',stop,{once:true});}catch(e){log('Compartilhamento cancelado: '+e.message,true);} }
+function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;$('share').disabled=false;$('stop').disabled=true;log('Parado.');}
+function reset(){confirmed.hero=[];confirmed.board=[];confirmed.actions=[];state.hero=[];state.board=[];state.pot=null;state.heroStack=null;state.blinds=null;state.actions=[];state.toCall=null;Object.values(votes).forEach(v=>{v.key='';v.n=0});render();log('Estado confirmado limpo.');}
+$('share').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;
+(async()=>{try{const r=await fetch(API_BASE+'/api/vision/health');const j=await r.json();$('backendState').textContent=j.backend||'—';if(j.ok&&j.keyConfigured){$('backendBadge').textContent='SSJ VISION BACKEND · GEMINI DIRECT';$('backendBadge').style.color='#7df0ad';}else if(j.ok){$('backendBadge').textContent='SSJ VISION BACKEND · falta GEMINI_API_KEY';$('backendBadge').style.color='#ffd26c';}else throw new Error('health');}catch{$('backendBadge').textContent='SSJ VISION BACKEND · offline';$('backendBadge').style.color='#ff8d8d';}})();
+render();
+</script>
+</body></html>
