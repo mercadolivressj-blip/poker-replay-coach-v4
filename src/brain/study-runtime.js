@@ -17,7 +17,7 @@ export function runStudyRuntime(state, context={}){
     session=ingestCaptureEvents(session,context.captureEvents,{seatMap:captureSeatMap});
   }
   const decisionContext={...context};
-  for(const k of ['session','useStudySession','captureEvents','captureSeatMap','captureLocalStacks','seatsOrderedFromHero','seatOrientation']) delete decisionContext[k];
+  for(const k of ['session','useStudySession','captureEvents','captureSeatMap','captureLocalStacks','seatsOrderedFromHero','seatOrientation','handHistoryText','manualActionHistory']) delete decisionContext[k];
   Object.assign(decisionContext,{
     handId:session.handId||context.handId||null,
     heroActor:session.ledger?.heroActor??context.heroActor??null,
