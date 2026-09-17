@@ -84,6 +84,7 @@ export function decideBrain(state,context={}){
    strategyStatus:{
      preflop:STRATEGY_V1_MANIFEST.preflop.status,
      postflop:STRATEGY_V1_MANIFEST.postflop.status,
+     mtt:STRATEGY_V1_MANIFEST.mtt.status,
      policyComplete:STRATEGY_V1_MANIFEST.policyComplete,
    },
    ledgerVersion:'action-ledger-v1-external',
@@ -97,6 +98,9 @@ export function decideBrain(state,context={}){
    mixedActionCodes:safe?.mixedActionCodes??null,
    engine:safe?.engine??'BRAIN GATE',
    confidence:safe?.confidence??0,
+   certification:safe?.certification??null,
+   icmCertified:safe?.icmCertified??null,
+   solverCertified:safe?.solverCertified??null,
    reason:safe?.reason??'Estado insuficiente.',
    details:safe?.notes??safe?.details??null,
    ledger:detailedLedgerSummary(ledger),
