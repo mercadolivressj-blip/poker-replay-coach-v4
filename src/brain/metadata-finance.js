@@ -28,6 +28,17 @@ export function createMetadataFinanceState({street='preflop'}={}){
 
 export function resetMetadataFinanceHand(){ return createMetadataFinanceState(); }
 
+function materiallyChanged(previous,snapshot,epsilon){
+  const keys=Object.keys(snapshot);
+  if(!keys.length)return false;
+  if(!Object.keys(previous||{}).length)return true;
+  for(const actor of keys){
+    if(!Number.isFinite(previous?.[actor]))return true;
+    if(Math.abs(previous[actor]-snapshot[actor].stack)>epsilon)return true;
+  }
+  return false;
+}
+
 export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(), {
   epsilon=.005,
   confidence=.78,
@@ -37,9 +48,14 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
   const street=streetFromBoard(visionState.board||[]);
   const snapshot=normalizeSeatFinancialSnapshot(visionState.seats||[]);
   const previous={...(state.stacks||{})};
+  if(!materiallyChanged(previous,snapshot,epsilon)){
+    return {state:{...state,street},deltas:[],snapshot};
+  }
+
   const nextStacks={...previous};
   const deltas=[];
   const fromObservedAt=Number(state.observedAt)||null;
+  const crossStreet=Boolean(state.observedAt!=null&&state.street!==street);
 
   for(const row of Object.values(snapshot)){
     const actor=row.actor;
@@ -56,7 +72,8 @@ export function observeMetadataFinance(stateInput, visionState={}, now=Date.now(
       source:'metadata-stack-delta',
       actor,
       seatId:row.seatId,
-      street,
+      street:crossStreet?null:street,
+      crossStreet,
       amount:Number(spent.toFixed(4)),
       stackBefore:Number(prev.toFixed(4)),
       stackAfter:Number(row.stack.toFixed(4)),
