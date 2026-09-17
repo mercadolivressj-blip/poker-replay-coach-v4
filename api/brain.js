@@ -1,8 +1,6 @@
 import { VISION_VERSION, VISION_V1_FIELDS, normalizeVisionStateV1, validateVisionStateV1 } from '../src/core/vision-contract.js';
-import { decideBrain } from '../src/brain/decision.js';
-import { createStudySession, ingestVisionState, ingestCaptureEvents } from '../src/brain/study-session.js';
 import { combineActionSources } from '../src/brain/action-source.js';
-import { resolveSeatIdentity } from '../src/brain/seat-identity.js';
+import { runStudyRuntime } from '../src/brain/study-runtime.js';
 import { STRATEGY_V1_MANIFEST } from '../src/brain/strategy-manifest.js';
 
 const json = (res, status, body) => {
@@ -25,6 +23,7 @@ export default async function handler(req, res) {
       visionContract: VISION_VERSION,
       fields: VISION_V1_FIELDS,
       brainVersion: 'brain-v1',
+      runtimeVersion: 'study-runtime-v1',
       strategyVersion: STRATEGY_V1_MANIFEST.version,
       strategyStatus: {
         preflop: STRATEGY_V1_MANIFEST.preflop.status,
@@ -59,44 +58,15 @@ export default async function handler(req, res) {
   const check = validateVisionStateV1(state);
   if (!check.ok) return json(res, 422, { ok: false, error: 'INVALID_VISION_STATE', details: check.errors });
 
-  const seatIdentity = resolveSeatIdentity(state.seats, {
-    heroActor: context.heroActor ?? null,
-    localStacks: context.captureLocalStacks && typeof context.captureLocalStacks === 'object' ? context.captureLocalStacks : {},
-    orderedFromHero: context.seatsOrderedFromHero === true,
-    orientation: context.seatOrientation === 'right' ? 'right' : 'left',
-  });
-  const providedSeatMap = context.captureSeatMap && typeof context.captureSeatMap === 'object' ? context.captureSeatMap : {};
-  const captureSeatMap = Object.keys(providedSeatMap).length ? providedSeatMap : seatIdentity.map;
-
+  const runtime = runStudyRuntime(state, context);
   const wantsSession = context.useStudySession === true || (context.session && typeof context.session === 'object');
-  let session = null;
-  let decisionContext = { ...context };
-  for (const k of ['session','useStudySession','handHistoryText','manualActionHistory','captureEvents','captureSeatMap','captureLocalStacks','seatsOrderedFromHero','seatOrientation']) delete decisionContext[k];
-
-  if (wantsSession) {
-    const baseSession = context.session && typeof context.session === 'object' ? context.session : createStudySession();
-    session = ingestVisionState(baseSession, state, { handId: context.handId ?? null });
-    if (Array.isArray(context.captureEvents) && context.captureEvents.length) {
-      session = ingestCaptureEvents(session, context.captureEvents, { seatMap: captureSeatMap });
-    }
-    decisionContext = {
-      ...decisionContext,
-      handId: session.handId || context.handId || null,
-      heroActor: session.ledger?.heroActor ?? context.heroActor ?? null,
-      profiles: session.profiles,
-      ledger: session.ledger,
-      observedLedger: session.observedLedger,
-      captureCandidates: session.captureCandidates || [],
-    };
-  }
-
-  const result = decideBrain(state, decisionContext);
   return json(res, 200, {
     ok: true,
     visionVersion: state.version,
-    brainVersion: result.version,
-    seatIdentity,
-    result,
-    ...(session ? { session } : {}),
+    brainVersion: runtime.result.version,
+    runtimeVersion: runtime.version,
+    seatIdentity: runtime.seatIdentity,
+    result: runtime.result,
+    ...(wantsSession ? { session: runtime.session } : {}),
   });
 }
