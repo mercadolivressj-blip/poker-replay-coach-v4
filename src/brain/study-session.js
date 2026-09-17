@@ -28,7 +28,7 @@ function deriveSession(sessionInput,{seatMap={}}={}){
 function updateFinance(sessionInput,state={},context={}){
   const s={...sessionInput};
   const marker=Number(context.metadataObservedAt)||null;
-  if(marker&&marker===s.lastMetadataObservedAt)return s;
+  if(marker&&Number(s.lastMetadataObservedAt)&&marker<=Number(s.lastMetadataObservedAt))return s;
   const at=marker || state.capturedAt || Date.now();
   const out=observeMetadataFinance(s.finance||createMetadataFinanceState({street:streetFromBoard(state.board)}),state,at,{forceFresh:Boolean(marker)});
   if(!out.fresh)return s;
