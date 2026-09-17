@@ -25,9 +25,19 @@ function deriveSession(sessionInput,{seatMap={}}={}){
   };
 }
 
+function updateFinance(sessionInput,state={},context={}){
+  const s={...sessionInput};
+  const marker=Number(context.metadataObservedAt)||null;
+  if(marker&&marker===s.lastMetadataObservedAt)return s;
+  const at=marker || state.capturedAt || Date.now();
+  const out=observeMetadataFinance(s.finance||createMetadataFinanceState({street:streetFromBoard(state.board)}),state,at,{forceFresh:Boolean(marker)});
+  if(!out.fresh)return s;
+  return {...s,finance:out.state,lastMetadataObservedAt:marker||s.lastMetadataObservedAt||null};
+}
+
 export function createStudySession() {
   return {
-    version:'study-session-v1.2',
+    version:'study-session-v1.3',
     handId:0,
     heroKey:'',
     ledger:null,
@@ -38,6 +48,7 @@ export function createStudySession() {
     captureCandidates:[],
     completedHands:0,
     lastCapturedAt:null,
+    lastMetadataObservedAt:null,
   };
 }
 
@@ -55,7 +66,7 @@ export function beginNewHand(sessionInput,state={},explicitHandId=null,context={
   const actor=heroActorFromSeats(state.seats);
   s={
     ...s,
-    version:'study-session-v1.2',
+    version:'study-session-v1.3',
     handId:next,
     heroKey:heroKey(state),
     ledger:createLedger({handId:next,heroActor:actor,seats:state.seats||[]}),
@@ -67,8 +78,7 @@ export function beginNewHand(sessionInput,state={},explicitHandId=null,context={
   s.ledger.street=streetFromBoard(state.board);
   s.ledger=applyActionHistory(s.ledger,state.actionHistory||[],state.board||[]);
   s.ledger.street=streetFromBoard(state.board);
-  const f=observeMetadataFinance(s.finance,state,state.capturedAt??Date.now());
-  s.finance=f.state;
+  s=updateFinance(s,state,context);
   return deriveSession(s,{seatMap:context.seatMap||{}});
 }
 
@@ -86,10 +96,9 @@ export function ingestVisionState(sessionInput,state={},context={}) {
   const ledger={...s.ledger,seats:Array.isArray(state.seats)&&state.seats.length?state.seats:s.ledger.seats};
   const actor=heroActorFromSeats(state.seats);
   if(actor) ledger.heroActor=actor;
-  s={...s,version:'study-session-v1.2',heroKey:incomingKey||s.heroKey,ledger:applyActionHistory(ledger,state.actionHistory||[],state.board||[]),lastCapturedAt:state.capturedAt??Date.now()};
+  s={...s,version:'study-session-v1.3',heroKey:incomingKey||s.heroKey,ledger:applyActionHistory(ledger,state.actionHistory||[],state.board||[]),lastCapturedAt:state.capturedAt??Date.now()};
   s.ledger.street=streetFromBoard(state.board);
-  const f=observeMetadataFinance(s.finance,state,state.capturedAt??Date.now());
-  s.finance=f.state;
+  s=updateFinance(s,state,context);
   return deriveSession(s,{seatMap:context.seatMap||{}});
 }
 
