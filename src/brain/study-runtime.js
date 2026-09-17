@@ -30,7 +30,7 @@ export function runStudyRuntime(state, context={}){
   });
   const result=decideBrain(state,decisionContext);
   return {
-    version:'study-runtime-v1.1',
+    version:'study-runtime-v1',
     seatIdentity,
     captureSeatMap,
     finance:metadataFinanceSummary(session.finance),
