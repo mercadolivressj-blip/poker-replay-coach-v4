@@ -7,7 +7,6 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,108 +20,44 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p=Path('standalone-lab/study-runtime-public-v1.html')
           s=p.read_text()
-
           old="let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false;"
           new="let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='';"
           if old not in s: raise SystemExit('vars anchor missing')
           s=s.replace(old,new,1)
-
-          old="""function historyMerge(next,at){
-  if(!Array.isArray(next))return;
-  if(!next.length)return;
-  if(next.length>=state.actionHistory.length){state.actionHistory=next;fieldSeen.history=at||Date.now();}
-}"""
-          new="""function historyMerge(next,at){
-  if(!Array.isArray(next)||!next.length)return;
-  const clean=next.map(historyText),cur=(state.actionHistory||[]).map(historyText);
-  const nextKey=clean.join('||'),curKey=cur.join('||');
-  if(nextKey===curKey){fieldSeen.history=at||Date.now();return;}
-  const extendsCurrent=cur.length>0&&clean.length>=cur.length&&cur.every((v,i)=>clean[i]===v);
-  if(cur.length&&!extendsCurrent){
-    if(historyCandidateKey===nextKey)historyCandidateVotes++;else{historyCandidateKey=nextKey;historyCandidateVotes=1;}
-    if(historyCandidateVotes<2){log('DROP history instável · aguardando confirmação');return;}
-  }
-  if(clean.length<cur.length&&!extendsCurrent)return;
-  state.actionHistory=next;fieldSeen.history=at||Date.now();historyCandidateKey='';historyCandidateVotes=0;
-}"""
-          if old not in s: raise SystemExit('history anchor missing')
-          s=s.replace(old,new,1)
-
+          pat=r"function historyMerge\(next,at\)\{\n  if\(!Array\.isArray\(next\)\)return;\n  if\(!next\.length\)return;\n  if\(next\.length>=state\.actionHistory\.length\)\{state\.actionHistory=next;fieldSeen\.history=at\|\|Date\.now\(\);\}\n\}"
+          repl="function historyMerge(next,at){\n  if(!Array.isArray(next)||!next.length)return;\n  const clean=next.map(historyText),cur=(state.actionHistory||[]).map(historyText);\n  const nextKey=clean.join('||'),curKey=cur.join('||');\n  if(nextKey===curKey){fieldSeen.history=at||Date.now();return;}\n  const extendsCurrent=cur.length>0&&clean.length>=cur.length&&cur.every((v,i)=>clean[i]===v);\n  if(cur.length&&!extendsCurrent){if(historyCandidateKey===nextKey)historyCandidateVotes++;else{historyCandidateKey=nextKey;historyCandidateVotes=1;}if(historyCandidateVotes<2){log('DROP history instável · aguardando confirmação');return;}}\n  if(clean.length<cur.length&&!extendsCurrent)return;\n  state.actionHistory=next;fieldSeen.history=at||Date.now();historyCandidateKey='';historyCandidateVotes=0;\n}"
+          s,n=re.subn(pat,repl,s,count=1)
+          if n!=1: raise SystemExit('history anchor missing')
           old="seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';metaUrgent=true;"
           new="seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;"
-          if old not in s: raise SystemExit('reset anchor missing')
+          if old not in s: raise SystemExit('resetHand anchor missing')
           s=s.replace(old,new,1)
-
-          marker="""function showGate(why){
-  if(state.heroCards.length===2){
-    $('decision').textContent='AGUARDANDO';
-    $('engine').textContent='BRAIN GATE · confiança 0';
-    $('reason').textContent='Aguardando '+String(why||'estado confirmado')+'.';
-  }
-}
-"""
-          insert=marker+"""function decisionPointFingerprint(s){
-  const cents=v=>{const n=num(v);return n==null?'':Math.round(n*100)};
-  return [handSeq,s.heroCards.join(''),s.board.join(''),cents(s.pot),cents(s.toCall),[...(s.legalActions||[])].sort().join('-'),s.heroPosition||'',cents(s.heroStack),s.blinds||'',$('format').value].join('|');
-}
-function highImpactFacing(s){
-  const tc=num(s.toCall),st=num(s.heroStack),legal=new Set(s.legalActions||[]);
-  return s.board.length>=3&&legal.has('CALL')&&legal.has('FOLD')&&tc!=null&&st!=null&&st>0&&tc/st>=0.70;
-}
-"""
-          if marker not in s: raise SystemExit('showGate anchor missing')
-          s=s.replace(marker,insert,1)
-
-          old="""  const effectiveState={...state,heroPosition:gate.effectivePos};
-  const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');
-  if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;
-"""
-          new="""  const effectiveState={...state,heroPosition:gate.effectivePos};
-  const pointKey=decisionPointFingerprint(effectiveState);
-  if(pointKey!==decisionPointKey){decisionPointKey=pointKey;decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';}
-  if(pinnedDecisionPoint===pointKey)return;
-  if(highImpactFacing(effectiveState)&&(!effectiveState.actionHistory.length||!fieldSeen.history||Date.now()-fieldSeen.history>12000)){
-    $('decision').textContent='AGUARDANDO';$('engine').textContent='BRAIN GATE · confiança 0';$('reason').textContent='Spot de alto impacto: aguardando histórico confirmado antes de recomendar call/fold.';return;
-  }
-  const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');
-  if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;
-"""
+          marker="async function brainSoon(){"
+          helpers="function decisionPointFingerprint(s){\n  const cents=v=>{const n=num(v);return n==null?'':Math.round(n*100)};\n  return [handSeq,s.heroCards.join(''),s.board.join(''),cents(s.pot),cents(s.toCall),[...(s.legalActions||[])].sort().join('-'),s.heroPosition||'',cents(s.heroStack),s.blinds||'',$('format').value].join('|');\n}\nfunction highImpactFacing(s){\n  const tc=num(s.toCall),st=num(s.heroStack),legal=new Set(s.legalActions||[]);\n  return s.board.length>=3&&legal.has('CALL')&&legal.has('FOLD')&&tc!=null&&st!=null&&st>0&&tc/st>=0.70;\n}\n"
+          if marker not in s: raise SystemExit('brainSoon marker missing')
+          s=s.replace(marker,helpers+marker,1)
+          old="  const effectiveState={...state,heroPosition:gate.effectivePos};\n  const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');\n  if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;"
+          new="  const effectiveState={...state,heroPosition:gate.effectivePos};\n  const pointKey=decisionPointFingerprint(effectiveState);\n  if(pointKey!==decisionPointKey){decisionPointKey=pointKey;decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';}\n  if(pinnedDecisionPoint===pointKey)return;\n  if(highImpactFacing(effectiveState)&&(!effectiveState.actionHistory.length||!fieldSeen.history||Date.now()-fieldSeen.history>12000)){$('decision').textContent='AGUARDANDO';$('engine').textContent='BRAIN GATE · confiança 0';$('reason').textContent='Spot de alto impacto: aguardando histórico confirmado antes de recomendar call/fold.';return;}\n  const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');\n  if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;"
           if old not in s: raise SystemExit('brain key anchor missing')
           s=s.replace(old,new,1)
-
-          old="""    if(!r.ok)throw Error(j.error||('HTTP '+r.status));const d=j.result||{};
-    $('decision').textContent=d.decision||'AGUARDANDO';$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';
-    log('BRAIN '+$('decision').textContent+' · '+(d.engine||''));
-"""
-          new="""    if(!r.ok)throw Error(j.error||('HTTP '+r.status));const d=j.result||{};
-    if(!d.decision){$('decision').textContent='AGUARDANDO';$('engine').textContent=(d.engine||'BRAIN GATE')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';log('BRAIN AGUARDANDO · '+(d.engine||''));return;}
-    const sig=[d.decision||'',d.engine||'',d.confidence??'',d.reason||''].join('|');
-    if(sig===decisionCandidateSig)decisionCandidateVotes++;else{decisionCandidateSig=sig;decisionCandidateVotes=1;}
-    if(decisionCandidateVotes<2){
-      $('decision').textContent='VALIDANDO';$('engine').textContent='BRAIN QUORUM · confiança 0';$('reason').textContent='Confirmando a mesma recomendação em duas leituras estáveis antes de exibir.';log('BRAIN candidato '+d.decision+' · '+(d.engine||''));
-      setTimeout(()=>{if(running&&decisionPointKey===pointKey&&!pinnedDecisionPoint){lastBrainKey='';brainSoon()}},1100);return;
-    }
-    pinnedDecisionPoint=pointKey;
-    $('decision').textContent=d.decision;$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado confirmado.';
-    log('BRAIN FIXADO '+d.decision+' · '+(d.engine||''));
-"""
+          old="    if(!r.ok)throw Error(j.error||('HTTP '+r.status));const d=j.result||{};\n    $('decision').textContent=d.decision||'AGUARDANDO';$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';\n    log('BRAIN '+$('decision').textContent+' · '+(d.engine||''));"
+          new="    if(!r.ok)throw Error(j.error||('HTTP '+r.status));const d=j.result||{};\n    if(!d.decision){$('decision').textContent='AGUARDANDO';$('engine').textContent=(d.engine||'BRAIN GATE')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';log('BRAIN AGUARDANDO · '+(d.engine||''));return;}\n    const sig=[d.decision||'',d.engine||'',d.confidence??'',d.reason||''].join('|');\n    if(sig===decisionCandidateSig)decisionCandidateVotes++;else{decisionCandidateSig=sig;decisionCandidateVotes=1;}\n    if(decisionCandidateVotes<2){$('decision').textContent='VALIDANDO';$('engine').textContent='BRAIN QUORUM · confiança 0';$('reason').textContent='Confirmando a mesma recomendação em duas leituras estáveis antes de exibir.';log('BRAIN candidato '+d.decision+' · '+(d.engine||''));setTimeout(()=>{if(running&&decisionPointKey===pointKey&&!pinnedDecisionPoint){lastBrainKey='';brainSoon()}},1100);return;}\n    pinnedDecisionPoint=pointKey;$('decision').textContent=d.decision;$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado confirmado.';log('BRAIN FIXADO '+d.decision+' · '+(d.engine||''));"
           if old not in s: raise SystemExit('brain render anchor missing')
           s=s.replace(old,new,1)
-
           old="Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';metaUrgent=true;"
           new="Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;"
-          if old not in s: raise SystemExit('manual reset anchor missing')
+          if old not in s: raise SystemExit('reset anchor missing')
           s=s.replace(old,new,1)
           p.write_text(s)
-
           p=Path('tests/study-public-runtime-v1.test.mjs')
           t=p.read_text()
           marker="assert.match(html,/function historyMerge\\(/);"
-          repl=marker+"\nassert.match(html,/DROP history instável/);\nassert.match(html,/function decisionPointFingerprint\\(/);\nassert.match(html,/function highImpactFacing\\(/);\nassert.match(html,/Spot de alto impacto/);\nassert.match(html,/BRAIN QUORUM/);\nassert.match(html,/BRAIN FIXADO/);\nassert.match(html,/pinnedDecisionPoint/);"
+          add="assert.match(html,/function historyMerge\\(/);\nassert.match(html,/DROP history instável/);\nassert.match(html,/function decisionPointFingerprint\\(/);\nassert.match(html,/function highImpactFacing\\(/);\nassert.match(html,/Spot de alto impacto/);\nassert.match(html,/BRAIN QUORUM/);\nassert.match(html,/BRAIN FIXADO/);\nassert.match(html,/pinnedDecisionPoint/);"
           if marker not in t: raise SystemExit('test marker missing')
-          t=t.replace(marker,repl,1)
+          t=t.replace(marker,add,1)
           p.write_text(t)
           PY
       - name: Validate focused runtime test
