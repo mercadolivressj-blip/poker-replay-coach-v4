@@ -27,7 +27,7 @@ const VISION='https://ssj-poker-hybrid-v1-r3-fast.vercel.app/api/vision/read';
 const BRAIN='https://poker-brain-v4-public.vercel.app/api/brain';
 const $=id=>document.getElementById(id),video=$('video'),actionOverlay=$('actionOverlay'),actionAnalysis=$('actionAnalysis');
 const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();
-let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='',positionCandidate='',positionVotes=0,brainSession=null,localFelt=null,localLastFeltAt=0,localCaptureState=null,localBandState=null,localSeatState=null,localActionLastTick=0,localOcrQueue=[],localOcrBusy=false,localConfirmedActions=[],remoteActionHistory=[],pendingCaptureEvents=[],localActionSeq=0;
+let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='',positionCandidate='',positionVotes=0,brainSession=null,localFelt=null,localLastFeltAt=0,localCaptureState=null,localBandState=null,localSeatState=null,localActionLastTick=0,localOcrQueue=[],localOcrBusy=false,localConfirmedActions=[],remoteActionHistory=[],pendingCaptureEvents=[],localActionSeq=0,localSweepAt=0,localSweepIndex=0;
 const state={version:'vision-v1',heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()};
 const lanes={hero:{ms:null,err:null,busy:false},board:{ms:null,err:null,busy:false},actions:{ms:null,err:null,busy:false},quick:{ms:null,err:null,busy:false},meta:{ms:null,err:null,busy:false}};
 const seen={hero:0,board:0,actions:0,quick:0,meta:0};
@@ -48,14 +48,18 @@ function captureSeatMap(){
   const map={};slots.forEach((slot,i)=>map[slot]=positions[(heroIndex+i)%positions.length]);return map;
 }
 function resetLocalCapture(){
-  localFelt=null;localLastFeltAt=0;localCaptureState=null;localBandState=null;localSeatState=null;localOcrQueue=[];localOcrBusy=false;localConfirmedActions=[];remoteActionHistory=[];pendingCaptureEvents=[];localActionSeq=0;brainSession=null;positionCandidate='';positionVotes=0;
+  localFelt=null;localLastFeltAt=0;localCaptureState=null;localBandState=null;localSeatState=null;localOcrQueue=[];localOcrBusy=false;localConfirmedActions=[];remoteActionHistory=[];pendingCaptureEvents=[];localActionSeq=0;localSweepAt=0;localSweepIndex=0;brainSession=null;positionCandidate='';positionVotes=0;
   if(actionOverlay)actionOctx.clearRect(0,0,actionOverlay.width,actionOverlay.height);
 }
+// CAPTURE_STABILITY_V2
+function strategicActionCount(list){return (list||[]).map(historyText).filter(x=>/CALL|PAGA|LIMP|RAISE|AUMENT|3-?BET|ALL-?IN|ALLIN|BET/i.test(x)&&!/POST\s+(SB|BB)/i.test(x)).length;}
 function refreshLocalHistory(){
   const map=captureSeatMap();
   const rows=localConfirmedActions.filter(a=>a.street==='preflop'&&map[a.seatId]).slice().sort((a,b)=>a.at-b.at).map(a=>`${map[a.seatId]} ${a.action}${a.amount!=null?' '+a.amount:''}`);
-  state.actionHistory=rows.length?rows:[...remoteActionHistory];
-  if(rows.length){fieldSeen.history=Date.now();log('LEDGER LOCAL '+rows.join(' | '));}
+  const remote=[...remoteActionHistory],localStrategic=strategicActionCount(rows),remoteStrategic=strategicActionCount(remote);
+  state.actionHistory=localStrategic>0?rows:(remoteStrategic>0?remote:(rows.length?rows:remote));
+  if(rows.length)log('LEDGER LOCAL '+rows.join(' | '));
+  if(state.actionHistory.length)fieldSeen.history=Date.now();
 }
 function confirmLocalAction({seatId,action,amount=null,at=Date.now(),confidence=.8,source='local-action-text'}){
   if(!seatId||!action||seatId==='hero'||seatId==='table')return;
@@ -79,9 +83,18 @@ function drawLocalCapture(){
 }
 function enqueueLocalOcr(e){
   if(!localFelt||!e?.seatId||e.seatId==='hero'||e.seatId==='table')return;
-  const elig=actionSeatEligibility(localSeatState,e.seatId);if(!elig.eligible)return;
+  const elig=actionSeatEligibility(localSeatState,e.seatId);if(elig.reason==='seat-already-folded')return;
   const band=actionBandRegionsFromFelt(localFelt).find(x=>x.id===e.seatId);if(!band)return;
   localOcrQueue.push({e,crops:[localCrop(band.region,.03),localCrop(band.region,.10)]});if(localOcrQueue.length>8)localOcrQueue=localOcrQueue.slice(-8);void drainLocalOcr();
+}
+function sweepLocalOcr(now){
+  if(state.board.length||!localFelt||localOcrBusy||localOcrQueue.length>2||now-localSweepAt<320)return;
+  const bands=actionBandRegionsFromFelt(localFelt);if(!bands.length)return;localSweepAt=now;
+  for(let tries=0;tries<bands.length;tries++){
+    const b=bands[localSweepIndex++%bands.length],elig=actionSeatEligibility(localSeatState,b.id);
+    if(elig.reason==='seat-already-folded')continue;
+    enqueueLocalOcr({type:'action-band-sweep',seatId:b.id,at:now,sweep:true});break;
+  }
 }
 async function drainLocalOcr(){
   if(localOcrBusy)return;localOcrBusy=true;
@@ -89,7 +102,7 @@ async function drainLocalOcr(){
     const job=localOcrQueue.shift(),hits=[];
     for(const crop of job.crops){const r=await actionOcr.read(crop,{timeoutMs:1200});if(r?.parsed)hits.push(r);}
     if(!hits.length)continue;
-    const good=[];for(const hit of hits){const p=hit.parsed,conf=Math.max(0,Math.min(1,(Number(hit.confidence)||0)/100)),elig=actionSeatEligibility(localSeatState,job.e.seatId),gate=shouldAcceptOcrAction({action:p.action,confidence:conf,activeThisHand:elig.eligible,folded:elig.reason==='seat-already-folded',raw:hit.text});if(gate.ok)good.push({p,conf});}
+    const good=[];for(const hit of hits){const p=hit.parsed,conf=Math.max(0,Math.min(1,(Number(hit.confidence)||0)/100)),elig=actionSeatEligibility(localSeatState,job.e.seatId),gate=shouldAcceptOcrAction({action:p.action,confidence:conf,activeThisHand:elig.eligible||state.board.length===0,folded:elig.reason==='seat-already-folded',raw:hit.text});if(gate.ok)good.push({p,conf});}
     if(!good.length)continue;const first=good[0],same=good.filter(x=>x.p.action===first.p.action&&String(x.p.amount??'')===String(first.p.amount??''));
     if(same.length>=2||first.conf>=.82)confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf)});
   }}finally{localOcrBusy=false;}
@@ -101,13 +114,11 @@ function actionTick(ts){
   if(!localFelt||now-localLastFeltAt>1100){localFelt=detectFeltPixels(img.data,aw,ah)||localFelt;localLastFeltAt=now;if(localFelt){if(!localCaptureState)localCaptureState=createActionCaptureState(seatRegionsFromFelt(localFelt));if(!localBandState)localBandState=createActionBandState(actionBandRegionsFromFelt(localFelt));if(!localSeatState)localSeatState=createActionSeatState(seatRegionsFromFelt(localFelt));}}
   if(!localFelt)return;
   const samples=sampleSeats(img.data,aw,ah,localFelt),f=observeSeatSamples(localCaptureState,samples,now,{motionThreshold:.09,foldDrop:.12,refractoryMs:420,confirmFrames:2});localCaptureState=f.state;localSeatState=observeSeatCardState(localSeatState,localCaptureState,now);localSeatState=applyActionSeatEvents(localSeatState,f.events,now);
-  let transitioned=false;
   for(const e of f.events){
     if(e.type==='fold-candidate')confirmLocalAction({seatId:e.seatId,action:'FOLD',at:e.at,confidence:e.confidence,source:'fold-v1.2'});
-    if(e.type==='table-transition'){beginBoundary('Action Capture detectou transição de mão.',{clearHero:true,startedAt:e.at});transitioned=true;break;}
+    if(e.type==='table-transition')log('Action Capture: transição local observada; aguardando confirmação por Hero/pot.');
   }
-  if(transitioned)return;
-  const b=observeActionBands(localBandState,sampleActionBands(img.data,aw,ah,localFelt),now,{threshold:.026,refractoryMs:180,confirmFrames:1});localBandState=b.state;for(const e of b.events)enqueueLocalOcr(e);drawLocalCapture();
+  const b=observeActionBands(localBandState,sampleActionBands(img.data,aw,ah,localFelt),now,{threshold:.026,refractoryMs:180,confirmFrames:1});localBandState=b.state;for(const e of b.events)enqueueLocalOcr(e);sweepLocalOcr(now);drawLocalCapture();
 }
 function setPosition(v,at){
   if(!v||lockedPosition)return;

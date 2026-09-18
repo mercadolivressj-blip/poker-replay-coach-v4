@@ -59,6 +59,10 @@ assert.match(html,/captureEvents:captureBatch/);
 assert.match(html,/captureSeatMap:seatMap/);
 assert.match(html,/useStudySession:true/);
 assert.match(html,/brainSession/);
-assert.match(html,/if\(transitioned\)return/);
+assert.match(html,/CAPTURE_STABILITY_V2/);
+assert.match(html,/function strategicActionCount\(/);
+assert.match(html,/function sweepLocalOcr\(/);
+assert.match(html,/transição local observada; aguardando confirmação por Hero\/pot/);
+assert.doesNotMatch(html,/beginBoundary\('Action Capture detectou transição de mão/);
 
 console.log('public study runtime: hand-epoch/frozen-metadata/monotonic-board/history/freshness/Policy V4 wiring OK');
