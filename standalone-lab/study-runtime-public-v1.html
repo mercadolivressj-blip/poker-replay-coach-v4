@@ -80,10 +80,10 @@ function normalizeToCall(){
   if(legal.has('CHECK')&&!legal.has('CALL')&&!legal.has('FOLD')) state.toCall=null;
 }
 async function read(scope,image){
-  const visionScope=scope==='meta'?'full':scope,at=Date.now(),t=performance.now();
+  const visionScope=scope==='meta'?'full':scope,at=Date.now(),epoch=handEpoch,t=performance.now();
   const r=await fetch(VISION,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,mode:'fast',scope:visionScope})});
   if(!r.ok)throw Error('vision '+r.status+' '+(await r.text()).slice(0,100));
-  return{data:await r.json(),ms:Math.round(performance.now()-t),at,epoch:handEpoch}
+  return{data:await r.json(),ms:Math.round(performance.now()-t),at,epoch}
 }
 function apply(scope,r){
   const originalScope=scope;if(scope==='meta')scope='full';
