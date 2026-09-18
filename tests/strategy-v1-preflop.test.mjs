@@ -83,4 +83,21 @@ const structuredVsOpen=preflopDecision({
 assert.notEqual(structuredVsOpen.engine,'PREFLOP V1 · NODE NÃO CONFIRMADO');
 assert.match(structuredVsOpen.engine,/BASELINE DIRETA/);
 
-console.log('strategy-v1-preflop parity + impossible-RFI + structured-history regression: OK');
+const bbLimpOption44=preflopDecision({
+  heroCards:['4h','4d'],board:[],heroPosition:'HJ',legalActions:['CHECK','RAISE'],
+  actionHistory:['Desmond Lam: POST SB 0.01','N.Neumann.83: POST BB 0.02','wruckzinho: CALL 0.02'],
+  heroStack:'1.98',effectiveStack:'1.98',blinds:'0.01/0.02',pot:'0.07',toCall:null
+},{format:'cash',tableSize:'6max',handId:'field-bb-option-44'});
+assert.equal(bbLimpOption44.decision,'PASSAR');
+assert.match(bbLimpOption44.engine,/BB OPTION/);
+assert.equal(bbLimpOption44.inferredPosition,'BB');
+assert.equal(bbLimpOption44.chartCertified,false);
+
+const bbLimpOptionAQ=preflopDecision({
+  heroCards:['Ah','Qh'],board:[],heroPosition:'HJ',legalActions:['CHECK','RAISE'],
+  actionHistory:['UTG CALL 0.02'],heroStack:'2.00',effectiveStack:'2.00',blinds:'0.01/0.02',pot:'0.05'
+},{format:'cash',tableSize:'6max',handId:'field-bb-option-aqs'});
+assert.equal(bbLimpOptionAQ.decision,'AUMENTAR');
+assert.match(bbLimpOptionAQ.engine,/BB OPTION/);
+
+console.log('strategy-v1-preflop parity + impossible-RFI + structured-history + BB-option regression: OK');

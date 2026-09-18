@@ -87,13 +87,15 @@ function mttApprox({state,context,legal,position,depth}){
 function pack(decision,engine,reason,confidence,extra={}){return {decision,engine,reason,confidence,source:'deterministic',street:'preflop',...extra};}
 
 export function preflopDecision(state,context={}){
- const legal=state.legalActions||[]; const position=normalizePosition(state.heroPosition); const hc=handCode(state.heroCards);
+ const legal=state.legalActions||[]; const hc=handCode(state.heroCards);
+ const legalSet=new Set(legal.map(x=>String(x).toUpperCase()));
+ const bbFreeOption=legalSet.has('CHECK')&&legalSet.has('RAISE')&&!legalSet.has('CALL')&&!legalSet.has('FOLD')&&!(state.board||[]).length;
+ let position=bbFreeOption?'BB':normalizePosition(state.heroPosition);
  if(!hc||!position||!legal.length) return {decision:null,engine:'BRAIN GATE',reason:'Faltam cartas, posição ou ações legais confirmadas.',confidence:0,street:'preflop'};
  const depth=effectiveDepthBB(state.heroStack,state.effectiveStack,state.blinds);
- // BB can never be an unopened RFI decision in 6-max. If CALL/FOLD are present, some prior action exists;
- // without a confirmed opener/node we must fail closed instead of routing to the empty legacy BB RFI chart.
+ // CHECK + RAISE preflop is sovereign evidence of the BB option after one or more limps/completes.
+ // It overrides noisy position metadata for this decision only.
  const explicitNode=String(context?.preflopNode??context?.node??'').trim().toLowerCase();
- const legalSet=new Set(legal.map(x=>String(x).toUpperCase()));
  const inferredHistoryNode=actionHistoryNode(state.actionHistory||[]);
  const facingCost=legalSet.has('CALL') && ((parseChips(state.toCall)??0)>0);
  if(facingCost && explicitNode==='rfi'){
@@ -108,6 +110,15 @@ export function preflopDecision(state,context={}){
  if((context.format||'cash')!=='cash'){
    const approx=mttApprox({state,context,legal,position,depth})||pack(null,'MTT PREFLOP V1 · APROXIMAÇÃO','Sem decisão confiável para este node.',0);
    return {...approx,certification:'approximation-only',chartCertified:false,icmCertified:false,solverCertified:false};
+ }
+
+ // Dedicated 100bb BB option fallback. The frozen direct baseline has no limp-pot node.
+ // Keep this explicitly labelled as heuristic; never pretend it is part of the audited chart.
+ if(bbFreeOption){
+   if(depth==null||depth<90||depth>110) return pack(null,'PREFLOP V1 · FORA DA FAIXA','BB option detectado, mas a cobertura atual continua restrita a ~90–110bb.',0);
+   const iso=range('88+,AJs+,AQo+,KQs,A5s,A4s');
+   if(iso.has(hc)&&legalSet.has('RAISE')) return pack('AUMENTAR','PREFLOP V1 · BB OPTION · HEURÍSTICA',`BB após limp(s): ${hc} entra na faixa conservadora de iso-raise; node ainda não é chart-certificado.`,60,{inferredPosition:'BB',node:'bb_limp_option',chartCertified:false});
+   if(legalSet.has('CHECK')) return pack('PASSAR','PREFLOP V1 · BB OPTION · HEURÍSTICA',`BB após limp(s): ${hc} pode realizar a opção grátis; node ainda não é chart-certificado.`,62,{inferredPosition:'BB',node:'bb_limp_option',chartCertified:false});
  }
 
  // AUTHORITATIVE frozen Strategy V1 baseline first.

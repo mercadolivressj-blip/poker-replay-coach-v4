@@ -119,6 +119,11 @@ function apply(scope,r){
     if(Object.prototype.hasOwnProperty.call(x,'toCall')){state.toCall=x.toCall??null;fieldSeen.toCall=r.at;}
     if(!state.legalActions.length)state.toCall=null;
     normalizeToCall();
+    const la=new Set(state.legalActions);
+    if(state.board.length===0&&la.has('CHECK')&&la.has('RAISE')&&!la.has('CALL')&&!la.has('FOLD')){
+      if(state.heroPosition!=='BB')log('posição corrigida por CHECK pré-flop: BB');
+      lockedPosition='BB';state.heroPosition='BB';fieldSeen.position=r.at;metaUrgent=false;
+    }
   }else if(scope==='quick'){
     if(x.pot!=null){
       const old=num(state.pot),next=num(x.pot);

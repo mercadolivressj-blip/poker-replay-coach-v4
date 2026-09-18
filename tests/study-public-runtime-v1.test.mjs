@@ -35,6 +35,8 @@ assert.doesNotMatch(html,/lanes\.meta\.busy&&metaUrgent/);
 assert.match(html,/Fallback manual/);
 assert.match(html,/manualPos/);
 assert.match(html,/manualNode/);
+assert.match(html,/posição corrigida por CHECK pré-flop: BB/);
+assert.match(html,/lockedPosition='BB'/);
 assert.match(html,/replay iniciado · metadata prioritária/);
 
 console.log('public study runtime: hand-epoch/frozen-metadata/monotonic-board/history/freshness/Policy V4 wiring OK');
