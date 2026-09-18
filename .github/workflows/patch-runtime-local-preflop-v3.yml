@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install and generate frozen runtime
+        run: npm install
       - name: Patch runtime
         run: node scripts/patch-runtime-local-preflop-v3.mjs
       - name: Verify local preflop wiring
