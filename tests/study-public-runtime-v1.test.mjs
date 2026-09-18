@@ -12,14 +12,22 @@ assert.match(html,/function normalizeToCall\(\)/);
 assert.match(html,/legal\.has\('CHECK'\).*state\.toCall=null/);
 assert.match(html,/function coherentState\(\)/);
 assert.match(html,/snapshot desalinhado/);
-assert.match(html,/now-seen\[k\]>7000/);
+assert.match(html,/now-t>7000/);
 assert.match(html,/spread>5500/);
 assert.match(html,/state\.heroPresence!==\'present\'/);
 
 assert.match(html,/heroAbsentStreak>=4/);
 assert.match(html,/lastHeroConfirmedAt>6500/);
-assert.match(html,/Hero\/mesa deixou de estar visível/);
+assert.match(html,/Hero não está mais na mão/);
 assert.match(html,/function resetHand\(/);
+assert.match(html,/handEpoch/);
+assert.match(html,/r\.epoch!==handEpoch/);
+assert.match(html,/DROP .*resposta de mão antiga/);
+assert.match(html,/function observeBlinds\(/);
+assert.match(html,/blinds confirmados/);
+assert.match(html,/function historyMerge\(/);
+assert.match(html,/Pot reiniciou: nova mão detectada/);
+assert.match(html,/board regressivo\/incompatível/);
 
 assert.match(html,/function metaFrame\(\)\{return full\(1120,\.72\)\}/);
 assert.match(html,/metaUrgent/);
@@ -29,4 +37,4 @@ assert.match(html,/manualPos/);
 assert.match(html,/manualNode/);
 assert.match(html,/replay iniciado · metadata prioritária/);
 
-console.log('public study runtime: freshness/hero-debounce/stale-clear/parallel-meta/manual-fallback/Policy V4 wiring OK');
+console.log('public study runtime: hand-epoch/frozen-metadata/monotonic-board/history/freshness/Policy V4 wiring OK');
