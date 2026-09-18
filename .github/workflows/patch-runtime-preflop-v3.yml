@@ -1,0 +1,29 @@
+name: patch runtime preflop v3
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - 'scripts/patch-runtime-preflop-v3.mjs'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/patch-runtime-preflop-v3.mjs
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add standalone-lab/study-runtime-public-v1.html src/brain/preflop.js
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: stabilize seat mapping and unopened preflop detection"
+          git push origin HEAD:vision-v1-brain-integration
