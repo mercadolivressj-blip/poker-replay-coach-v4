@@ -89,6 +89,13 @@ export function preflopDecision(state,context={}){
  const legal=state.legalActions||[]; const position=normalizePosition(state.heroPosition); const hc=handCode(state.heroCards);
  if(!hc||!position||!legal.length) return {decision:null,engine:'BRAIN GATE',reason:'Faltam cartas, posição ou ações legais confirmadas.',confidence:0,street:'preflop'};
  const depth=effectiveDepthBB(state.heroStack,state.effectiveStack,state.blinds);
+ // BB can never be an unopened RFI decision in 6-max. If CALL/FOLD are present, some prior action exists;
+ // without a confirmed opener/node we must fail closed instead of routing to the empty legacy BB RFI chart.
+ const explicitNode=String(context?.preflopNode??context?.node??'').trim().toLowerCase();
+ const legalSet=new Set(legal.map(x=>String(x).toUpperCase()));
+ if(position==='BB' && explicitNode!=='vs_open' && legalSet.has('CALL') && !(state.actionHistory||[]).some(x=>/RAISE|AUMENT|ALL-?IN|ALLIN|CALL|PAGA|LIMP|IGUAL/i.test(String(x)))){
+   return pack(null,'PREFLOP V1 · NODE NÃO CONFIRMADO','BB está enfrentando ação (CALL disponível), mas o opener/node ainda não foi confirmado; RFI no BB não será presumido.',0);
+ }
  if((context.format||'cash')!=='cash'){
    const approx=mttApprox({state,context,legal,position,depth})||pack(null,'MTT PREFLOP V1 · APROXIMAÇÃO','Sem decisão confiável para este node.',0);
    return {...approx,certification:'approximation-only',chartCertified:false,icmCertified:false,solverCertified:false};
@@ -111,6 +118,9 @@ export function preflopDecision(state,context={}){
  const node=actionHistoryNode(state.actionHistory);
  if(depth==null||depth<90||depth>110) return pack(null,'PREFLOP V1 · FORA DA FAIXA','Baseline cash direta só assume autoridade em ~90–110bb; spot segue fora da faixa validada.',0);
  if(node.node==='rfi'){
+   if(position==='BB'){
+     return pack(null,'PREFLOP V1 · NODE NÃO CONFIRMADO','Histórico sugere pote unopened, mas o Hero está no BB; esse node é incompatível com 6-max. Aguardando confirmação do opener.',0);
+   }
    const yes=RFI[position]?.has(hc); if(yes&&legal.includes('RAISE')) return pack('AUMENTAR','PREFLOP LEGACY · FALLBACK',`${position} RFI: ${hc} está na tabela legada; baseline direta não cobriu o estado estruturado.`,55);
    if(!yes&&legal.includes('FOLD')) return pack('DESISTIR','PREFLOP LEGACY · FALLBACK',`${position} RFI: ${hc} não está na tabela legada.`,55);
    if(legal.includes('CHECK')) return pack('PASSAR','PREFLOP LEGACY · FALLBACK','Check grátis disponível.',55);
