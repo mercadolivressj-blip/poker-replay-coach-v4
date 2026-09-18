@@ -38,7 +38,7 @@ const mixedInput={heroCards:['7h','7d'],board:[],heroPosition:'BB',legalActions:
 const m1=preflopBaselineDecision(mixedInput),m2=preflopBaselineDecision(mixedInput);assert.deepEqual(m1,m2);assert.equal(m1.mixed,true);
 const bbFacingUnknown=preflopDecision({
   heroCards:['Ac','Jh'],board:[],heroPosition:'BB',legalActions:['FOLD','CALL','RAISE'],
-  actionHistory:[],heroStack:'US$ 24,75',effectiveStack:'US$ 24,75',blinds:'0,10/0,25'
+  actionHistory:[],heroStack:'US$ 24,75',effectiveStack:'US$ 24,75',blinds:'0,10/0,25',toCall:'0,25'
 },{format:'cash',tableSize:'6max',handId:'bb-ajo-facing-action'});
 assert.equal(bbFacingUnknown.decision,null);
 assert.match(bbFacingUnknown.engine,/NODE NÃO CONFIRMADO/);
@@ -47,7 +47,7 @@ assert.match(bbFacingUnknown.reason,/não vai presumir RFI/);
 const bbBadLegacyHistory=preflopDecision({
   heroCards:['Ac','Jh'],board:[],heroPosition:'BB',legalActions:['FOLD','CALL','RAISE'],
   actionHistory:['UTG FOLD','HJ FOLD','CO FOLD','BTN FOLD','SB FOLD'],
-  heroStack:'US$ 24,75',effectiveStack:'US$ 24,75',blinds:'0,10/0,25'
+  heroStack:'US$ 24,75',effectiveStack:'US$ 24,75',blinds:'0,10/0,25',toCall:'0,25'
 },{format:'cash',tableSize:'6max',handId:'bb-impossible-rfi'});
 assert.equal(bbBadLegacyHistory.decision,null);
 assert.match(bbBadLegacyHistory.engine,/NODE NÃO CONFIRMADO/);
