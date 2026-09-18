@@ -46,4 +46,19 @@ assert.match(html,/posição corrigida por CHECK pré-flop: BB/);
 assert.match(html,/lockedPosition='BB'/);
 assert.match(html,/replay iniciado · metadata prioritária/);
 
+
+assert.match(html,/PUBLIC_ACTION_CAPTURE_V18/);
+assert.match(html,/ActionTextOcr/);
+assert.match(html,/observeSeatSamples/);
+assert.match(html,/observeActionBands/);
+assert.match(html,/function actionTick\(/);
+assert.match(html,/function captureSeatMap\(/);
+assert.match(html,/function confirmLocalAction\(/);
+assert.match(html,/LEDGER LOCAL/);
+assert.match(html,/captureEvents:captureBatch/);
+assert.match(html,/captureSeatMap:seatMap/);
+assert.match(html,/useStudySession:true/);
+assert.match(html,/brainSession/);
+assert.match(html,/if\(transitioned\)return/);
+
 console.log('public study runtime: hand-epoch/frozen-metadata/monotonic-board/history/freshness/Policy V4 wiring OK');

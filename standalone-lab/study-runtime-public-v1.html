@@ -1,9 +1,9 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSJ Poker Study Runtime</title><style>
-:root{font-family:Inter,system-ui,sans-serif;color:#ecfff5;background:#04110b}*{box-sizing:border-box}body{margin:0}.w{max-width:1380px;margin:auto;padding:18px}.top,.controls{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.badge{border:1px solid #2b8f60;border-radius:999px;padding:6px 9px;color:#76ffae;background:#0a2719;font-size:11px;font-weight:800}.warn{border-color:#9b7519;color:#ffe17b;background:#2a2109}.btn,select{border:1px solid #3b7158;background:#143626;color:#fff;border-radius:9px;padding:10px 13px;font-weight:800}.go{background:#a87e0a}.grid{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-top:14px}.card{background:#091b12;border:1px solid #244934;border-radius:13px;padding:13px}.stage{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.decision{font-size:34px;font-weight:950;color:#ffe25b;margin:5px 0}.muted{color:#91b7a5;font-size:13px}.state{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.kv,.lane{background:#0b2317;border:1px solid #214b34;border-radius:9px;padding:9px}.k{font-size:10px;color:#7ea28e;text-transform:uppercase}.v{margin-top:4px;font:800 15px ui-monospace,monospace}.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.ok{color:#78f1aa}.err{color:#ff8b8b}.log{height:170px;overflow:auto;background:#020b06;border-radius:8px;padding:9px;white-space:pre-wrap;font:11px ui-monospace,monospace}.status{margin-top:12px;padding:10px;background:#07170f;border:1px solid #1f4932;border-radius:9px}.assist{margin-top:10px;padding:10px;border:1px dashed #315f45;border-radius:9px;background:#081a11}.assist select{padding:7px 9px;margin:4px 4px 0 0}@media(max-width:900px){.grid{grid-template-columns:1fr}.lanes{grid-template-columns:1fr 1fr}}
+:root{font-family:Inter,system-ui,sans-serif;color:#ecfff5;background:#04110b}*{box-sizing:border-box}body{margin:0}.w{max-width:1380px;margin:auto;padding:18px}.top,.controls{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.badge{border:1px solid #2b8f60;border-radius:999px;padding:6px 9px;color:#76ffae;background:#0a2719;font-size:11px;font-weight:800}.warn{border-color:#9b7519;color:#ffe17b;background:#2a2109}.btn,select{border:1px solid #3b7158;background:#143626;color:#fff;border-radius:9px;padding:10px 13px;font-weight:800}.go{background:#a87e0a}.grid{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-top:14px}.card{background:#091b12;border:1px solid #244934;border-radius:13px;padding:13px}.stage{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.stage canvas{pointer-events:none}.decision{font-size:34px;font-weight:950;color:#ffe25b;margin:5px 0}.muted{color:#91b7a5;font-size:13px}.state{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.kv,.lane{background:#0b2317;border:1px solid #214b34;border-radius:9px;padding:9px}.k{font-size:10px;color:#7ea28e;text-transform:uppercase}.v{margin-top:4px;font:800 15px ui-monospace,monospace}.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.ok{color:#78f1aa}.err{color:#ff8b8b}.log{height:170px;overflow:auto;background:#020b06;border-radius:8px;padding:9px;white-space:pre-wrap;font:11px ui-monospace,monospace}.status{margin-top:12px;padding:10px;background:#07170f;border:1px solid #1f4932;border-radius:9px}.assist{margin-top:10px;padding:10px;border:1px dashed #315f45;border-radius:9px;background:#081a11}.assist select{padding:7px 9px;margin:4px 4px 0 0}@media(max-width:900px){.grid{grid-template-columns:1fr}.lanes{grid-template-columns:1fr 1fr}}
 </style></head><body><div class="w">
 <div class="top"><div><h2 style="margin:0">SSJ STUDY RUNTIME V1</h2><div class="muted">Replay / simulação / estudo pós-jogo</div></div><div><span class="badge">VISION R3 FAST</span> <span class="badge">POLICY V4 LIVE</span> <span id="mttBadge" class="badge warn" style="display:none">MTT = APROXIMAÇÃO</span></div></div>
 <div class="controls" style="margin-top:14px"><div><button id="start" class="btn go">Compartilhar replay</button> <button id="stop" class="btn">Parar</button> <button id="reset" class="btn">Reiniciar</button></div><label class="muted">Formato <select id="format"><option value="cash">Cash</option><option value="mtt">MTT</option></select></label></div>
-<div class="grid"><div class="card"><div class="stage"><video id="video" muted playsinline></video></div><div class="muted" style="margin-top:8px">Compartilhe somente replay/gravação para estudo. O sistema não clica nem executa ações.</div><div id="lanes" class="lanes"></div></div>
+<div class="grid"><div class="card"><div class="stage"><video id="video" muted playsinline></video><canvas id="actionOverlay"></canvas></div><div class="muted" style="margin-top:8px">Compartilhe somente replay/gravação para estudo. O sistema não clica nem executa ações.</div><div id="lanes" class="lanes"></div></div>
 <div class="card"><div class="k">Dica de estudo</div><div id="decision" class="decision">—</div><div id="engine" class="muted">aguardando estado</div><p id="reason">Compartilhe um replay para começar.</p><div class="state">
 <div class="kv"><div class="k">Hero</div><div id="hero" class="v">—</div></div><div class="kv"><div class="k">Board</div><div id="board" class="v">—</div></div>
 <div class="kv"><div class="k">Pot</div><div id="pot" class="v">—</div></div><div class="kv"><div class="k">To call</div><div id="tocall" class="v">—</div></div>
@@ -15,11 +15,19 @@
    <div class="muted">Não inventa nada sozinho: esse fallback só usa o que você confirmar manualmente.</div></div>
    <div class="status"><div class="k">Backend</div><div id="backend" class="muted">checando…</div></div></div></div>
 <div class="card" style="margin-top:14px"><div class="k">Log</div><div id="log" class="log">pronto</div></div></div>
-<script>
+<canvas id="actionAnalysis" style="display:none"></canvas><script type="module">
+// PUBLIC_ACTION_CAPTURE_V18
+import { detectFeltPixels } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/geometry.js';
+import { ActionTextOcr } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-ocr.js';
+import { seatRegionsFromFelt, sampleSeats, createActionCaptureState, observeSeatSamples } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-capture.js';
+import { actionBandRegionsFromFelt, sampleActionBands, createActionBandState, observeActionBands } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-band.js';
+import { createActionSeatState, observeSeatCardState, applyActionSeatEvents, actionSeatEligibility } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-seat-state.js';
+import { shouldAcceptOcrAction } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-ocr-gate.js';
 const VISION='https://ssj-poker-hybrid-v1-r3-fast.vercel.app/api/vision/read';
 const BRAIN='https://poker-brain-v4-public.vercel.app/api/brain';
-const $=id=>document.getElementById(id),video=$('video');
-let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='';
+const $=id=>document.getElementById(id),video=$('video'),actionOverlay=$('actionOverlay'),actionAnalysis=$('actionAnalysis');
+const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();
+let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='',positionCandidate='',positionVotes=0,brainSession=null,localFelt=null,localLastFeltAt=0,localCaptureState=null,localBandState=null,localSeatState=null,localActionLastTick=0,localOcrQueue=[],localOcrBusy=false,localConfirmedActions=[],remoteActionHistory=[],pendingCaptureEvents=[],localActionSeq=0;
 const state={version:'vision-v1',heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()};
 const lanes={hero:{ms:null,err:null,busy:false},board:{ms:null,err:null,busy:false},actions:{ms:null,err:null,busy:false},quick:{ms:null,err:null,busy:false},meta:{ms:null,err:null,busy:false}};
 const seen={hero:0,board:0,actions:0,quick:0,meta:0};
@@ -28,9 +36,84 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function num(v){if(v==null)return null;const m=String(v).match(/\d+(?:[.,]\d+)?/g);if(!m?.length)return null;const n=Number(m[m.length-1].replace(',','.'));return Number.isFinite(n)?n:null}
 function sameMoney(a,b){const x=num(a),y=num(b);return x!=null&&y!=null&&Math.abs(x-y)<0.0001}
 function historyText(a){return typeof a==='string'?a:JSON.stringify(a)}
+const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
+const POSITIONS_BY_N={6:['BTN','SB','BB','UTG','HJ','CO'],5:['BTN','SB','BB','UTG','CO'],4:['BTN','SB','BB','CO'],3:['BTN','SB','BB'],2:['SB','BB']};
+function activeVisualSlots(){
+  const known=VISUAL_ORDER.filter(id=>id==='hero'||localSeatState?.seats?.[id]?.seenCards===true);
+  return known.length>=2?known:[];
+}
+function captureSeatMap(){
+  const heroPos=state.heroPosition||lockedPosition,slots=activeVisualSlots();if(!heroPos||slots.length<2)return{};
+  const positions=POSITIONS_BY_N[slots.length];if(!positions)return{};const heroIndex=positions.indexOf(heroPos);if(heroIndex<0)return{};
+  const map={};slots.forEach((slot,i)=>map[slot]=positions[(heroIndex+i)%positions.length]);return map;
+}
+function resetLocalCapture(){
+  localFelt=null;localLastFeltAt=0;localCaptureState=null;localBandState=null;localSeatState=null;localOcrQueue=[];localOcrBusy=false;localConfirmedActions=[];remoteActionHistory=[];pendingCaptureEvents=[];localActionSeq=0;brainSession=null;positionCandidate='';positionVotes=0;
+  if(actionOverlay)actionOctx.clearRect(0,0,actionOverlay.width,actionOverlay.height);
+}
+function refreshLocalHistory(){
+  const map=captureSeatMap();
+  const rows=localConfirmedActions.filter(a=>a.street==='preflop'&&map[a.seatId]).slice().sort((a,b)=>a.at-b.at).map(a=>`${map[a.seatId]} ${a.action}${a.amount!=null?' '+a.amount:''}`);
+  state.actionHistory=rows.length?rows:[...remoteActionHistory];
+  if(rows.length){fieldSeen.history=Date.now();log('LEDGER LOCAL '+rows.join(' | '));}
+}
+function confirmLocalAction({seatId,action,amount=null,at=Date.now(),confidence=.8,source='local-action-text'}){
+  if(!seatId||!action||seatId==='hero'||seatId==='table')return;
+  const street=state.board.length>=5?'river':state.board.length===4?'turn':state.board.length>=3?'flop':'preflop';
+  const recent=localConfirmedActions.slice(-8).find(a=>a.seatId===seatId&&a.action===action&&String(a.amount??'')===String(amount??'')&&at-a.at<1800);if(recent)return;
+  const row={id:++localActionSeq,seatId,action,amount,at,confidence,source,street};localConfirmedActions.push(row);localConfirmedActions=localConfirmedActions.slice(-80);
+  pendingCaptureEvents.push({type:action==='FOLD'?'fold-candidate':'action-candidate',seatId,action,amount,at,confidence,source,capturedAt:at,status:'confirmed-local',sovereign:true});
+  refreshLocalHistory();lastBrainKey='';brainSoon();
+}
+function localRect(r){return{x:r.x*actionOverlay.width,y:r.y*actionOverlay.height,w:r.w*actionOverlay.width,h:r.h*actionOverlay.height}}
+function localCrop(rect,pad=.04){
+  const x=Math.max(0,rect.x-rect.w*pad),y=Math.max(0,rect.y-rect.h*pad),w=Math.min(1-x,rect.w*(1+pad*2)),h=Math.min(1-y,rect.h*(1+pad*2));
+  const sx=Math.max(0,Math.round(x*video.videoWidth)),sy=Math.max(0,Math.round(y*video.videoHeight)),sw=Math.max(4,Math.min(video.videoWidth-sx,Math.round(w*video.videoWidth))),sh=Math.max(4,Math.min(video.videoHeight-sy,Math.round(h*video.videoHeight))),c=document.createElement('canvas');
+  c.width=sw;c.height=sh;c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,sw,sh);return c;
+}
+function drawLocalCapture(){
+  if(!actionOverlay)return;actionOctx.clearRect(0,0,actionOverlay.width,actionOverlay.height);if(!localFelt)return;
+  let r=localRect(localFelt);actionOctx.strokeStyle='#45ef8f';actionOctx.lineWidth=2;actionOctx.strokeRect(r.x,r.y,r.w,r.h);
+  for(const seat of seatRegionsFromFelt(localFelt)){const a=localRect(seat.region),c=localRect(seat.cardRegion);actionOctx.strokeStyle='#50c8ff';actionOctx.strokeRect(a.x,a.y,a.w,a.h);actionOctx.strokeStyle='#ffe46b';actionOctx.strokeRect(c.x,c.y,c.w,c.h);}
+  for(const b of actionBandRegionsFromFelt(localFelt)){r=localRect(b.region);actionOctx.strokeStyle='#ff9d3d';actionOctx.lineWidth=2;actionOctx.strokeRect(r.x,r.y,r.w,r.h);}
+}
+function enqueueLocalOcr(e){
+  if(!localFelt||!e?.seatId||e.seatId==='hero'||e.seatId==='table')return;
+  const elig=actionSeatEligibility(localSeatState,e.seatId);if(!elig.eligible)return;
+  const band=actionBandRegionsFromFelt(localFelt).find(x=>x.id===e.seatId);if(!band)return;
+  localOcrQueue.push({e,crops:[localCrop(band.region,.03),localCrop(band.region,.10)]});if(localOcrQueue.length>8)localOcrQueue=localOcrQueue.slice(-8);void drainLocalOcr();
+}
+async function drainLocalOcr(){
+  if(localOcrBusy)return;localOcrBusy=true;
+  try{while(localOcrQueue.length){
+    const job=localOcrQueue.shift(),hits=[];
+    for(const crop of job.crops){const r=await actionOcr.read(crop,{timeoutMs:1200});if(r?.parsed)hits.push(r);}
+    if(!hits.length)continue;
+    const good=[];for(const hit of hits){const p=hit.parsed,conf=Math.max(0,Math.min(1,(Number(hit.confidence)||0)/100)),elig=actionSeatEligibility(localSeatState,job.e.seatId),gate=shouldAcceptOcrAction({action:p.action,confidence:conf,activeThisHand:elig.eligible,folded:elig.reason==='seat-already-folded',raw:hit.text});if(gate.ok)good.push({p,conf});}
+    if(!good.length)continue;const first=good[0],same=good.filter(x=>x.p.action===first.p.action&&String(x.p.amount??'')===String(first.p.amount??''));
+    if(same.length>=2||first.conf>=.82)confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf)});
+  }}finally{localOcrBusy=false;}
+}
+function actionTick(ts){
+  if(!running)return;requestAnimationFrame(actionTick);if(ts-localActionLastTick<78)return;localActionLastTick=ts;if(!video.videoWidth)return;
+  const aw=480,ah=Math.max(270,Math.round(aw*video.videoHeight/video.videoWidth));if(actionAnalysis.width!==aw||actionAnalysis.height!==ah){actionAnalysis.width=aw;actionAnalysis.height=ah;actionOverlay.width=video.videoWidth;actionOverlay.height=video.videoHeight;}
+  actionActx.drawImage(video,0,0,aw,ah);const img=actionActx.getImageData(0,0,aw,ah),now=Date.now();
+  if(!localFelt||now-localLastFeltAt>1100){localFelt=detectFeltPixels(img.data,aw,ah)||localFelt;localLastFeltAt=now;if(localFelt){if(!localCaptureState)localCaptureState=createActionCaptureState(seatRegionsFromFelt(localFelt));if(!localBandState)localBandState=createActionBandState(actionBandRegionsFromFelt(localFelt));if(!localSeatState)localSeatState=createActionSeatState(seatRegionsFromFelt(localFelt));}}
+  if(!localFelt)return;
+  const samples=sampleSeats(img.data,aw,ah,localFelt),f=observeSeatSamples(localCaptureState,samples,now,{motionThreshold:.09,foldDrop:.12,refractoryMs:420,confirmFrames:2});localCaptureState=f.state;localSeatState=observeSeatCardState(localSeatState,localCaptureState,now);localSeatState=applyActionSeatEvents(localSeatState,f.events,now);
+  let transitioned=false;
+  for(const e of f.events){
+    if(e.type==='fold-candidate')confirmLocalAction({seatId:e.seatId,action:'FOLD',at:e.at,confidence:e.confidence,source:'fold-v1.2'});
+    if(e.type==='table-transition'){beginBoundary('Action Capture detectou transição de mão.',{clearHero:true,startedAt:e.at});transitioned=true;break;}
+  }
+  if(transitioned)return;
+  const b=observeActionBands(localBandState,sampleActionBands(img.data,aw,ah,localFelt),now,{threshold:.026,refractoryMs:180,confirmFrames:1});localBandState=b.state;for(const e of b.events)enqueueLocalOcr(e);drawLocalCapture();
+}
 function setPosition(v,at){
-  if(!v)return;
-  if(!lockedPosition){lockedPosition=String(v);state.heroPosition=lockedPosition;fieldSeen.position=at||Date.now();}
+  if(!v||lockedPosition)return;
+  const p=String(v).trim().toUpperCase();
+  if(positionCandidate===p)positionVotes++;else{positionCandidate=p;positionVotes=1;}
+  if(positionVotes>=2){lockedPosition=p;state.heroPosition=p;fieldSeen.position=at||Date.now();log('posição confirmada '+p);refreshLocalHistory();}
 }
 function observeBlinds(v,at){
   if(!v)return;
@@ -41,16 +124,17 @@ function observeBlinds(v,at){
 }
 function historyMerge(next,at){
   if(!Array.isArray(next)||!next.length)return;
+  remoteActionHistory=next;
   const clean=next.map(historyText),cur=(state.actionHistory||[]).map(historyText);
   const nextKey=clean.join('||'),curKey=cur.join('||');
   if(nextKey===curKey){fieldSeen.history=at||Date.now();return;}
   const extendsCurrent=cur.length>0&&clean.length>=cur.length&&cur.every((v,i)=>clean[i]===v);
   if(cur.length&&!extendsCurrent){if(historyCandidateKey===nextKey)historyCandidateVotes++;else{historyCandidateKey=nextKey;historyCandidateVotes=1;}if(historyCandidateVotes<2){log('DROP history instável · aguardando confirmação');return;}}
   if(clean.length<cur.length&&!extendsCurrent)return;
-  state.actionHistory=next;fieldSeen.history=at||Date.now();historyCandidateKey='';historyCandidateVotes=0;
+  remoteActionHistory=next;fieldSeen.history=at||Date.now();historyCandidateKey='';historyCandidateVotes=0;refreshLocalHistory();
 }
 function beginBoundary(reason,{clearHero=true,startedAt=Date.now()}={}){
-  handEpoch++;handStartedAt=startedAt;lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;
+  handEpoch++;handStartedAt=startedAt;lockedPosition=null;positionCandidate='';positionVotes=0;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;resetLocalCapture();
   resetHand(reason,{clearHero,skipEpoch:true,startedAt});
 }
 
@@ -73,7 +157,7 @@ function derivePosition(seats){
   return diff===0?'SB':'BB';
 }
 function resetHand(reason,{clearHero=true,skipEpoch=false,startedAt=Date.now()}={}){
-  if(!skipEpoch){handEpoch++;handStartedAt=startedAt;lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;}
+  if(!skipEpoch){handEpoch++;handStartedAt=startedAt;lockedPosition=null;positionCandidate='';positionVotes=0;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;resetLocalCapture();}
   if(clearHero){state.heroCards=[];state.heroPresence='absent';lastHeroKey='';}
   state.board=[];state.boardPresence=null;state.pot=null;state.toCall=null;state.legalActions=[];state.heroPosition=null;state.heroStack=null;state.effectiveStack=null;state.seats=[];state.actionHistory=[];state.players=null;state.activePlayers=null;
   seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;
@@ -127,7 +211,7 @@ function apply(scope,r){
     const la=new Set(state.legalActions);
     if(state.board.length===0&&la.has('CHECK')&&la.has('RAISE')&&!la.has('CALL')&&!la.has('FOLD')){
       if(state.heroPosition!=='BB')log('posição corrigida por CHECK pré-flop: BB');
-      lockedPosition='BB';state.heroPosition='BB';fieldSeen.position=r.at;metaUrgent=false;
+      lockedPosition='BB';positionCandidate='BB';positionVotes=2;state.heroPosition='BB';fieldSeen.position=r.at;metaUrgent=false;refreshLocalHistory();
     }
   }else if(scope==='quick'){
     if(x.pot!=null){
@@ -203,8 +287,8 @@ async function brainSoon(){
   const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');
   if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;
   try{
-    const r=await fetch(BRAIN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vision:effectiveState,context:{format:$('format').value,tableSize:'6max',handId:handSeq||null,preflopNode:node,versus}})}),j=await r.json();
-    if(!r.ok)throw Error(j.error||('HTTP '+r.status));const d=j.result||{};
+    const captureBatch=[...pendingCaptureEvents],seatMap=captureSeatMap();const r=await fetch(BRAIN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vision:effectiveState,context:{format:$('format').value,tableSize:'6max',handId:handSeq||null,preflopNode:node,versus,useStudySession:true,session:brainSession,captureEvents:captureBatch,captureSeatMap:seatMap}})}),j=await r.json();
+    if(!r.ok)throw Error(j.error||('HTTP '+r.status));if(j.session)brainSession=j.session;if(captureBatch.length)pendingCaptureEvents.splice(0,captureBatch.length);const d=j.result||{};
     if(!d.decision){$('decision').textContent='AGUARDANDO';$('engine').textContent=(d.engine||'BRAIN GATE')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';log('BRAIN AGUARDANDO · '+(d.engine||''));return;}
     const sig=[d.decision||'',d.engine||'',d.confidence??'',d.reason||''].join('|');
     if(sig===decisionCandidateSig)decisionCandidateVotes++;else{decisionCandidateSig=sig;decisionCandidateVotes=1;}
@@ -234,7 +318,7 @@ async function start(){
   if(running)return;
   try{
     stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15,max:30}},audio:false});video.srcObject=stream;await video.play();generation++;running=true;handStartedAt=Date.now();metaUrgent=true;lastMetaRequestAt=0;
-    stream.getVideoTracks()[0].addEventListener('ended',stop);
+    stream.getVideoTracks()[0].addEventListener('ended',stop);void actionOcr.prewarm();localActionLastTick=0;requestAnimationFrame(actionTick);
     loop('hero',320,()=>crop(.36,.52,.28,.24));
     loop('meta',180,metaFrame);
     loop('actions',320,()=>crop(.38,.55,.61,.44,1.5,.76));
@@ -243,7 +327,7 @@ async function start(){
     log('replay iniciado · metadata prioritária');
   }catch(e){log('captura cancelada '+e.message)}
 }
-function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;log('captura parada')}
+function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;resetLocalCapture();log('captura parada')}
 function reset(){stop();handSeq=0;heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=0;handEpoch++;handStartedAt=Date.now();lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
 $('start').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;$('format').onchange=()=>{lastBrainKey='';$('mttBadge').style.display=$('format').value==='mtt'?'inline-block':'none';brainSoon()};$('manualPos').onchange=()=>{lastBrainKey='';brainSoon()};$('manualNode').onchange=()=>{lastBrainKey='';brainSoon()};
 (async()=>{try{const r=await fetch(BRAIN),j=await r.json();const s=j.strategyStatus||{};$('backend').textContent=(j.service||'poker-strategy-brain')+' · '+(j.brainVersion||j.version||'online')+(s.postflop?' · '+s.postflop:'')}catch(e){$('backend').textContent='erro: '+e.message}render()})();
