@@ -39,6 +39,7 @@ jobs:
       - run: node tests/player-model-v1.test.mjs
       - run: node tests/brain-knowledge-v1.test.mjs
       - run: node tests/strategy-v1-preflop.test.mjs
+      - run: node tests/replay-preflop-context.test.mjs
       - run: node tests/mtt-icm-audit.test.mjs
       - run: node tests/strategy-v1-policy-artifact.test.mjs
       - run: node tests/strategy-v1-frozen-source-integrity.test.mjs
