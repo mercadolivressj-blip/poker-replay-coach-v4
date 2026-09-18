@@ -1,0 +1,28 @@
+name: patch runtime dealer position
+on:
+  workflow_dispatch:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - scripts/patch-runtime-dealer-position.mjs
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - run: node scripts/patch-runtime-dealer-position.mjs
+      - name: Commit patched runtime
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add standalone-lab/study-runtime-public-v1.html
+          git commit -m "fix: derive hero position from local dealer button"
+          git push origin HEAD:vision-v1-brain-integration
