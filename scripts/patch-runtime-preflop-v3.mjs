@@ -1,3 +1,4 @@
+// trigger v3
 import fs from 'node:fs';
 
 const runtimePath='standalone-lab/study-runtime-public-v1.html';
