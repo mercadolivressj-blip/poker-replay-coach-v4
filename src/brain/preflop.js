@@ -1,6 +1,7 @@
-import { effectiveDepthBB } from './math.js';
+import { effectiveDepthBB, parseChips } from './math.js';
 import { rankValue } from './cards.js';
 import { preflopBaselineDecision } from '../strategy-v1/preflop-baseline.js';
+import { actionHistoryEntryText } from '../core/action-history.js';
 
 const ORDER='23456789TJQKA';
 const idx=(r)=>ORDER.indexOf(String(r||'').toUpperCase());
@@ -41,7 +42,7 @@ const DEF={
 };
 
 function actionHistoryNode(history){
- const arr=(history||[]).map(x=>String(x).toUpperCase()); let raises=0,calls=0,versus=null;
+ const arr=(history||[]).map(actionHistoryEntryText).map(x=>String(x).toUpperCase()).filter(Boolean); let raises=0,calls=0,versus=null;
  for(const e of arr){ if(/RAISE|AUMENT|3-?BET|ALL-?IN|ALLIN/.test(e)){raises++; versus=e.match(/\b(UTG|HJ|CO|BTN|BU|SB|BB)\b/)?.[1]||versus;} else if(/CALL|PAGA|LIMP|IGUAL/.test(e)) calls++; }
  if(raises===0&&calls===0) return {node:'rfi',versus:null};
  if(raises===1&&calls===0) return {node:'vs_open',versus:normalizePosition(versus)};
@@ -93,8 +94,16 @@ export function preflopDecision(state,context={}){
  // without a confirmed opener/node we must fail closed instead of routing to the empty legacy BB RFI chart.
  const explicitNode=String(context?.preflopNode??context?.node??'').trim().toLowerCase();
  const legalSet=new Set(legal.map(x=>String(x).toUpperCase()));
- if(position==='BB' && explicitNode!=='vs_open' && legalSet.has('CALL') && !(state.actionHistory||[]).some(x=>/RAISE|AUMENT|ALL-?IN|ALLIN|CALL|PAGA|LIMP|IGUAL/i.test(String(x)))){
-   return pack(null,'PREFLOP V1 · NODE NÃO CONFIRMADO','BB está enfrentando ação (CALL disponível), mas o opener/node ainda não foi confirmado; RFI no BB não será presumido.',0);
+ const inferredHistoryNode=actionHistoryNode(state.actionHistory||[]);
+ const facingCost=legalSet.has('CALL') && ((parseChips(state.toCall)??0)>0);
+ if(facingCost && explicitNode==='rfi'){
+   return pack(null,'PREFLOP V1 · ESTADO INCONSISTENTE','CALL com valor para pagar confirma ação anterior; RFI/unopened não será aceito.',0);
+ }
+ if(facingCost && explicitNode!=='vs_open' && inferredHistoryNode.node!=='vs_open'){
+   return pack(null,'PREFLOP V1 · NODE NÃO CONFIRMADO','Há valor para pagar, mas o opener/node ainda não foi confirmado; o sistema não vai presumir RFI.',0);
+ }
+ if(facingCost && explicitNode!=='vs_open' && inferredHistoryNode.node==='vs_open' && !inferredHistoryNode.versus){
+   return pack(null,'PREFLOP V1 · NODE NÃO CONFIRMADO','Agressão pré-flop detectada, mas a posição do opener ainda não foi confirmada.',0);
  }
  if((context.format||'cash')!=='cash'){
    const approx=mttApprox({state,context,legal,position,depth})||pack(null,'MTT PREFLOP V1 · APROXIMAÇÃO','Sem decisão confiável para este node.',0);
