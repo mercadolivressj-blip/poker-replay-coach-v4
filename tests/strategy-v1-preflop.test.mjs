@@ -51,4 +51,26 @@ const bbBadLegacyHistory=preflopDecision({
 assert.equal(bbBadLegacyHistory.decision,null);
 assert.match(bbBadLegacyHistory.engine,/NODE NÃO CONFIRMADO/);
 
-console.log('strategy-v1-preflop parity + BB impossible-RFI regression: OK');
+const coFacingCost=preflopDecision({
+  heroCards:['Ks','2c'],board:[],heroPosition:'CO',legalActions:['FOLD','CALL','RAISE'],
+  actionHistory:['UTG FOLD','HJ FOLD'],heroStack:'25.91',effectiveStack:'25.91',blinds:'0.10/0.25',toCall:'0.60'
+},{format:'cash',tableSize:'6max',handId:'co-k2-facing-cost'});
+assert.equal(coFacingCost.decision,null);
+assert.match(coFacingCost.engine,/NODE NÃO CONFIRMADO/);
+assert.match(coFacingCost.reason,/não vai presumir RFI/);
+
+const structuredVsOpen=preflopDecision({
+  heroCards:['Ac','Jh'],board:[],heroPosition:'BB',legalActions:['FOLD','CALL','RAISE'],
+  actionHistory:[
+    {position:'UTG',actor:'u1',action:'FOLD'},
+    {position:'HJ',actor:'h1',action:'RAISE',amount:'0.60'},
+    {position:'CO',actor:'c1',action:'FOLD'},
+    {position:'BTN',actor:'b1',action:'FOLD'},
+    {position:'SB',actor:'s1',action:'FOLD'}
+  ],
+  heroStack:'24.75',effectiveStack:'24.75',blinds:'0.10/0.25',toCall:'0.35'
+},{format:'cash',tableSize:'6max',handId:'bb-ajo-structured'});
+assert.notEqual(structuredVsOpen.engine,'PREFLOP V1 · NODE NÃO CONFIRMADO');
+assert.match(structuredVsOpen.engine,/BASELINE DIRETA/);
+
+console.log('strategy-v1-preflop parity + impossible-RFI + structured-history regression: OK');
