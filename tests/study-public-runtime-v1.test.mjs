@@ -26,6 +26,13 @@ assert.match(html,/DROP .*resposta de mão antiga/);
 assert.match(html,/function observeBlinds\(/);
 assert.match(html,/blinds confirmados/);
 assert.match(html,/function historyMerge\(/);
+assert.match(html,/DROP history instável/);
+assert.match(html,/function decisionPointFingerprint\(/);
+assert.match(html,/function highImpactFacing\(/);
+assert.match(html,/Spot de alto impacto/);
+assert.match(html,/BRAIN QUORUM/);
+assert.match(html,/BRAIN FIXADO/);
+assert.match(html,/pinnedDecisionPoint/);
 assert.match(html,/Pot reiniciou: nova mão detectada/);
 assert.match(html,/board regressivo\/incompatível/);
 

@@ -19,7 +19,7 @@
 const VISION='https://ssj-poker-hybrid-v1-r3-fast.vercel.app/api/vision/read';
 const BRAIN='https://poker-brain-v4-public.vercel.app/api/brain';
 const $=id=>document.getElementById(id),video=$('video');
-let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false;
+let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='';
 const state={version:'vision-v1',heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()};
 const lanes={hero:{ms:null,err:null,busy:false},board:{ms:null,err:null,busy:false},actions:{ms:null,err:null,busy:false},quick:{ms:null,err:null,busy:false},meta:{ms:null,err:null,busy:false}};
 const seen={hero:0,board:0,actions:0,quick:0,meta:0};
@@ -40,9 +40,14 @@ function observeBlinds(v,at){
   if(blindVotes>=2){lockedBlinds=s;state.blinds=s;fieldSeen.blinds=at||Date.now();log('blinds confirmados '+s);}
 }
 function historyMerge(next,at){
-  if(!Array.isArray(next))return;
-  if(!next.length)return;
-  if(next.length>=state.actionHistory.length){state.actionHistory=next;fieldSeen.history=at||Date.now();}
+  if(!Array.isArray(next)||!next.length)return;
+  const clean=next.map(historyText),cur=(state.actionHistory||[]).map(historyText);
+  const nextKey=clean.join('||'),curKey=cur.join('||');
+  if(nextKey===curKey){fieldSeen.history=at||Date.now();return;}
+  const extendsCurrent=cur.length>0&&clean.length>=cur.length&&cur.every((v,i)=>clean[i]===v);
+  if(cur.length&&!extendsCurrent){if(historyCandidateKey===nextKey)historyCandidateVotes++;else{historyCandidateKey=nextKey;historyCandidateVotes=1;}if(historyCandidateVotes<2){log('DROP history instável · aguardando confirmação');return;}}
+  if(clean.length<cur.length&&!extendsCurrent)return;
+  state.actionHistory=next;fieldSeen.history=at||Date.now();historyCandidateKey='';historyCandidateVotes=0;
 }
 function beginBoundary(reason,{clearHero=true,startedAt=Date.now()}={}){
   handEpoch++;handStartedAt=startedAt;lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;
@@ -71,7 +76,7 @@ function resetHand(reason,{clearHero=true,skipEpoch=false,startedAt=Date.now()}=
   if(!skipEpoch){handEpoch++;handStartedAt=startedAt;lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;}
   if(clearHero){state.heroCards=[];state.heroPresence='absent';lastHeroKey='';}
   state.board=[];state.boardPresence=null;state.pot=null;state.toCall=null;state.legalActions=[];state.heroPosition=null;state.heroStack=null;state.effectiveStack=null;state.seats=[];state.actionHistory=[];state.players=null;state.activePlayers=null;
-  seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';metaUrgent=true;
+  seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;
   $('decision').textContent='AGUARDANDO';$('engine').textContent='VISION RESET · confiança 0';$('reason').textContent=reason||'Aguardando uma mão confirmada.';
   log('RESET '+(reason||'estado'));render();
 }
@@ -177,19 +182,34 @@ function showGate(why){
     $('reason').textContent='Aguardando '+String(why||'estado confirmado')+'.';
   }
 }
+function decisionPointFingerprint(s){
+  const cents=v=>{const n=num(v);return n==null?'':Math.round(n*100)};
+  return [handSeq,s.heroCards.join(''),s.board.join(''),cents(s.pot),cents(s.toCall),[...(s.legalActions||[])].sort().join('-'),s.heroPosition||'',cents(s.heroStack),s.blinds||'',$('format').value].join('|');
+}
+function highImpactFacing(s){
+  const tc=num(s.toCall),st=num(s.heroStack),legal=new Set(s.legalActions||[]);
+  return s.board.length>=3&&legal.has('CALL')&&legal.has('FOLD')&&tc!=null&&st!=null&&st>0&&tc/st>=0.70;
+}
 async function brainSoon(){
   const gate=coherentState();if(!gate.ok){showGate(gate.why);return;}
   const manualNode=$('manualNode')?.value||'';
   const node=manualNode==='rfi'?'rfi':manualNode?'vs_open':null;
   const versus=manualNode&&manualNode!=='rfi'?manualNode:null;
   const effectiveState={...state,heroPosition:gate.effectivePos};
+  const pointKey=decisionPointFingerprint(effectiveState);
+  if(pointKey!==decisionPointKey){decisionPointKey=pointKey;decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';}
+  if(pinnedDecisionPoint===pointKey)return;
+  if(highImpactFacing(effectiveState)&&(!effectiveState.actionHistory.length||!fieldSeen.history||Date.now()-fieldSeen.history>12000)){$('decision').textContent='AGUARDANDO';$('engine').textContent='BRAIN GATE · confiança 0';$('reason').textContent='Spot de alto impacto: aguardando histórico confirmado antes de recomendar call/fold.';return;}
   const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');
   if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;
   try{
     const r=await fetch(BRAIN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vision:effectiveState,context:{format:$('format').value,tableSize:'6max',handId:handSeq||null,preflopNode:node,versus}})}),j=await r.json();
     if(!r.ok)throw Error(j.error||('HTTP '+r.status));const d=j.result||{};
-    $('decision').textContent=d.decision||'AGUARDANDO';$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';
-    log('BRAIN '+$('decision').textContent+' · '+(d.engine||''));
+    if(!d.decision){$('decision').textContent='AGUARDANDO';$('engine').textContent=(d.engine||'BRAIN GATE')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';log('BRAIN AGUARDANDO · '+(d.engine||''));return;}
+    const sig=[d.decision||'',d.engine||'',d.confidence??'',d.reason||''].join('|');
+    if(sig===decisionCandidateSig)decisionCandidateVotes++;else{decisionCandidateSig=sig;decisionCandidateVotes=1;}
+    if(decisionCandidateVotes<2){$('decision').textContent='VALIDANDO';$('engine').textContent='BRAIN QUORUM · confiança 0';$('reason').textContent='Confirmando a mesma recomendação em duas leituras estáveis antes de exibir.';log('BRAIN candidato '+d.decision+' · '+(d.engine||''));setTimeout(()=>{if(running&&decisionPointKey===pointKey&&!pinnedDecisionPoint){lastBrainKey='';brainSoon()}},1100);return;}
+    pinnedDecisionPoint=pointKey;$('decision').textContent=d.decision;$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado confirmado.';log('BRAIN FIXADO '+d.decision+' · '+(d.engine||''));
   }catch(e){$('decision').textContent='SEM DICA';$('reason').textContent=e.message;log('brain erro '+e.message)}finally{brainBusy=false}
 }
 async function laneOnce(scope,capture){
@@ -224,7 +244,7 @@ async function start(){
   }catch(e){log('captura cancelada '+e.message)}
 }
 function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;log('captura parada')}
-function reset(){stop();handSeq=0;heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=0;handEpoch++;handStartedAt=Date.now();lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
+function reset(){stop();handSeq=0;heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=0;handEpoch++;handStartedAt=Date.now();lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
 $('start').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;$('format').onchange=()=>{lastBrainKey='';$('mttBadge').style.display=$('format').value==='mtt'?'inline-block':'none';brainSoon()};$('manualPos').onchange=()=>{lastBrainKey='';brainSoon()};$('manualNode').onchange=()=>{lastBrainKey='';brainSoon()};
 (async()=>{try{const r=await fetch(BRAIN),j=await r.json();const s=j.strategyStatus||{};$('backend').textContent=(j.service||'poker-strategy-brain')+' · '+(j.brainVersion||j.version||'online')+(s.postflop?' · '+s.postflop:'')}catch(e){$('backend').textContent='erro: '+e.message}render()})();
 </script></body></html>
