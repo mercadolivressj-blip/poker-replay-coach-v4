@@ -1,0 +1,46 @@
+name: patch runtime local preflop v3
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - 'scripts/patch-runtime-local-preflop-v3.mjs'
+      - '.github/workflows/patch-runtime-local-preflop-v3.yml'
+permissions:
+  contents: write
+jobs:
+  patch-test-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch runtime
+        run: node scripts/patch-runtime-local-preflop-v3.mjs
+      - name: Verify local preflop wiring
+        run: |
+          grep -q 'BUILD V3' standalone-lab/study-runtime-public-v1.html
+          grep -q 'BRAIN LOCAL PREFLOP V3' standalone-lab/study-runtime-public-v1.html
+          grep -q 'preflop-local-v3' standalone-lab/study-runtime-public-v1.html
+          node tests/strategy-v1-preflop.test.mjs
+      - name: Full regression suite
+        run: npm test
+      - name: Export corrected V3 runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: ssj-study-runtime-corrigido-v3
+          path: standalone-lab/study-runtime-public-v1.html
+          retention-days: 7
+      - name: Commit patched runtime
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add standalone-lab/study-runtime-public-v1.html
+          if git diff --cached --quiet; then
+            echo "runtime unchanged"
+            exit 0
+          fi
+          git commit -m "fix: run corrected preflop V3 locally in study runtime"
+          git push origin HEAD:vision-v1-brain-integration
