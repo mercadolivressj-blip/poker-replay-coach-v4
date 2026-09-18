@@ -26,7 +26,7 @@ const seen={hero:0,board:0,actions:0,quick:0,meta:0};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function log(x){$('log').textContent=new Date().toLocaleTimeString()+' '+x+'\n'+$('log').textContent.slice(0,6500)}
 function render(){
-  $('hero').textContent=state.heroCards.join(' ')||'—';$('board').textContent=state.board.join(' ')||'—';$('pot').textContent=state.pot??'—';$('tocall').textContent=state.toCall??'—';$('stack').textContent=state.heroStack??'—';$('blinds').textContent=state.blinds??'—';$('position').textContent=state.heroPosition||'—';$('actions').textContent=state.legalActions.join(' · ')||'—';
+  $('hero').textContent=state.heroCards.join(' ')||'—';$('board').textContent=state.board.join(' ')||'—';$('pot').textContent=state.pot??'—';$('tocall').textContent=state.toCall??'—';$('stack').textContent=state.heroStack??'—';$('blinds').textContent=state.blinds??'—';$('position').textContent=state.heroPosition||($('manualPos')?.value?$('manualPos').value+' · manual':'—');$('actions').textContent=state.legalActions.join(' · ')||'—';
   $('lanes').innerHTML=Object.entries(lanes).map(([k,v])=>'<div class="lane"><b>'+k+'</b><div class="'+(v.err?'err':'ok')+'">'+(v.busy?'lendo…':v.err?'erro':'ok')+'</div><div class="muted">'+(v.ms==null?'—':v.ms+' ms')+'</div></div>').join('')
 }
 function crop(nx,ny,nw,nh,scale=1.6,q=.82){if(!video.videoWidth)return null;const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.round(video.videoWidth*nw),sh=Math.round(video.videoHeight*nh),z=Math.min(scale,1280/sw),c=document.createElement('canvas');c.width=Math.round(sw*z);c.height=Math.round(sh*z);c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
@@ -158,14 +158,14 @@ async function start(){
     stream.getVideoTracks()[0].addEventListener('ended',stop);
     loop('hero',320,()=>crop(.36,.52,.28,.24));
     loop('meta',180,metaFrame);
-    loop('actions',300,()=>crop(.44,.66,.55,.33,1.8,.80));
-    loop('quick',420,()=>full(980,.68));
+    loop('actions',320,()=>crop(.38,.55,.61,.44,1.5,.76));
+    loop('quick',520,()=>full(900,.64));
     loop('board',520,()=>crop(.26,.30,.48,.16));
     log('replay iniciado · metadata prioritária');
   }catch(e){log('captura cancelada '+e.message)}
 }
 function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;log('captura parada')}
-function reset(){stop();handSeq=0;heroAbsentStreak=0;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);lastBrainKey='';lastHeroKey='';metaUrgent=true;$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
+function reset(){stop();handSeq=0;heroAbsentStreak=0;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);lastBrainKey='';lastHeroKey='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
 $('start').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;$('format').onchange=()=>{lastBrainKey='';$('mttBadge').style.display=$('format').value==='mtt'?'inline-block':'none';brainSoon()};$('manualPos').onchange=()=>{lastBrainKey='';brainSoon()};$('manualNode').onchange=()=>{lastBrainKey='';brainSoon()};
 (async()=>{try{const r=await fetch(BRAIN),j=await r.json();const s=j.strategyStatus||{};$('backend').textContent=(j.service||'poker-strategy-brain')+' · '+(j.brainVersion||j.version||'online')+(s.postflop?' · '+s.postflop:'')}catch(e){$('backend').textContent='erro: '+e.message}render()})();
 </script></body></html>
