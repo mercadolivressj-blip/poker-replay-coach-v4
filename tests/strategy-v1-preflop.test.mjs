@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { BASELINE_META, baselineChart, baselineRfiPositions, baselineVsNodes, lookupBaseline } from '../src/strategy-v1/ranges-100z.js';
 import { pickFromDistribution, preflopBaselineDecision, seedRoll } from '../src/strategy-v1/preflop-baseline.js';
 import { preflopDecision } from '../src/brain/preflop.js';
+import { normalizeVisionStateV1 } from '../src/core/vision-contract.js';
 
 const RANKS='23456789TJQKA'.split('');
 const ALL=[];
@@ -41,7 +42,7 @@ const bbFacingUnknown=preflopDecision({
 },{format:'cash',tableSize:'6max',handId:'bb-ajo-facing-action'});
 assert.equal(bbFacingUnknown.decision,null);
 assert.match(bbFacingUnknown.engine,/NODE NÃO CONFIRMADO/);
-assert.match(bbFacingUnknown.reason,/RFI no BB não será presumido/);
+assert.match(bbFacingUnknown.reason,/não vai presumir RFI/);
 
 const bbBadLegacyHistory=preflopDecision({
   heroCards:['Ac','Jh'],board:[],heroPosition:'BB',legalActions:['FOLD','CALL','RAISE'],
@@ -58,6 +59,15 @@ const coFacingCost=preflopDecision({
 assert.equal(coFacingCost.decision,null);
 assert.match(coFacingCost.engine,/NODE NÃO CONFIRMADO/);
 assert.match(coFacingCost.reason,/não vai presumir RFI/);
+
+const normalizedStructured=normalizeVisionStateV1({
+  version:'vision-v1',heroCards:['Ac','Jh'],heroPresence:'present',board:[],boardPresence:'absent',
+  pot:'0.85',toCall:'0.35',legalActions:['FOLD','CALL','RAISE'],players:6,activePlayers:2,heroPosition:'BB',
+  heroStack:'24.75',effectiveStack:'24.75',blinds:'0.10/0.25',seats:[],
+  actionHistory:[{position:'HJ',actor:'villain',action:'RAISE',amount:'0.60'}],
+  confidence:.9,readerModel:'test',capturedAt:Date.now()
+});
+assert.deepEqual(normalizedStructured.actionHistory,['HJ villain RAISE 0.60']);
 
 const structuredVsOpen=preflopDecision({
   heroCards:['Ac','Jh'],board:[],heroPosition:'BB',legalActions:['FOLD','CALL','RAISE'],
