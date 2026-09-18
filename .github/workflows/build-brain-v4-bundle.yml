@@ -1,4 +1,4 @@
-# refresh public Brain after Action Capture stability fixes
+# refresh public Brain after runtime/preflop stability V3 fixes
 name: build-brain-v4-bundle
 on:
   push:
