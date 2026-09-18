@@ -19,11 +19,36 @@
 const VISION='https://ssj-poker-hybrid-v1-r3-fast.vercel.app/api/vision/read';
 const BRAIN='https://poker-brain-v4-public.vercel.app/api/brain';
 const $=id=>document.getElementById(id),video=$('video');
-let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0;
+let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0;
 const state={version:'vision-v1',heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()};
 const lanes={hero:{ms:null,err:null,busy:false},board:{ms:null,err:null,busy:false},actions:{ms:null,err:null,busy:false},quick:{ms:null,err:null,busy:false},meta:{ms:null,err:null,busy:false}};
 const seen={hero:0,board:0,actions:0,quick:0,meta:0};
+const fieldSeen={hero:0,board:0,pot:0,toCall:0,actions:0,stack:0,blinds:0,position:0,history:0};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function num(v){if(v==null)return null;const m=String(v).match(/\d+(?:[.,]\d+)?/g);if(!m?.length)return null;const n=Number(m[m.length-1].replace(',','.'));return Number.isFinite(n)?n:null}
+function sameMoney(a,b){const x=num(a),y=num(b);return x!=null&&y!=null&&Math.abs(x-y)<0.0001}
+function historyText(a){return typeof a==='string'?a:JSON.stringify(a)}
+function setPosition(v,at){
+  if(!v)return;
+  if(!lockedPosition){lockedPosition=String(v);state.heroPosition=lockedPosition;fieldSeen.position=at||Date.now();}
+}
+function observeBlinds(v,at){
+  if(!v)return;
+  const s=String(v);
+  if(lockedBlinds){state.blinds=lockedBlinds;return;}
+  if(blindCandidate===s)blindVotes++;else{blindCandidate=s;blindVotes=1;}
+  if(blindVotes>=2){lockedBlinds=s;state.blinds=s;fieldSeen.blinds=at||Date.now();log('blinds confirmados '+s);}
+}
+function historyMerge(next,at){
+  if(!Array.isArray(next))return;
+  if(!next.length)return;
+  if(next.length>=state.actionHistory.length){state.actionHistory=next;fieldSeen.history=at||Date.now();}
+}
+function beginBoundary(reason,{clearHero=true,startedAt=Date.now()}={}){
+  handEpoch++;handStartedAt=startedAt;lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;
+  resetHand(reason,{clearHero,skipEpoch:true,startedAt});
+}
+
 function log(x){$('log').textContent=new Date().toLocaleTimeString()+' '+x+'\n'+$('log').textContent.slice(0,6500)}
 function render(){
   $('hero').textContent=state.heroCards.join(' ')||'—';$('board').textContent=state.board.join(' ')||'—';$('pot').textContent=state.pot??'—';$('tocall').textContent=state.toCall??'—';$('stack').textContent=state.heroStack??'—';$('blinds').textContent=state.blinds??'—';$('position').textContent=state.heroPosition||($('manualPos')?.value?$('manualPos').value+' · manual':'—');$('actions').textContent=state.legalActions.join(' · ')||'—';
@@ -42,10 +67,11 @@ function derivePosition(seats){
   if(a.length===3)return ['BTN','SB','BB'][diff]||null;
   return diff===0?'SB':'BB';
 }
-function resetHand(reason,{clearHero=true}={}){
+function resetHand(reason,{clearHero=true,skipEpoch=false,startedAt=Date.now()}={}){
+  if(!skipEpoch){handEpoch++;handStartedAt=startedAt;lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;}
   if(clearHero){state.heroCards=[];state.heroPresence='absent';lastHeroKey='';}
   state.board=[];state.boardPresence=null;state.pot=null;state.toCall=null;state.legalActions=[];state.heroPosition=null;state.heroStack=null;state.effectiveStack=null;state.seats=[];state.actionHistory=[];state.players=null;state.activePlayers=null;
-  seen.board=seen.actions=seen.quick=seen.meta=0;lastBrainKey='';metaUrgent=true;
+  seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';metaUrgent=true;
   $('decision').textContent='AGUARDANDO';$('engine').textContent='VISION RESET · confiança 0';$('reason').textContent=reason||'Aguardando uma mão confirmada.';
   log('RESET '+(reason||'estado'));render();
 }
@@ -57,42 +83,64 @@ async function read(scope,image){
   const visionScope=scope==='meta'?'full':scope,at=Date.now(),t=performance.now();
   const r=await fetch(VISION,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,mode:'fast',scope:visionScope})});
   if(!r.ok)throw Error('vision '+r.status+' '+(await r.text()).slice(0,100));
-  return{data:await r.json(),ms:Math.round(performance.now()-t),at}
+  return{data:await r.json(),ms:Math.round(performance.now()-t),at,epoch:handEpoch}
 }
 function apply(scope,r){
   const originalScope=scope;if(scope==='meta')scope='full';
+  if(r.epoch!==handEpoch||r.at<handStartedAt){log('DROP '+originalScope+' resposta de mão antiga');return;}
+
   const x=r.data?.read||r.data?.result||r.data||{};state.capturedAt=r.at||Date.now();seen[originalScope]=state.capturedAt;
   if(scope==='hero'){
     if(x.heroPresence==='absent'){
       state.heroPresence='absent';
       heroAbsentStreak++;
       if(!heroAbsentSince)heroAbsentSince=Date.now();
-      if(state.heroCards.length&&heroAbsentStreak>=4&&Date.now()-lastHeroConfirmedAt>6500)resetHand('Hero/mesa deixou de estar visível.',{clearHero:true});
+      if(state.heroCards.length&&heroAbsentStreak>=4&&Date.now()-lastHeroConfirmedAt>6500)beginBoundary('Hero não está mais na mão.',{clearHero:true,startedAt:r.at});
       render();brainSoon();return;
     }
     if(x.heroPresence==='present'&&Array.isArray(x.heroCards)&&x.heroCards.length===2){
       heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=Date.now();const key=x.heroCards.join(' ');
-      if(lastHeroKey&&lastHeroKey!==key){resetHand('Nova mão detectada.',{clearHero:false});handSeq++;}
+      if(lastHeroKey&&lastHeroKey!==key){beginBoundary('Nova mão detectada.',{clearHero:false,startedAt:r.at});handSeq++;}
       if(!lastHeroKey)handSeq=Math.max(1,handSeq+1);
-      lastHeroKey=key;state.heroCards=[...x.heroCards];state.heroPresence='present';metaUrgent=!state.heroPosition;
+      lastHeroKey=key;state.heroCards=[...x.heroCards];state.heroPresence='present';fieldSeen.hero=r.at;seen.hero=r.at;metaUrgent=!state.heroPosition;
     }
     if(x.readerModel)state.readerModel=x.readerModel;
   }else if(scope==='board'){
     if(x.boardPresence)state.boardPresence=x.boardPresence;
-    if(x.boardPresence==='present'&&[3,4,5].includes(x.board?.length)){const prev=state.board.length;state.board=[...x.board];if(state.board.length!==prev)metaUrgent=true;}
-    if(x.boardPresence==='absent'&&Array.isArray(x.board)&&x.board.length===0)state.board=[];
+    if(x.boardPresence==='present'&&[3,4,5].includes(x.board?.length)){
+      const next=[...x.board],cur=state.board||[];
+      const prefix=cur.every((card,i)=>next[i]===card);
+      if((cur.length===0||next.length>=cur.length)&&prefix){const prev=cur.length;state.board=next;fieldSeen.board=r.at;if(state.board.length!==prev)metaUrgent=true;}
+      else log('DROP board regressivo/incompatível '+historyText(next));
+    }
+    if(x.boardPresence==='absent'&&state.board.length===0)fieldSeen.board=r.at;
   }else if(scope==='actions'){
-    if(Array.isArray(x.legalActions))state.legalActions=[...x.legalActions];
-    if(Object.prototype.hasOwnProperty.call(x,'toCall'))state.toCall=x.toCall??null;
+    if(Array.isArray(x.legalActions)){state.legalActions=[...x.legalActions];fieldSeen.actions=r.at;}
+    if(Object.prototype.hasOwnProperty.call(x,'toCall')){state.toCall=x.toCall??null;fieldSeen.toCall=r.at;}
+    if(!state.legalActions.length)state.toCall=null;
     normalizeToCall();
   }else if(scope==='quick'){
-    ['pot','heroStack','effectiveStack','blinds','heroPosition','players','activePlayers'].forEach(k=>{if(x[k]!=null)state[k]=x[k]});
-    if(Array.isArray(x.actionHistory)&&x.actionHistory.length)state.actionHistory=x.actionHistory;
-    if(Array.isArray(x.seats)&&x.seats.length){state.seats=x.seats;state.heroPosition=state.heroPosition||derivePosition(x.seats)}
+    if(x.pot!=null){
+      const old=num(state.pot),next=num(x.pot);
+      if(old!=null&&next!=null&&next+0.01<old){
+        if(potDropCandidate!=null&&Math.abs(potDropCandidate-next)<0.02)potDropVotes++;else{potDropCandidate=next;potDropVotes=1;}
+        if(potDropVotes>=2){beginBoundary('Pot reiniciou: nova mão detectada.',{clearHero:true,startedAt:r.at});state.pot=x.pot;fieldSeen.pot=r.at;seen.quick=r.at;render();return;}
+      }else{potDropCandidate=null;potDropVotes=0;state.pot=x.pot;fieldSeen.pot=r.at;}
+    }
+    if(x.heroStack!=null){state.heroStack=x.heroStack;fieldSeen.stack=r.at;}
+    if(x.effectiveStack!=null)state.effectiveStack=x.effectiveStack;
+    observeBlinds(x.blinds,r.at);setPosition(x.heroPosition,r.at);
+    ['players','activePlayers'].forEach(k=>{if(x[k]!=null)state[k]=x[k]});
+    historyMerge(x.actionHistory,r.at);
+    if(Array.isArray(x.seats)&&x.seats.length){state.seats=x.seats;setPosition(derivePosition(x.seats),r.at)}
   }else if(scope==='full'){
-    ['pot','heroStack','effectiveStack','blinds','heroPosition','players','activePlayers'].forEach(k=>{if(x[k]!=null)state[k]=x[k]});
-    if(Array.isArray(x.seats)&&x.seats.length){state.seats=x.seats;state.heroPosition=x.heroPosition||derivePosition(x.seats)||state.heroPosition}
-    if(Array.isArray(x.actionHistory))state.actionHistory=x.actionHistory;
+    if(x.pot!=null){const old=num(state.pot),next=num(x.pot);if(old==null||next==null||next+0.01>=old){state.pot=x.pot;fieldSeen.pot=r.at;}}
+    if(x.heroStack!=null){state.heroStack=x.heroStack;fieldSeen.stack=r.at;}
+    if(x.effectiveStack!=null)state.effectiveStack=x.effectiveStack;
+    observeBlinds(x.blinds,r.at);setPosition(x.heroPosition,r.at);
+    ['players','activePlayers'].forEach(k=>{if(x[k]!=null)state[k]=x[k]});
+    if(Array.isArray(x.seats)&&x.seats.length){state.seats=x.seats;setPosition(derivePosition(x.seats),r.at)}
+    historyMerge(x.actionHistory,r.at);
     const histPreview=state.actionHistory.slice(-6).map(a=>typeof a==='string'?a:JSON.stringify(a)).join(' | ').slice(0,260);
     if(state.heroPosition){metaUrgent=false;log('metadata '+state.heroPosition+' · '+state.actionHistory.length+' ações · '+r.ms+'ms'+(histPreview?' ['+histPreview+']':''))}
     else log('metadata posição pendente · '+state.actionHistory.length+' ações · '+r.ms+'ms'+(histPreview?' ['+histPreview+']':''));
@@ -104,13 +152,14 @@ function coherentState(){
   const manualPos=$('manualPos')?.value||'';
   const effectivePos=state.heroPosition||manualPos||null;
   const now=Date.now();if(state.heroPresence!=='present'||state.heroCards.length!==2||!state.legalActions.length||!effectivePos)return{ok:false,why:'cartas/posição/ações pendentes',effectivePos};
-
-  const core=['hero','actions','quick'];if(state.board.length)core.push('board');
-  for(const k of core)if(!seen[k]||now-seen[k]>7000)return{ok:false,why:k+' stale'};
-  const times=core.map(k=>seen[k]),spread=Math.max(...times)-Math.min(...times);if(spread>5500)return{ok:false,why:'snapshot desalinhado'};
+  if(!lockedBlinds&&!state.blinds)return{ok:false,why:'blinds ainda não confirmados',effectivePos};
+  const required={hero:fieldSeen.hero,actions:fieldSeen.actions,pot:fieldSeen.pot,stack:fieldSeen.stack};
+  if(state.board.length)required.board=fieldSeen.board;
+  for(const [k,t] of Object.entries(required))if(!t||now-t>7000)return{ok:false,why:k+' stale',effectivePos};
+  const times=Object.values(required),spread=Math.max(...times)-Math.min(...times);if(spread>5500)return{ok:false,why:'snapshot desalinhado',effectivePos};
   const legal=new Set(state.legalActions);
   if(legal.has('CHECK')&&!legal.has('CALL')&&!legal.has('FOLD')&&state.toCall!=null)return{ok:false,why:'toCall inconsistente com CHECK'};
-  if(legal.has('CALL')&&state.toCall==null)return{ok:false,why:'call sem valor confirmado'};
+  if(legal.has('CALL')&&(state.toCall==null||!fieldSeen.toCall||now-fieldSeen.toCall>7000))return{ok:false,why:'call sem valor confirmado'};
   if(state.board.length&&state.pot==null)return{ok:false,why:'pot pendente'};
   return{ok:true,effectivePos};
 }
@@ -157,7 +206,7 @@ function loop(scope,ms,capture){
 async function start(){
   if(running)return;
   try{
-    stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15,max:30}},audio:false});video.srcObject=stream;await video.play();generation++;running=true;metaUrgent=true;lastMetaRequestAt=0;
+    stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15,max:30}},audio:false});video.srcObject=stream;await video.play();generation++;running=true;handStartedAt=Date.now();metaUrgent=true;lastMetaRequestAt=0;
     stream.getVideoTracks()[0].addEventListener('ended',stop);
     loop('hero',320,()=>crop(.36,.52,.28,.24));
     loop('meta',180,metaFrame);
@@ -168,7 +217,7 @@ async function start(){
   }catch(e){log('captura cancelada '+e.message)}
 }
 function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;log('captura parada')}
-function reset(){stop();handSeq=0;heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=0;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);lastBrainKey='';lastHeroKey='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
+function reset(){stop();handSeq=0;heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=0;handEpoch++;handStartedAt=Date.now();lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
 $('start').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;$('format').onchange=()=>{lastBrainKey='';$('mttBadge').style.display=$('format').value==='mtt'?'inline-block':'none';brainSoon()};$('manualPos').onchange=()=>{lastBrainKey='';brainSoon()};$('manualNode').onchange=()=>{lastBrainKey='';brainSoon()};
 (async()=>{try{const r=await fetch(BRAIN),j=await r.json();const s=j.strategyStatus||{};$('backend').textContent=(j.service||'poker-strategy-brain')+' · '+(j.brainVersion||j.version||'online')+(s.postflop?' · '+s.postflop:'')}catch(e){$('backend').textContent='erro: '+e.message}render()})();
 </script></body></html>
