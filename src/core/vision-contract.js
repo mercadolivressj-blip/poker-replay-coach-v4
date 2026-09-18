@@ -1,3 +1,4 @@
+import { normalizeActionHistoryEntries } from './action-history.js';
 export const VISION_VERSION = 'vision-v1';
 
 export const VISION_V1_FIELDS = Object.freeze([
@@ -90,7 +91,7 @@ export function normalizeVisionStateV1(input) {
     effectiveStack: nullableString(v.effectiveStack) ? (v.effectiveStack ?? null) : null,
     blinds: nullableString(v.blinds) ? (v.blinds ?? null) : null,
     seats: Array.isArray(v.seats) ? v.seats.slice(0, 10) : [],
-    actionHistory: Array.isArray(v.actionHistory) ? v.actionHistory.filter((x) => typeof x === 'string').slice(-24) : [],
+    actionHistory: normalizeActionHistoryEntries(v.actionHistory,{limit:24}),
     confidence: typeof v.confidence === 'number' && Number.isFinite(v.confidence) ? Math.max(0, Math.min(1, v.confidence)) : 0,
     readerModel: nullableString(v.readerModel) ? (v.readerModel ?? null) : null,
     capturedAt: Number.isFinite(v.capturedAt) ? v.capturedAt : Date.now(),
