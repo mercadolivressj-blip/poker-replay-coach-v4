@@ -12,9 +12,12 @@ assert.match(html,/function normalizeToCall\(\)/);
 assert.match(html,/legal\.has\('CHECK'\).*state\.toCall=null/);
 assert.match(html,/function coherentState\(\)/);
 assert.match(html,/snapshot desalinhado/);
-assert.match(html,/now-seen\[k\]>5000/);
+assert.match(html,/now-seen\[k\]>7000/);
+assert.match(html,/spread>5500/);
+assert.match(html,/state\.heroPresence!==\'present\'/);
 
-assert.match(html,/heroAbsentStreak>=2/);
+assert.match(html,/heroAbsentStreak>=4/);
+assert.match(html,/lastHeroConfirmedAt>6500/);
 assert.match(html,/Hero\/mesa deixou de estar visível/);
 assert.match(html,/function resetHand\(/);
 
@@ -26,4 +29,4 @@ assert.match(html,/manualPos/);
 assert.match(html,/manualNode/);
 assert.match(html,/replay iniciado · metadata prioritária/);
 
-console.log('public study runtime: atomic freshness/reset/parallel-meta/manual-fallback/Policy V4 wiring OK');
+console.log('public study runtime: freshness/hero-debounce/stale-clear/parallel-meta/manual-fallback/Policy V4 wiring OK');
