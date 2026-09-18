@@ -1,3 +1,4 @@
+import { actionHistoryEntryText } from '../core/action-history.js';
 import { BASELINE_META, RFI_100Z, VS_RFI_100Z } from './ranges-100z.data.js';
 
 export { BASELINE_META };
@@ -41,7 +42,7 @@ export function lookupBaseline({hand,position,versus=null,node}){
 }
 
 export function classifyPreflopNode(actionHistory){
-  const entries=(actionHistory||[]).map(x=>String(x).toUpperCase().trim()).filter(Boolean);
+  const entries=(actionHistory||[]).map(actionHistoryEntryText).map(x=>String(x).toUpperCase().trim()).filter(Boolean);
   if(!entries.length)return {node:'unknown',versus:null,reason:'Sem histórico de ações.'};
   const RAISE=/(RAISE|AUMENT|3-?BET|4-?BET|RERAISE)/,CALL=/(CALL|PAGA|LIMP|IGUAL)/,ALLIN=/(ALL-?IN|ALLIN|TUDO)/;
   let raises=0,calls=0,lastRaiser=null;
