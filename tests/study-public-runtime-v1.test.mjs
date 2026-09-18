@@ -18,9 +18,12 @@ assert.match(html,/heroAbsentStreak>=2/);
 assert.match(html,/Hero\/mesa deixou de estar visível/);
 assert.match(html,/function resetHand\(/);
 
-assert.match(html,/function metaFrame\(\)\{return full\(720,\.56\)\}/);
+assert.match(html,/function metaFrame\(\)\{return full\(1120,\.72\)\}/);
 assert.match(html,/metaUrgent/);
-assert.match(html,/lanes\.meta\.busy&&metaUrgent/);
+assert.doesNotMatch(html,/lanes\.meta\.busy&&metaUrgent/);
+assert.match(html,/Fallback manual/);
+assert.match(html,/manualPos/);
+assert.match(html,/manualNode/);
 assert.match(html,/replay iniciado · metadata prioritária/);
 
-console.log('public study runtime: atomic freshness/reset/meta-priority/Policy V4 wiring OK');
+console.log('public study runtime: atomic freshness/reset/parallel-meta/manual-fallback/Policy V4 wiring OK');
