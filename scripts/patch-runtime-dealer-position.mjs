@@ -34,4 +34,4 @@ must(
 'dealer observation');
 
 fs.writeFileSync(path,s);
-console.log('patched local dealer-position derivation');
+console.log('patched local dealer-position derivation v1');
