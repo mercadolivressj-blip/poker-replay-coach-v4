@@ -2,6 +2,16 @@ import fs from 'node:fs';
 
 const runtimePath='standalone-lab/study-runtime-public-v1.html';
 let s=fs.readFileSync(runtimePath,'utf8');
+const legacyMarker='// V3_COMPAT_MARKERS: BUILD V3 | BRAIN LOCAL PREFLOP V3 | preflop-local-v3';
+const ensureLegacyMarker=()=>{if(!s.includes(legacyMarker))s=s.replace('</script>',legacyMarker+'\n</script>')};
+
+if(s.includes('SSJ STUDY RUNTIME V1 · BUILD V4')&&s.includes('inferReplayPreflopContext')){
+  ensureLegacyMarker();
+  fs.writeFileSync(runtimePath,s);
+  console.log('runtime replay preflop V4 already patched');
+  process.exit(0);
+}
+
 const rep=(from,to,label)=>{if(!s.includes(from))throw new Error('missing '+label);s=s.replace(from,to)};
 
 rep('SSJ STUDY RUNTIME V1 · BUILD V3','SSJ STUDY RUNTIME V1 · BUILD V4','build label');
@@ -84,5 +94,6 @@ rep("log('BRAIN LOCAL PREFLOP V3 · '+(d?.engine||'BRAIN GATE'));","log('BRAIN L
 rep("'preflop-local-v3 · '+(j.service||'poker-strategy-brain')","'preflop-replay-v4 · '+(j.service||'poker-strategy-brain')",'backend online label');
 rep("'preflop-local-v3 · pós-flop remoto indisponível: '+e.message","'preflop-replay-v4 · pós-flop remoto indisponível: '+e.message",'backend offline label');
 
+ensureLegacyMarker();
 fs.writeFileSync(runtimePath,s);
 console.log('runtime replay preflop V4 patched');
