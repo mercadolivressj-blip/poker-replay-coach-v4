@@ -1,4 +1,4 @@
-import { effectiveDepthBB, parseChips } from './math.js';
+import { effectiveDepthBB, parseChips, parseBlinds } from './math.js';
 import { rankValue } from './cards.js';
 import { preflopBaselineDecision } from '../strategy-v1/preflop-baseline.js';
 import { actionHistoryEntryText } from '../core/action-history.js';
@@ -97,7 +97,11 @@ export function preflopDecision(state,context={}){
  // It overrides noisy position metadata for this decision only.
  const explicitNode=String(context?.preflopNode??context?.node??'').trim().toLowerCase();
  const inferredHistoryNode=actionHistoryNode(state.actionHistory||[]);
- const facingCost=legalSet.has('CALL') && ((parseChips(state.toCall)??0)>0);
+ const callCost=parseChips(state.toCall)??0;
+ const bigBlind=parseBlinds(state.blinds)?.bb??null;
+ // CALL does not automatically mean we face an opener: UTG/HJ/CO/BTN in an unopened pot
+ // naturally have to call one big blind to limp. BB is different: without aggression it has CHECK.
+ const facingCost=legalSet.has('CALL') && callCost>0 && (position==='BB' || bigBlind==null || callCost>bigBlind+Math.max(.0001,bigBlind*.05));
  if(facingCost && explicitNode==='rfi'){
    return pack(null,'PREFLOP V1 · ESTADO INCONSISTENTE','CALL com valor para pagar confirma ação anterior; RFI/unopened não será aceito.',0);
  }
