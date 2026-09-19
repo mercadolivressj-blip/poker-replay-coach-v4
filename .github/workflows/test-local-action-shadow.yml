@@ -1,0 +1,45 @@
+name: Test local action shadow
+
+on:
+  push:
+    branches:
+      - vision-v1-brain-integration
+    paths:
+      - 'src/core/action-capture.js'
+      - 'src/core/action-band.js'
+      - 'src/core/action-seat-state.js'
+      - 'src/core/action-ocr-gate.js'
+      - 'src/brain/action-inference.js'
+      - 'src/brain/action-event-bridge.js'
+      - 'tests/action-capture-v1.test.mjs'
+      - 'tests/action-band-v1.test.mjs'
+      - 'tests/action-seat-state-v1.test.mjs'
+      - 'tests/action-ocr-gate-v1.test.mjs'
+      - 'tests/action-inference-v1.test.mjs'
+      - 'tests/action-event-bridge-v1.test.mjs'
+      - 'standalone-lab/tests/v21-integrity.spec.mjs'
+      - '.github/workflows/test-local-action-shadow.yml'
+  workflow_dispatch:
+
+jobs:
+  local-action-shadow:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fold/card-back detector
+        run: node tests/action-capture-v1.test.mjs
+      - name: Action-band motion detector
+        run: node tests/action-band-v1.test.mjs
+      - name: Seat lifecycle
+        run: node tests/action-seat-state-v1.test.mjs
+      - name: Local OCR gate
+        run: node tests/action-ocr-gate-v1.test.mjs
+      - name: Chip commitment action inference
+        run: node tests/action-inference-v1.test.mjs
+      - name: Shadow event bridge
+        run: node tests/action-event-bridge-v1.test.mjs
+      - name: V21 integrity guards
+        run: node standalone-lab/tests/v21-integrity.spec.mjs

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SSJ Poker · Auto V22</title>
+  <style>
+    :root{font-family:Inter,system-ui,sans-serif;color:#eafff2;background:#03100a}
+    body{margin:0;display:grid;place-items:center;min-height:100vh}
+    .box{max-width:760px;padding:24px;border:1px solid #24533a;border-radius:14px;background:#081810}
+    .muted{color:#9fceb7}.err{color:#ff9999}code{color:#ffe58a}
+  </style>
+</head>
+<body>
+  <div class="box" id="boot">
+    <h2 style="margin-top:0">SSJ Poker · AUTO V22</h2>
+    <div class="muted">Carregando o runtime automático local de baixa latência…</div>
+  </div>
+<script>
+(async()=>{
+  const boot=document.getElementById('boot');
+  const BASE='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@1048d60dd7f9bb58f23daadec9f60060ad39e68f/standalone-lab/study-runtime-public-v1.html';
+  const OCR_OLD='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-ocr.js';
+  const OCR_FAST='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@1048d60dd7f9bb58f23daadec9f60060ad39e68f/src/core/action-ocr.js';
+  function rep(src,a,b,label){if(!src.includes(a))throw new Error('Patch ausente: '+label);return src.replace(a,b)}
+  try{
+    let html=await fetch(BASE,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('base '+r.status);return r.text()});
+
+    html=html.replace('<title>SSJ Poker Study Runtime</title>','<title>SSJ Poker · AUTO V22</title>');
+    html=html.replace('SSJ STUDY RUNTIME V1 · BUILD V4','SSJ POKER · AUTO V22 · AÇÕES LOCAIS');
+    html=html.replace('<span class="badge">VISION R3 FAST</span>','<span class="badge">AUTO LOCAL 35 FPS</span>');
+    html=html.replace('<div class="assist">','<div class="assist" style="display:none">');
+    html=html.replace('Fallback manual (só se o automático demorar)','Fallback manual desativado');
+    html=html.replace(OCR_OLD,OCR_FAST);
+
+    html=rep(html,
+      "const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();",
+      "const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();void actionOcr.prewarm();",
+      'prewarm OCR');
+
+    // Local actions are the primary source. Remote history is only fallback.
+    html=rep(html,
+      "state.actionHistory=remoteStrategic>0?remote:(localStrategic>0?rows:(remote.length?remote:rows));",
+      "state.actionHistory=localStrategic>0?rows:(remoteStrategic>0?remote:(rows.length?rows:remote));",
+      'local history priority');
+
+    // ~35 fps capture. Fold needs two frames => visual confirmation typically starts near 56 ms.
+    html=rep(html,
+      "if(!running)return;requestAnimationFrame(actionTick);if(ts-localActionLastTick<78)return;",
+      "if(!running)return;requestAnimationFrame(actionTick);if(ts-localActionLastTick<28)return;",
+      'capture cadence');
+
+    // Avoid stale OCR backlog. We prefer a fresh frame over recognizing an old plate.
+    html=rep(html,
+      "localOcrQueue.push({e,crops:[localCrop(band.region,.03),localCrop(band.region,.10)]});if(localOcrQueue.length>8)localOcrQueue=localOcrQueue.slice(-8);void drainLocalOcr();",
+      "localOcrQueue=localOcrQueue.filter(x=>x?.e?.seatId!==e.seatId);localOcrQueue.push({e,crops:[localCrop(band.region,.03)]});if(localOcrQueue.length>3)localOcrQueue=localOcrQueue.slice(-3);void drainLocalOcr();",
+      'fresh OCR queue');
+
+    // Single-pass OCR hot path. No 4-pass / 1.2s recognition loop.
+    html=rep(html,
+      "for(const crop of job.crops){const r=await actionOcr.read(crop,{timeoutMs:1200});if(r?.parsed)hits.push(r);}",
+      "for(const crop of job.crops){const r=await actionOcr.readFast(crop);if(r?.parsed)hits.push(r);}",
+      'fast OCR call');
+
+    // One strong local parse is enough for normal actions. ALL-IN stays stricter.
+    html=rep(html,
+      "if(same.length>=2||first.conf>=.82)confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf)});",
+      "if(same.length>=2||first.conf>=(first.p.action==='ALLIN'?.80:.68))confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf),source:'local-action-text-fast'});",
+      'fast confirmation threshold');
+
+    // Quicker action-band re-arm and quicker fallback sweep.
+    html=html.replace("refractoryMs:180,confirmFrames:1","refractoryMs:95,confirmFrames:1");
+    html=html.replace("now-localSweepAt<320","now-localSweepAt<180");
+
+    // Make the UI explicit: opponent actions do not require manual clicks.
+    html=html.replace('Compartilhe somente replay/gravação para estudo. O sistema não clica nem executa ações.',
+      'Compartilhe o replay/gravação. As ações dos adversários são lidas automaticamente no navegador; você não precisa clicar Fold/Check/Call/Bet/Raise.');
+
+    document.open();document.write(html);document.close();
+  }catch(e){
+    boot.innerHTML='<h2>Falha ao carregar AUTO V22</h2><div class="err">'+String(e.message||e)+'</div><p class="muted">O arquivo base não foi alterado; tente recarregar.</p>';
+  }
+})();
+</script>
+</body>
+</html>

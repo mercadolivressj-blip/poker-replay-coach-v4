@@ -1,0 +1,69 @@
+name: deploy public brain and study runtime
+
+on:
+  push:
+    branches:
+      - vision-v1-brain-integration
+    paths:
+      - '.github/workflows/deploy-public-v4.yml'
+      - 'standalone-lab/study-runtime-public-v1.html'
+      - 'dist/brain-v4-deploy/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: team_2Of6NYSDgWvpSjokXrCXFa0A
+      BRAIN_PROJECT_ID: prj_GwBV7pfZpO983fOmhYjXvGO1PMJh
+      RUNTIME_PROJECT_ID: prj_GVmkB5FXQkPVI8VyHkpd6bAKhqwq
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require Vercel token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          test -n "$VERCEL_TOKEN" || (echo 'VERCEL_TOKEN secret is missing' && exit 2)
+      - name: Prepare Brain deploy directory
+        run: |
+          rm -rf /tmp/ssj-brain-deploy
+          mkdir -p /tmp/ssj-brain-deploy/api /tmp/ssj-brain-deploy/.vercel
+          cp dist/brain-v4-deploy/brain.js /tmp/ssj-brain-deploy/api/brain.js
+          cp dist/brain-v4-deploy/chunk-*.js /tmp/ssj-brain-deploy/api/
+          printf '%s\n' '{"name":"poker-brain-v4-public","private":true,"type":"module"}' > /tmp/ssj-brain-deploy/package.json
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$BRAIN_PROJECT_ID" > /tmp/ssj-brain-deploy/.vercel/project.json
+      - name: Deploy Brain production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: /tmp/ssj-brain-deploy
+        run: npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN" --scope=mercadolivressj-blips-projects
+      - name: Verify Brain production
+        run: |
+          node -e "fetch('https://poker-brain-v4-public.vercel.app/api/brain',{cache:'no-store'}).then(async r=>{const t=await r.text(); if(!r.ok) throw new Error(r.status+' '+t); const j=JSON.parse(t); if(j.strategyStatus?.postflop!=='active-frozen-policy-v4') throw new Error('Policy V4 not active'); console.log('Brain production OK')})"
+      - name: Prepare Runtime deploy directory
+        run: |
+          rm -rf /tmp/ssj-runtime-deploy
+          mkdir -p /tmp/ssj-runtime-deploy/.vercel
+          cp standalone-lab/study-runtime-public-v1.html /tmp/ssj-runtime-deploy/index.html
+          printf '{"orgId":"%s","projectId":"%s"}\n' "$VERCEL_ORG_ID" "$RUNTIME_PROJECT_ID" > /tmp/ssj-runtime-deploy/.vercel/project.json
+      - name: Deploy Runtime production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        working-directory: /tmp/ssj-runtime-deploy
+        run: npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN" --scope=mercadolivressj-blips-projects
+      - name: Verify Runtime production
+        run: |
+          node - <<'NODE'
+          const u='https://ssj-poker-study-runtime-v1.vercel.app/?verify='+Date.now();
+          const r=await fetch(u,{cache:'no-store'}); const t=await r.text();
+          if(!r.ok) throw new Error(r.status+' '+t.slice(0,300));
+          for(const marker of ['LEDGER LOCAL','captureSeatMap','localActionCapture','transição local observada']){
+            if(!t.includes(marker)) throw new Error('runtime missing marker: '+marker);
+          }
+          console.log('Runtime production OK');
+          NODE

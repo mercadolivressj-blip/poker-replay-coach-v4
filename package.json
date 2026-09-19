@@ -4,13 +4,15 @@
   "version": "4.3.0-rc.1",
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/generate-policy-v4-runtime.mjs",
     "serve": "python3 -m http.server 4173",
     "test": "node tests/run-public.mjs",
+    "test:brain": "node tests/brain-v1.test.mjs",
     "test:visual": "node tests/visual-fixtures.test.mjs",
     "test:ocr": "node tests/system-ocr.test.mjs",
     "test:smoke": "bash tests/browser-smoke.sh",
     "test:private": "node tests/run-all.mjs",
-    "test:release": "node tests/run-all.mjs && node tests/system-ocr.test.mjs && bash tests/browser-smoke.sh"
+    "test:release": "node tests/brain-v1.test.mjs && node tests/run-all.mjs && node tests/system-ocr.test.mjs && bash tests/browser-smoke.sh"
   },
   "devDependencies": {
     "sharp": "^0.34.0"

@@ -1,0 +1,28 @@
+name: export corrected study runtime
+
+on:
+  push:
+    branches:
+      - vision-v1-brain-integration
+    paths:
+      - '.github/workflows/export-corrected-runtime.yml'
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - name: Stamp corrected runtime build
+        run: |
+          mkdir -p out
+          cp standalone-lab/study-runtime-public-v1.html out/SSJ_Poker_Study_Runtime_CORRIGIDO.html
+          printf '%s\n' "branch=vision-v1-brain-integration" "commit=$(git rev-parse HEAD)" > out/BUILD.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssj-study-runtime-corrigido
+          path: out/
+          if-no-files-found: error
+          retention-days: 7

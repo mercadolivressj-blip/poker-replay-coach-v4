@@ -1,0 +1,378 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSJ Poker Study Runtime</title><style>
+:root{font-family:Inter,system-ui,sans-serif;color:#ecfff5;background:#04110b}*{box-sizing:border-box}body{margin:0}.w{max-width:1380px;margin:auto;padding:18px}.top,.controls{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}.badge{border:1px solid #2b8f60;border-radius:999px;padding:6px 9px;color:#76ffae;background:#0a2719;font-size:11px;font-weight:800}.warn{border-color:#9b7519;color:#ffe17b;background:#2a2109}.btn,select{border:1px solid #3b7158;background:#143626;color:#fff;border-radius:9px;padding:10px 13px;font-weight:800}.go{background:#a87e0a}.grid{display:grid;grid-template-columns:1.55fr 1fr;gap:14px;margin-top:14px}.card{background:#091b12;border:1px solid #244934;border-radius:13px;padding:13px}.stage{position:relative;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.stage canvas{pointer-events:none}.decision{font-size:34px;font-weight:950;color:#ffe25b;margin:5px 0}.muted{color:#91b7a5;font-size:13px}.state{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.kv,.lane{background:#0b2317;border:1px solid #214b34;border-radius:9px;padding:9px}.k{font-size:10px;color:#7ea28e;text-transform:uppercase}.v{margin-top:4px;font:800 15px ui-monospace,monospace}.lanes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}.ok{color:#78f1aa}.err{color:#ff8b8b}.log{height:170px;overflow:auto;background:#020b06;border-radius:8px;padding:9px;white-space:pre-wrap;font:11px ui-monospace,monospace}.status{margin-top:12px;padding:10px;background:#07170f;border:1px solid #1f4932;border-radius:9px}.assist{margin-top:10px;padding:10px;border:1px dashed #315f45;border-radius:9px;background:#081a11}.assist select{padding:7px 9px;margin:4px 4px 0 0}@media(max-width:900px){.grid{grid-template-columns:1fr}.lanes{grid-template-columns:1fr 1fr}}
+</style></head><body><div class="w">
+<div class="top"><div><h2 style="margin:0">SSJ STUDY RUNTIME V1 · BUILD V4</h2><div class="muted">Replay / simulação / estudo pós-jogo</div></div><div><span class="badge">VISION R3 FAST</span> <span class="badge">POLICY V4 LIVE</span> <span id="mttBadge" class="badge warn" style="display:none">MTT = APROXIMAÇÃO</span></div></div>
+<div class="controls" style="margin-top:14px"><div><button id="start" class="btn go">Compartilhar replay</button> <button id="stop" class="btn">Parar</button> <button id="reset" class="btn">Reiniciar</button></div><label class="muted">Formato <select id="format"><option value="cash">Cash</option><option value="mtt">MTT</option></select></label></div>
+<div class="grid"><div class="card"><div class="stage"><video id="video" muted playsinline></video><canvas id="actionOverlay"></canvas></div><div class="muted" style="margin-top:8px">Compartilhe somente replay/gravação para estudo. O sistema não clica nem executa ações.</div><div id="lanes" class="lanes"></div></div>
+<div class="card"><div class="k">Dica de estudo</div><div id="decision" class="decision">—</div><div id="engine" class="muted">aguardando estado</div><p id="reason">Compartilhe um replay para começar.</p><div class="state">
+<div class="kv"><div class="k">Hero</div><div id="hero" class="v">—</div></div><div class="kv"><div class="k">Board</div><div id="board" class="v">—</div></div>
+<div class="kv"><div class="k">Pot</div><div id="pot" class="v">—</div></div><div class="kv"><div class="k">To call</div><div id="tocall" class="v">—</div></div>
+<div class="kv"><div class="k">Stack</div><div id="stack" class="v">—</div></div><div class="kv"><div class="k">Blinds</div><div id="blinds" class="v">—</div></div>
+<div class="kv"><div class="k">Posição</div><div id="position" class="v">—</div></div><div class="kv"><div class="k">Ações legais</div><div id="actions" class="v">—</div></div></div>
+<div class="assist"><div class="k">Fallback manual (só se o automático demorar)</div>
+   <select id="manualPos"><option value="">Posição automática</option><option>UTG</option><option>HJ</option><option>CO</option><option>BTN</option><option>SB</option><option>BB</option></select>
+   <select id="manualNode"><option value="">Node automático</option><option value="rfi">Pote unopened / RFI</option><option value="UTG">Enfrentando UTG</option><option value="HJ">Enfrentando HJ</option><option value="CO">Enfrentando CO</option><option value="BTN">Enfrentando BTN</option><option value="SB">Enfrentando SB</option></select>
+   <div class="muted">Não inventa nada sozinho: esse fallback só usa o que você confirmar manualmente.</div></div>
+   <div class="status"><div class="k">Backend</div><div id="backend" class="muted">checando…</div></div></div></div>
+<div class="card" style="margin-top:14px"><div class="k">Log</div><div id="log" class="log">pronto</div></div></div>
+<canvas id="actionAnalysis" style="display:none"></canvas><script type="module">
+// PUBLIC_ACTION_CAPTURE_V18
+import { detectFeltPixels } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/geometry.js';
+import { ActionTextOcr } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-ocr.js';
+import { seatRegionsFromFelt, sampleSeats, createActionCaptureState, observeSeatSamples } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-capture.js';
+import { actionBandRegionsFromFelt, sampleActionBands, createActionBandState, observeActionBands } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-band.js';
+import { createActionSeatState, observeSeatCardState, applyActionSeatEvents, actionSeatEligibility } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-seat-state.js';
+import { shouldAcceptOcrAction } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-ocr-gate.js';
+import { detectDealerButtonSeat, positionsFromDealer } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@e17c637c4364569d516bdf8626eeb801aafb13ac/src/core/dealer-button.js';
+import { preflopDecision as localPreflopDecision } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@8acb701cc11b42a3a5ec4d13af899f7ff9269e00/src/brain/preflop.js';
+import { deriveReplayHeroPosition, inferReplayPreflopContext } from 'https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@e4561e10782a62f632c6461168c82c6c88d00eef/src/core/replay-preflop-context.js';
+const VISION='https://ssj-poker-hybrid-v1-r3-fast.vercel.app/api/vision/read';
+const BRAIN='https://poker-brain-v4-public.vercel.app/api/brain';
+const $=id=>document.getElementById(id),video=$('video'),actionOverlay=$('actionOverlay'),actionAnalysis=$('actionAnalysis');
+const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();
+let stream=null,running=false,generation=0,brainBusy=false,lastBrainKey='',handSeq=0,lastHeroKey='',heroAbsentStreak=0,heroAbsentSince=0,lastHeroConfirmedAt=0,metaUrgent=true,lastMetaRequestAt=0,handEpoch=1,handStartedAt=0,lockedPosition=null,lockedBlinds=null,blindCandidate='',blindVotes=0,potDropCandidate=null,potDropVotes=0,transitionSuspected=false,historyCandidateKey='',historyCandidateVotes=0,decisionPointKey='',decisionCandidateSig='',decisionCandidateVotes=0,pinnedDecisionPoint='',positionCandidate='',positionVotes=0,brainSession=null,localFelt=null,localLastFeltAt=0,localCaptureState=null,localBandState=null,localSeatState=null,localActionLastTick=0,localOcrQueue=[],localOcrBusy=false,localConfirmedActions=[],remoteActionHistory=[],pendingCaptureEvents=[],localActionSeq=0,localSweepAt=0,localSweepIndex=0,dealerCandidate='',dealerVotes=0,lockedDealerSeat=null,seatLayoutCandidate='',seatLayoutVotes=0,lockedVisualSlots=[],lockedPositionSeatCount=0;
+const state={version:'vision-v1',heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()};
+const lanes={hero:{ms:null,err:null,busy:false},board:{ms:null,err:null,busy:false},actions:{ms:null,err:null,busy:false},quick:{ms:null,err:null,busy:false},meta:{ms:null,err:null,busy:false}};
+const seen={hero:0,board:0,actions:0,quick:0,meta:0};
+const fieldSeen={hero:0,board:0,pot:0,toCall:0,actions:0,stack:0,blinds:0,position:0,history:0};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function num(v){if(v==null)return null;const m=String(v).match(/\d+(?:[.,]\d+)?/g);if(!m?.length)return null;const n=Number(m[m.length-1].replace(',','.'));return Number.isFinite(n)?n:null}
+function sameMoney(a,b){const x=num(a),y=num(b);return x!=null&&y!=null&&Math.abs(x-y)<0.0001}
+function historyText(a){return typeof a==='string'?a:JSON.stringify(a)}
+const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
+const POSITIONS_BY_N={6:['BTN','SB','BB','UTG','HJ','CO'],5:['BTN','SB','BB','UTG','CO'],4:['BTN','SB','BB','CO'],3:['BTN','SB','BB'],2:['SB','BB']};
+function activeVisualSlots(){
+  const observed=VISUAL_ORDER.filter(id=>id==='hero'||localSeatState?.seats?.[id]?.seenCards===true);
+  // Seats dealt into the hand are monotonic: folds must never shrink the table and remap positions.
+  const merged=VISUAL_ORDER.filter(id=>lockedVisualSlots.includes(id)||observed.includes(id));
+  if(merged.length>lockedVisualSlots.length)lockedVisualSlots=merged;
+  return lockedVisualSlots.length>=2?[...lockedVisualSlots]:[];
+}
+function captureSeatMap(){
+  // This runtime is explicitly 6-max. Once the dealer is locked, map against the
+  // full physical ring so a player who already folded cannot disappear from the
+  // position map and shift every remaining seat.
+  const slots=lockedDealerSeat?[...VISUAL_ORDER]:activeVisualSlots();if(slots.length<2)return{};
+  if(lockedDealerSeat){const local=positionsFromDealer(slots,lockedDealerSeat);if(local.hero)return local;}
+  const heroPos=state.heroPosition||lockedPosition;if(!heroPos)return{};
+  const positions=POSITIONS_BY_N[slots.length];if(!positions)return{};const heroIndex=positions.indexOf(heroPos);if(heroIndex<0)return{};
+  const map={};slots.forEach((slot,i)=>map[slot]=positions[(heroIndex+i)%positions.length]);return map;
+}
+function resetLocalCapture(){
+  localFelt=null;localLastFeltAt=0;localCaptureState=null;localBandState=null;localSeatState=null;localOcrQueue=[];localOcrBusy=false;localConfirmedActions=[];remoteActionHistory=[];pendingCaptureEvents=[];localActionSeq=0;localSweepAt=0;localSweepIndex=0;dealerCandidate='';dealerVotes=0;lockedDealerSeat=null;seatLayoutCandidate='';seatLayoutVotes=0;lockedVisualSlots=[];lockedPositionSeatCount=0;brainSession=null;positionCandidate='';positionVotes=0;
+  if(actionOverlay)actionOctx.clearRect(0,0,actionOverlay.width,actionOverlay.height);
+}
+// CAPTURE_STABILITY_V2
+function strategicActionCount(list){return (list||[]).map(historyText).filter(x=>/CALL|PAGA|LIMP|RAISE|AUMENT|3-?BET|ALL-?IN|ALLIN|BET/i.test(x)&&!/POST\s+(SB|BB)/i.test(x)).length;}
+function refreshLocalHistory(){
+  const map=captureSeatMap();
+  const rows=localConfirmedActions.filter(a=>a.street==='preflop'&&map[a.seatId]).slice().sort((a,b)=>a.at-b.at).map(a=>`${map[a.seatId]} ${a.action}${a.amount!=null?' '+a.amount:''}`);
+  const remote=[...remoteActionHistory],localStrategic=strategicActionCount(rows),remoteStrategic=strategicActionCount(remote);
+  // Stabilized Vision history is broader than transient local OCR, so it wins when
+  // it contains a strategic action. Local capture remains the fallback.
+  state.actionHistory=remoteStrategic>0?remote:(localStrategic>0?rows:(remote.length?remote:rows));
+  if(rows.length)log('LEDGER LOCAL '+rows.join(' | '));
+  if(state.actionHistory.length)fieldSeen.history=Date.now();
+}
+function confirmLocalAction({seatId,action,amount=null,at=Date.now(),confidence=.8,source='local-action-text'}){
+  if(!seatId||!action||seatId==='hero'||seatId==='table')return;
+  const street=state.board.length>=5?'river':state.board.length===4?'turn':state.board.length>=3?'flop':'preflop';
+  // A player can fold only once per hand. Never let repeated visual motion/OCR spam the ledger.
+  if(action==='FOLD'&&localConfirmedActions.some(a=>a.seatId===seatId&&a.action==='FOLD'))return;
+  const recent=localConfirmedActions.slice(-8).find(a=>a.seatId===seatId&&a.action===action&&String(a.amount??'')===String(amount??'')&&at-a.at<1800);if(recent)return;
+  const row={id:++localActionSeq,seatId,action,amount,at,confidence,source,street};localConfirmedActions.push(row);localConfirmedActions=localConfirmedActions.slice(-80);
+  pendingCaptureEvents.push({type:action==='FOLD'?'fold-candidate':'action-candidate',seatId,action,amount,at,confidence,source,capturedAt:at,status:'confirmed-local',sovereign:true});
+  refreshLocalHistory();lastBrainKey='';brainSoon();
+}
+function localRect(r){return{x:r.x*actionOverlay.width,y:r.y*actionOverlay.height,w:r.w*actionOverlay.width,h:r.h*actionOverlay.height}}
+function localCrop(rect,pad=.04){
+  const x=Math.max(0,rect.x-rect.w*pad),y=Math.max(0,rect.y-rect.h*pad),w=Math.min(1-x,rect.w*(1+pad*2)),h=Math.min(1-y,rect.h*(1+pad*2));
+  const sx=Math.max(0,Math.round(x*video.videoWidth)),sy=Math.max(0,Math.round(y*video.videoHeight)),sw=Math.max(4,Math.min(video.videoWidth-sx,Math.round(w*video.videoWidth))),sh=Math.max(4,Math.min(video.videoHeight-sy,Math.round(h*video.videoHeight))),c=document.createElement('canvas');
+  c.width=sw;c.height=sh;c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,sw,sh);return c;
+}
+function drawLocalCapture(){
+  if(!actionOverlay)return;actionOctx.clearRect(0,0,actionOverlay.width,actionOverlay.height);if(!localFelt)return;
+  let r=localRect(localFelt);actionOctx.strokeStyle='#45ef8f';actionOctx.lineWidth=2;actionOctx.strokeRect(r.x,r.y,r.w,r.h);
+  for(const seat of seatRegionsFromFelt(localFelt)){const a=localRect(seat.region),c=localRect(seat.cardRegion);actionOctx.strokeStyle='#50c8ff';actionOctx.strokeRect(a.x,a.y,a.w,a.h);actionOctx.strokeStyle='#ffe46b';actionOctx.strokeRect(c.x,c.y,c.w,c.h);}
+  for(const b of actionBandRegionsFromFelt(localFelt)){r=localRect(b.region);actionOctx.strokeStyle='#ff9d3d';actionOctx.lineWidth=2;actionOctx.strokeRect(r.x,r.y,r.w,r.h);}
+}
+function enqueueLocalOcr(e){
+  if(!localFelt||!e?.seatId||e.seatId==='hero'||e.seatId==='table')return;
+  const elig=actionSeatEligibility(localSeatState,e.seatId);if(elig.reason==='seat-already-folded')return;
+  const band=actionBandRegionsFromFelt(localFelt).find(x=>x.id===e.seatId);if(!band)return;
+  localOcrQueue.push({e,crops:[localCrop(band.region,.03),localCrop(band.region,.10)]});if(localOcrQueue.length>8)localOcrQueue=localOcrQueue.slice(-8);void drainLocalOcr();
+}
+function sweepLocalOcr(now){
+  if(state.board.length||!localFelt||localOcrBusy||localOcrQueue.length>2||now-localSweepAt<320)return;
+  const bands=actionBandRegionsFromFelt(localFelt);if(!bands.length)return;localSweepAt=now;
+  for(let tries=0;tries<bands.length;tries++){
+    const b=bands[localSweepIndex++%bands.length],elig=actionSeatEligibility(localSeatState,b.id);
+    if(elig.reason==='seat-already-folded')continue;
+    enqueueLocalOcr({type:'action-band-sweep',seatId:b.id,at:now,sweep:true});break;
+  }
+}
+async function drainLocalOcr(){
+  if(localOcrBusy)return;localOcrBusy=true;
+  try{while(localOcrQueue.length){
+    const job=localOcrQueue.shift(),hits=[];
+    for(const crop of job.crops){const r=await actionOcr.read(crop,{timeoutMs:1200});if(r?.parsed)hits.push(r);}
+    if(!hits.length)continue;
+    const good=[];for(const hit of hits){const p=hit.parsed,conf=Math.max(0,Math.min(1,(Number(hit.confidence)||0)/100)),elig=actionSeatEligibility(localSeatState,job.e.seatId),gate=shouldAcceptOcrAction({action:p.action,confidence:conf,activeThisHand:elig.eligible||state.board.length===0,folded:elig.reason==='seat-already-folded',raw:hit.text});if(gate.ok)good.push({p,conf});}
+    if(!good.length)continue;const first=good[0],same=good.filter(x=>x.p.action===first.p.action&&String(x.p.amount??'')===String(first.p.amount??''));
+    if(same.length>=2||first.conf>=.82)confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf)});
+  }}finally{localOcrBusy=false;}
+}
+function observeLocalDealer(img,aw,ah,now){
+  const hit=detectDealerButtonSeat(img?.data,aw,ah,localFelt);if(!hit?.seatId)return;
+  // Dealer cannot move inside the same hand. Ignore later conflicting visual hits once locked.
+  if(lockedDealerSeat&&hit.seatId!==lockedDealerSeat)return;
+  if(dealerCandidate===hit.seatId)dealerVotes++;else{dealerCandidate=hit.seatId;dealerVotes=1;}
+  // Dealer detection itself is sovereign for the physical button. Do not require
+  // the dealer seat to still show hole cards: it may have folded before the local
+  // card-presence detector stabilized. The study runtime is fixed to PokerStars 6-max.
+  const slots=[...VISUAL_ORDER];
+  if(dealerVotes<6)return;
+  const map=positionsFromDealer(slots,hit.seatId),heroPos=map.hero;if(!heroPos)return;
+  // Never downgrade 6-max -> 5-max after folds. Only a newly observed dealt-in seat may upgrade the mapping.
+  if(lockedDealerSeat===hit.seatId&&lockedPosition&&slots.length<=lockedPositionSeatCount){fieldSeen.position=now;return;}
+  const previous=lockedPosition;lockedDealerSeat=hit.seatId;lockedPosition=heroPos;lockedPositionSeatCount=slots.length;state.heroPosition=heroPos;fieldSeen.position=now;positionCandidate=heroPos;positionVotes=99;
+  log((previous&&previous!==heroPos?'posição corrigida':'posição derivada')+' por dealer local: '+heroPos+' · dealer '+hit.seatId+' · '+slots.length+'-max');
+  refreshLocalHistory();lastBrainKey='';brainSoon();
+}
+function actionTick(ts){
+  if(!running)return;requestAnimationFrame(actionTick);if(ts-localActionLastTick<78)return;localActionLastTick=ts;if(!video.videoWidth)return;
+  const aw=480,ah=Math.max(270,Math.round(aw*video.videoHeight/video.videoWidth));if(actionAnalysis.width!==aw||actionAnalysis.height!==ah){actionAnalysis.width=aw;actionAnalysis.height=ah;actionOverlay.width=video.videoWidth;actionOverlay.height=video.videoHeight;}
+  actionActx.drawImage(video,0,0,aw,ah);const img=actionActx.getImageData(0,0,aw,ah),now=Date.now();
+  if(!localFelt||now-localLastFeltAt>1100){localFelt=detectFeltPixels(img.data,aw,ah)||localFelt;localLastFeltAt=now;if(localFelt){if(!localCaptureState)localCaptureState=createActionCaptureState(seatRegionsFromFelt(localFelt));if(!localBandState)localBandState=createActionBandState(actionBandRegionsFromFelt(localFelt));if(!localSeatState)localSeatState=createActionSeatState(seatRegionsFromFelt(localFelt));}}
+  if(!localFelt)return;
+  const samples=sampleSeats(img.data,aw,ah,localFelt),f=observeSeatSamples(localCaptureState,samples,now,{motionThreshold:.09,foldDrop:.12,refractoryMs:420,confirmFrames:2});localCaptureState=f.state;localSeatState=observeSeatCardState(localSeatState,localCaptureState,now);localSeatState=applyActionSeatEvents(localSeatState,f.events,now);observeLocalDealer(img,aw,ah,now);
+  for(const e of f.events){
+    if(e.type==='fold-candidate')confirmLocalAction({seatId:e.seatId,action:'FOLD',at:e.at,confidence:e.confidence,source:'fold-v1.2'});
+    if(e.type==='table-transition')log('Action Capture: transição local observada; aguardando confirmação por Hero/pot.');
+  }
+  const b=observeActionBands(localBandState,sampleActionBands(img.data,aw,ah,localFelt),now,{threshold:.026,refractoryMs:180,confirmFrames:1});localBandState=b.state;for(const e of b.events)enqueueLocalOcr(e);sweepLocalOcr(now);drawLocalCapture();
+}
+function setPosition(v,at){
+  if(!v||lockedPosition)return;
+  const p=String(v).trim().toUpperCase();
+  if(positionCandidate===p)positionVotes++;else{positionCandidate=p;positionVotes=1;}
+  if(positionVotes>=2){lockedPosition=p;state.heroPosition=p;fieldSeen.position=at||Date.now();log('posição confirmada '+p);refreshLocalHistory();}
+}
+function observeBlinds(v,at){
+  if(!v)return;
+  const s=String(v);
+  if(lockedBlinds){state.blinds=lockedBlinds;return;}
+  if(blindCandidate===s)blindVotes++;else{blindCandidate=s;blindVotes=1;}
+  if(blindVotes>=2){lockedBlinds=s;state.blinds=s;fieldSeen.blinds=at||Date.now();log('blinds confirmados '+s);}
+}
+function historyMerge(next,at){
+  if(!Array.isArray(next)||!next.length)return;
+  remoteActionHistory=next;
+  const clean=next.map(historyText),cur=(state.actionHistory||[]).map(historyText);
+  const nextKey=clean.join('||'),curKey=cur.join('||');
+  if(nextKey===curKey){fieldSeen.history=at||Date.now();return;}
+  const extendsCurrent=cur.length>0&&clean.length>=cur.length&&cur.every((v,i)=>clean[i]===v);
+  if(cur.length&&!extendsCurrent){if(historyCandidateKey===nextKey)historyCandidateVotes++;else{historyCandidateKey=nextKey;historyCandidateVotes=1;}if(historyCandidateVotes<2){log('DROP history instável · aguardando confirmação');return;}}
+  if(clean.length<cur.length&&!extendsCurrent)return;
+  remoteActionHistory=next;fieldSeen.history=at||Date.now();historyCandidateKey='';historyCandidateVotes=0;refreshLocalHistory();
+}
+function beginBoundary(reason,{clearHero=true,startedAt=Date.now()}={}){
+  handEpoch++;handStartedAt=startedAt;lockedPosition=null;positionCandidate='';positionVotes=0;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;resetLocalCapture();
+  resetHand(reason,{clearHero,skipEpoch:true,startedAt});
+}
+
+function log(x){$('log').textContent=new Date().toLocaleTimeString()+' '+x+'\n'+$('log').textContent.slice(0,6500)}
+function render(){
+  $('hero').textContent=state.heroCards.join(' ')||'—';$('board').textContent=state.board.join(' ')||'—';$('pot').textContent=state.pot??'—';$('tocall').textContent=state.toCall??'—';$('stack').textContent=state.heroStack??'—';$('blinds').textContent=state.blinds??'—';$('position').textContent=state.heroPosition||($('manualPos')?.value?$('manualPos').value+' · manual':'—');$('actions').textContent=state.legalActions.join(' · ')||'—';
+  $('lanes').innerHTML=Object.entries(lanes).map(([k,v])=>'<div class="lane"><b>'+k+'</b><div class="'+(v.err?'err':'ok')+'">'+(v.busy?'lendo…':v.err?'erro':'ok')+'</div><div class="muted">'+(v.ms==null?'—':v.ms+' ms')+'</div></div>').join('')
+}
+function crop(nx,ny,nw,nh,scale=1.6,q=.82){if(!video.videoWidth)return null;const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.round(video.videoWidth*nw),sh=Math.round(video.videoHeight*nh),z=Math.min(scale,1280/sw),c=document.createElement('canvas');c.width=Math.round(sw*z);c.height=Math.round(sh*z);c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
+function full(max=1120,q=.72){if(!video.videoWidth)return null;const z=Math.min(1,max/video.videoWidth),c=document.createElement('canvas');c.width=Math.round(video.videoWidth*z);c.height=Math.round(video.videoHeight*z);c.getContext('2d').drawImage(video,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
+function metaFrame(){return full(1120,.72)}
+function derivePosition(seats){return deriveReplayHeroPosition(seats)}
+function resetHand(reason,{clearHero=true,skipEpoch=false,startedAt=Date.now()}={}){
+  if(!skipEpoch){handEpoch++;handStartedAt=startedAt;lockedPosition=null;positionCandidate='';positionVotes=0;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;resetLocalCapture();}
+  if(clearHero){state.heroCards=[];state.heroPresence='absent';lastHeroKey='';}
+  state.board=[];state.boardPresence=null;state.pot=null;state.toCall=null;state.legalActions=[];state.heroPosition=null;state.heroStack=null;state.effectiveStack=null;state.seats=[];state.actionHistory=[];state.players=null;state.activePlayers=null;
+  seen.board=seen.actions=seen.quick=seen.meta=0;for(const k of Object.keys(fieldSeen))fieldSeen[k]=0;lastBrainKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;
+  $('decision').textContent='AGUARDANDO';$('engine').textContent='VISION RESET · confiança 0';$('reason').textContent=reason||'Aguardando uma mão confirmada.';
+  log('RESET '+(reason||'estado'));render();
+}
+function normalizeToCall(){
+  const legal=new Set(state.legalActions||[]);
+  if(legal.has('CHECK')&&!legal.has('CALL')&&!legal.has('FOLD')) state.toCall=null;
+}
+async function read(scope,image){
+  const visionScope=scope==='meta'?'full':scope,at=Date.now(),epoch=handEpoch,t=performance.now();
+  const r=await fetch(VISION,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,mode:'fast',scope:visionScope})});
+  if(!r.ok)throw Error('vision '+r.status+' '+(await r.text()).slice(0,100));
+  return{data:await r.json(),ms:Math.round(performance.now()-t),at,epoch}
+}
+function apply(scope,r){
+  const originalScope=scope;if(scope==='meta')scope='full';
+  if(r.epoch!==handEpoch||r.at<handStartedAt){log('DROP '+originalScope+' resposta de mão antiga');return;}
+
+  const x=r.data?.read||r.data?.result||r.data||{};state.capturedAt=r.at||Date.now();seen[originalScope]=state.capturedAt;
+  if(scope==='hero'){
+    if(x.heroPresence==='absent'){
+      state.heroPresence='absent';
+      heroAbsentStreak++;
+      if(!heroAbsentSince)heroAbsentSince=Date.now();
+      if(state.heroCards.length&&heroAbsentStreak>=4&&Date.now()-lastHeroConfirmedAt>6500)beginBoundary('Hero não está mais na mão.',{clearHero:true,startedAt:r.at});
+      render();brainSoon();return;
+    }
+    if(x.heroPresence==='present'&&Array.isArray(x.heroCards)&&x.heroCards.length===2){
+      heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=Date.now();const key=x.heroCards.join(' ');
+      if(lastHeroKey&&lastHeroKey!==key){beginBoundary('Nova mão detectada.',{clearHero:false,startedAt:r.at});handSeq++;}
+      if(!lastHeroKey)handSeq=Math.max(1,handSeq+1);
+      lastHeroKey=key;state.heroCards=[...x.heroCards];state.heroPresence='present';fieldSeen.hero=r.at;seen.hero=r.at;metaUrgent=!state.heroPosition;
+    }
+    if(x.readerModel)state.readerModel=x.readerModel;
+  }else if(scope==='board'){
+    if(x.boardPresence)state.boardPresence=x.boardPresence;
+    if(x.boardPresence==='present'&&[3,4,5].includes(x.board?.length)){
+      const next=[...x.board],cur=state.board||[];
+      const prefix=cur.every((card,i)=>next[i]===card);
+      if((cur.length===0||next.length>=cur.length)&&prefix){const prev=cur.length;state.board=next;fieldSeen.board=r.at;if(state.board.length!==prev)metaUrgent=true;}
+      else log('DROP board regressivo/incompatível '+historyText(next));
+    }
+    if(x.boardPresence==='absent'&&state.board.length===0)fieldSeen.board=r.at;
+  }else if(scope==='actions'){
+    if(Array.isArray(x.legalActions)){state.legalActions=[...x.legalActions];fieldSeen.actions=r.at;}
+    if(Object.prototype.hasOwnProperty.call(x,'toCall')){state.toCall=x.toCall??null;fieldSeen.toCall=r.at;}
+    if(!state.legalActions.length)state.toCall=null;
+    normalizeToCall();
+    const la=new Set(state.legalActions);
+    if(state.board.length===0&&la.has('CHECK')&&la.has('RAISE')&&!la.has('CALL')&&!la.has('FOLD')){
+      if(state.heroPosition!=='BB')log('posição corrigida por CHECK pré-flop: BB');
+      lockedPosition='BB';positionCandidate='BB';positionVotes=2;state.heroPosition='BB';fieldSeen.position=r.at;metaUrgent=false;refreshLocalHistory();
+    }
+  }else if(scope==='quick'){
+    if(x.pot!=null){
+      const old=num(state.pot),next=num(x.pot);
+      if(old!=null&&next!=null&&next+0.01<old){
+        transitionSuspected=true;
+        const strongBoundary=state.board.length>0&&next<old*0.70;
+        if(potDropCandidate!=null&&Math.abs(potDropCandidate-next)<0.02)potDropVotes++;else{potDropCandidate=next;potDropVotes=1;}
+        if(strongBoundary||potDropVotes>=2){beginBoundary('Pot reiniciou: nova mão detectada.',{clearHero:true,startedAt:r.at});state.pot=x.pot;fieldSeen.pot=r.at;seen.quick=r.at;render();return;}
+      }else{transitionSuspected=false;potDropCandidate=null;potDropVotes=0;state.pot=x.pot;fieldSeen.pot=r.at;}
+    }
+    if(x.heroStack!=null){state.heroStack=x.heroStack;fieldSeen.stack=r.at;}
+    if(x.effectiveStack!=null)state.effectiveStack=x.effectiveStack;
+    observeBlinds(x.blinds,r.at);setPosition(x.heroPosition,r.at);
+    ['players','activePlayers'].forEach(k=>{if(x[k]!=null)state[k]=x[k]});
+    historyMerge(x.actionHistory,r.at);
+    if(Array.isArray(x.seats)&&x.seats.length){state.seats=x.seats;setPosition(derivePosition(x.seats),r.at)}
+  }else if(scope==='full'){
+    if(x.pot!=null){const old=num(state.pot),next=num(x.pot);if(old==null||next==null||next+0.01>=old){state.pot=x.pot;fieldSeen.pot=r.at;}}
+    if(x.heroStack!=null){state.heroStack=x.heroStack;fieldSeen.stack=r.at;}
+    if(x.effectiveStack!=null)state.effectiveStack=x.effectiveStack;
+    observeBlinds(x.blinds,r.at);setPosition(x.heroPosition,r.at);
+    ['players','activePlayers'].forEach(k=>{if(x[k]!=null)state[k]=x[k]});
+    if(Array.isArray(x.seats)&&x.seats.length){state.seats=x.seats;setPosition(derivePosition(x.seats),r.at)}
+    historyMerge(x.actionHistory,r.at);
+    const histPreview=state.actionHistory.slice(-6).map(a=>typeof a==='string'?a:JSON.stringify(a)).join(' | ').slice(0,260);
+    if(state.heroPosition){metaUrgent=false;log('metadata '+state.heroPosition+' · '+state.actionHistory.length+' ações · '+r.ms+'ms'+(histPreview?' ['+histPreview+']':''))}
+    else log('metadata posição pendente · '+state.actionHistory.length+' ações · '+r.ms+'ms'+(histPreview?' ['+histPreview+']':''));
+  }
+  if(typeof x.confidence==='number')state.confidence=x.confidence;
+  render();brainSoon();
+}
+function coherentState(){
+  const manualPos=$('manualPos')?.value||'';
+  const effectivePos=state.heroPosition||manualPos||null;
+  const now=Date.now();if(transitionSuspected)return{ok:false,why:'transição de mão em confirmação',effectivePos};if(state.heroPresence!=='present'||state.heroCards.length!==2||!state.legalActions.length||!effectivePos)return{ok:false,why:'cartas/posição/ações pendentes',effectivePos};
+  if(!lockedBlinds&&!state.blinds)return{ok:false,why:'blinds ainda não confirmados',effectivePos};
+  const required={hero:fieldSeen.hero,actions:fieldSeen.actions,pot:fieldSeen.pot,stack:fieldSeen.stack};
+  if(state.board.length)required.board=fieldSeen.board;
+  for(const [k,t] of Object.entries(required))if(!t||now-t>7000)return{ok:false,why:k+' stale',effectivePos};
+  const times=Object.values(required),spread=Math.max(...times)-Math.min(...times);if(spread>5500)return{ok:false,why:'snapshot desalinhado',effectivePos};
+  const legal=new Set(state.legalActions);
+  if(legal.has('CHECK')&&!legal.has('CALL')&&!legal.has('FOLD')&&state.toCall!=null)return{ok:false,why:'toCall inconsistente com CHECK'};
+  if(legal.has('CALL')&&(state.toCall==null||!fieldSeen.toCall||now-fieldSeen.toCall>7000))return{ok:false,why:'call sem valor confirmado'};
+  if(state.board.length&&state.pot==null)return{ok:false,why:'pot pendente'};
+  return{ok:true,effectivePos};
+}
+function showGate(why){
+  if(state.heroCards.length===2){
+    $('decision').textContent='AGUARDANDO';
+    $('engine').textContent='BRAIN GATE · confiança 0';
+    $('reason').textContent='Aguardando '+String(why||'estado confirmado')+'.';
+  }
+}
+function decisionPointFingerprint(s){
+  const cents=v=>{const n=num(v);return n==null?'':Math.round(n*100)};
+  return [handSeq,s.heroCards.join(''),s.board.join(''),cents(s.pot),cents(s.toCall),[...(s.legalActions||[])].sort().join('-'),s.heroPosition||'',cents(s.heroStack),s.blinds||'',$('format').value].join('|');
+}
+function highImpactFacing(s){
+  const tc=num(s.toCall),st=num(s.heroStack),legal=new Set(s.legalActions||[]);
+  return s.board.length>=3&&legal.has('CALL')&&legal.has('FOLD')&&tc!=null&&st!=null&&st>0&&tc/st>=0.70;
+}
+async function brainSoon(){
+  const gate=coherentState();if(!gate.ok){showGate(gate.why);return;}
+  const manualNode=$('manualNode')?.value||'';
+  const effectiveState={...state,heroPosition:gate.effectivePos};
+  const autoPreflop=effectiveState.board.length===0?inferReplayPreflopContext(effectiveState):{node:null,versus:null,source:null};
+  const node=manualNode==='rfi'?'rfi':manualNode?'vs_open':autoPreflop.node;
+  const versus=manualNode&&manualNode!=='rfi'?manualNode:autoPreflop.versus;
+  if(!manualNode&&autoPreflop.source)log('PREFLOP CONTEXT AUTO · '+autoPreflop.source+' · '+(node||'')+(versus?' vs '+versus:''));
+  const pointKey=decisionPointFingerprint(effectiveState);
+  if(pointKey!==decisionPointKey){decisionPointKey=pointKey;decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';}
+  if(pinnedDecisionPoint===pointKey)return;
+  if(highImpactFacing(effectiveState)&&(!effectiveState.actionHistory.length||!fieldSeen.history||Date.now()-fieldSeen.history>12000)){$('decision').textContent='AGUARDANDO';$('engine').textContent='BRAIN GATE · confiança 0';$('reason').textContent='Spot de alto impacto: aguardando histórico confirmado antes de recomendar call/fold.';return;}
+  const key=[handSeq,effectiveState.heroCards.join(''),effectiveState.board.join(''),effectiveState.pot,effectiveState.toCall,effectiveState.legalActions.join('-'),effectiveState.heroPosition,effectiveState.heroStack,effectiveState.blinds,effectiveState.actionHistory.slice(-8).map(historyText).join('>'),$('format').value,node||'',versus||''].join('|');
+  if(brainBusy||key===lastBrainKey)return;lastBrainKey=key;brainBusy=true;
+  try{
+    const captureBatch=[...pendingCaptureEvents],seatMap=captureSeatMap();
+    let d=null;
+    if(effectiveState.board.length===0){
+      d=localPreflopDecision(effectiveState,{format:$('format').value,tableSize:'6max',handId:handSeq||null,preflopNode:node,versus});
+      log('BRAIN LOCAL PREFLOP V4 · '+(d?.engine||'BRAIN GATE'));
+    }else{
+      const r=await fetch(BRAIN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vision:effectiveState,context:{format:$('format').value,tableSize:'6max',handId:handSeq||null,preflopNode:node,versus,useStudySession:true,session:brainSession,captureEvents:captureBatch,captureSeatMap:seatMap}})}),j=await r.json();
+      if(!r.ok)throw Error(j.error||('HTTP '+r.status));if(j.session)brainSession=j.session;if(captureBatch.length)pendingCaptureEvents.splice(0,captureBatch.length);d=j.result||{};
+    }
+    if(!d.decision){$('decision').textContent='AGUARDANDO';$('engine').textContent=(d.engine||'BRAIN GATE')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado insuficiente para recomendação segura.';log('BRAIN AGUARDANDO · '+(d.engine||''));return;}
+    const sig=[d.decision||'',d.engine||'',d.confidence??'',d.reason||''].join('|');
+    if(sig===decisionCandidateSig)decisionCandidateVotes++;else{decisionCandidateSig=sig;decisionCandidateVotes=1;}
+    if(decisionCandidateVotes<2){$('decision').textContent='VALIDANDO';$('engine').textContent='BRAIN QUORUM · confiança 0';$('reason').textContent='Confirmando a mesma recomendação em duas leituras estáveis antes de exibir.';log('BRAIN candidato '+d.decision+' · '+(d.engine||''));setTimeout(()=>{if(running&&decisionPointKey===pointKey&&!pinnedDecisionPoint){lastBrainKey='';brainSoon()}},1100);return;}
+    pinnedDecisionPoint=pointKey;$('decision').textContent=d.decision;$('engine').textContent=(d.engine||'')+(d.confidence!=null?' · confiança '+d.confidence:'');$('reason').textContent=d.reason||'Estado confirmado.';log('BRAIN FIXADO '+d.decision+' · '+(d.engine||''));
+  }catch(e){$('decision').textContent='SEM DICA';$('reason').textContent=e.message;log('brain erro '+e.message)}finally{brainBusy=false}
+}
+async function laneOnce(scope,capture){
+  if(!running||lanes[scope].busy)return;
+  const image=capture();if(!image)return;lanes[scope].busy=true;render();
+  try{const r=await read(scope,image);lanes[scope].ms=r.ms;lanes[scope].err=null;apply(scope,r)}
+  catch(e){lanes[scope].err=e.message;log(scope+' '+e.message)}
+  finally{lanes[scope].busy=false;render()}
+}
+function loop(scope,ms,capture){
+  (async()=>{const g=generation;while(running&&g===generation){
+    if(scope==='meta'){
+      const now=Date.now(),due=metaUrgent?now-lastMetaRequestAt>1200:now-lastMetaRequestAt>6500;
+      if(due&&!lanes.meta.busy){lastMetaRequestAt=now;await laneOnce('meta',capture)}
+      await sleep(metaUrgent?180:700);
+    }else{
+      await laneOnce(scope,capture);await sleep(ms);
+    }
+  }})()
+}
+async function start(){
+  if(running)return;
+  try{
+    stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:15,max:30}},audio:false});video.srcObject=stream;await video.play();generation++;running=true;handStartedAt=Date.now();metaUrgent=true;lastMetaRequestAt=0;
+    stream.getVideoTracks()[0].addEventListener('ended',stop);void actionOcr.prewarm();localActionLastTick=0;requestAnimationFrame(actionTick);
+    loop('hero',320,()=>crop(.36,.52,.28,.24));
+    loop('meta',180,metaFrame);
+    loop('actions',320,()=>crop(.38,.55,.61,.44,1.5,.76));
+    loop('quick',520,()=>full(900,.64));
+    loop('board',520,()=>crop(.26,.30,.48,.16));
+    log('replay iniciado · metadata prioritária');
+  }catch(e){log('captura cancelada '+e.message)}
+}
+function stop(){running=false;generation++;stream?.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;resetLocalCapture();log('captura parada')}
+function reset(){stop();handSeq=0;heroAbsentStreak=0;heroAbsentSince=0;lastHeroConfirmedAt=0;handEpoch++;handStartedAt=Date.now();lockedPosition=null;lockedBlinds=null;blindCandidate='';blindVotes=0;potDropCandidate=null;potDropVotes=0;transitionSuspected=false;Object.assign(state,{heroCards:[],heroPresence:null,board:[],boardPresence:null,pot:null,toCall:null,legalActions:[],players:null,activePlayers:null,heroPosition:null,heroStack:null,effectiveStack:null,blinds:null,seats:[],actionHistory:[],confidence:0,readerModel:null,capturedAt:Date.now()});Object.keys(seen).forEach(k=>seen[k]=0);Object.keys(fieldSeen).forEach(k=>fieldSeen[k]=0);lastBrainKey='';lastHeroKey='';historyCandidateKey='';historyCandidateVotes=0;decisionPointKey='';decisionCandidateSig='';decisionCandidateVotes=0;pinnedDecisionPoint='';metaUrgent=true;if($('manualPos'))$('manualPos').value='';if($('manualNode'))$('manualNode').value='';$('decision').textContent='—';$('engine').textContent='aguardando estado';$('reason').textContent='Compartilhe um replay para começar.';render()}
+$('start').onclick=start;$('stop').onclick=stop;$('reset').onclick=reset;$('format').onchange=()=>{lastBrainKey='';$('mttBadge').style.display=$('format').value==='mtt'?'inline-block':'none';brainSoon()};$('manualPos').onchange=()=>{lastBrainKey='';brainSoon()};$('manualNode').onchange=()=>{lastBrainKey='';brainSoon()};
+(async()=>{try{const r=await fetch(BRAIN),j=await r.json();const s=j.strategyStatus||{};$('backend').textContent='preflop-replay-v4 · '+(j.service||'poker-strategy-brain')+' · '+(j.brainVersion||j.version||'online')+(s.postflop?' · '+s.postflop:'')}catch(e){$('backend').textContent='preflop-replay-v4 · pós-flop remoto indisponível: '+e.message}render()})();
+// V3_COMPAT_MARKERS: BUILD V3 | BRAIN LOCAL PREFLOP V3 | preflop-local-v3
+</script></body></html>
