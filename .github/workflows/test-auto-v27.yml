@@ -1,0 +1,56 @@
+name: Test AUTO V27
+
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate V27 wrapper, patch needles and module graph
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          v24=Path('standalone-lab/ssj-poker-auto-v24-local.html').read_text(encoding='utf-8')
+          v27=Path('standalone-lab/ssj-poker-auto-v27-local.html').read_text(encoding='utf-8')
+          needles=[
+            "function invalidateDecision(){lastDecisionKey='';if(heroTurn)",
+            "async function scanHeroButtons(){if(!mods||buttonsBusy||!running)return;",
+            "function decide(){if(!mods||!heroTurn||state.heroCards.length!==2||!state.legalActions.length)return;",
+            "function activeSlots(){return VISUAL_ORDER.filter(x=>lockedSlots.includes(x))}",
+          ]
+          for n in needles:
+            assert n in v24, f'missing V24 patch needle: {n[:55]}'
+          assert 'visualHeroButtons' in v27
+          assert "CARTAS LIDAS" in v27
+          assert "POSIÇÃO/HISTÓRICO" in v27
+          assert 'postflop-policy-v4-browser-safe.js' in v27
+          assert "../src/core/pokerstars-local-cards.js" in v27
+          safe=Path('src/brain/postflop-policy-v4-browser-safe.js').read_text(encoding='utf-8')
+          assert 'import ' not in safe
+          print('V27 static guards and patch needles OK')
+          PY
+          node --input-type=module - <<'JS'
+          const roots = [
+            './src/core/pokerstars-local-cards.js',
+            './src/core/geometry.js',
+            './src/core/action-capture.js',
+            './src/core/action-band.js',
+            './src/core/action-ocr.js',
+            './src/core/dealer-button.js',
+            './src/brain/preflop.js',
+            './src/brain/postflop-policy-v4-browser-safe.js',
+          ];
+          for (const p of roots) {
+            await import(p);
+            console.log('OK', p);
+          }
+          JS
