@@ -1,0 +1,95 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSJ Poker · AUTO V29 LOCAL</title><style>html,body{margin:0;background:#020906;color:#ecfff5;font-family:system-ui}#boot{padding:24px;font-weight:800}</style></head><body><div id="boot">Carregando AUTO V29 LOCAL…</div><script>
+(async()=>{
+  try{
+    const r=await fetch('./ssj-poker-auto-v28-local.html?v=29',{cache:'no-store'});
+    if(!r.ok) throw new Error('Não consegui carregar a base V28: HTTP '+r.status);
+    let s=await r.text();
+    const patch=(name,re,next)=>{if(!re.test(s))throw new Error('Patch V29 não encontrou: '+name);s=s.replace(re,()=>next)};
+    s=s.replaceAll('AUTO V28 LOCAL','AUTO V29 LOCAL').replaceAll('V28: cartas + board + ações + valores locais.','V29: estado local corrigido · botões + valores + posição travada.').replaceAll('V28 DIRETA carregada · sem wrapper','V29 carregada · correções de integridade ativas');
+
+    patch('posição travada',/function posMap\(\)\{[\s\S]*?\nfunction historyStrings/,`function posMap(){
+ const slots=activeSlots();
+ if(dealerSeat&&slots.length>=2){const map=dealer.positionsFromDealer(slots,dealerSeat)||{};if(heroPosLocked&&heroPos)map.hero=heroPos;return map}
+ const map={};const order=slots.length>=6?['UTG','HJ','CO','BTN','SB','BB']:slots.length===5?['HJ','CO','BTN','SB','BB']:slots.length===4?['CO','BTN','SB','BB']:['BTN','SB','BB'];
+ const first=[];for(const a of actions.filter(x=>x.street==='preflop').sort((a,b)=>a.at-b.at))if(!first.includes(a.seatId))first.push(a.seatId);
+ let i=0;for(const seat of first)if(i<order.length)map[seat]=order[i++];
+ if(heroPosLocked&&heroPos){map.hero=heroPos;return map}
+ if(heroTurn&&i<order.length){heroPos=order[i];state.heroPosition=heroPos}
+ if(heroPos)map.hero=heroPos;return map
+}
+function updatePosition(){
+ if(heroPosLocked&&heroPos){state.heroPosition=heroPos;return posMap()}
+ const map=posMap();if(map.hero){heroPos=map.hero;state.heroPosition=heroPos;if(heroTurn)heroPosLocked=true}return map
+}
+function historyStrings`);
+
+    patch('reset/cartas',/function applyCards\(\)\{[\s\S]*?\nfunction buttonVisual/,`function applyCards(){
+ const h=cards.readHeroLocal(video),legacy=cards.readBoardLocal(video);visualBoardSeen=legacy?.count||0;let b=legacy;
+ if(legacy&&legacy.count>=3&&!legacy.cards){const p=boardProbe(),fb=classifyBoardFallback(p);if(fb&&fb.length===legacy.count){b={cards:fb,count:fb.length,ms:legacy.ms,confidence:.80};log('BOARD RECOVERY '+fb.join(' '))}}
+ if(h){
+   if(!h.pairSeen){heroAbsent++;heroVotes=0}
+   else{heroAbsent=0;if(h.cards){const k=h.cards.join(' ');heroVotes=k===heroKey?heroVotes+1:1;heroKey=k;if(heroVotes>=2&&k!==state.heroCards.join(' ')){
+     if(!state.heroCards.length){state.heroCards=[...h.cards];log('HERO LOCAL '+k+' · '+Math.round(h.ms||0)+'ms');invalidateDecision();render();decide()}
+     else log('HERO divergência transitória ignorada: '+k+' (mantendo '+state.heroCards.join(' ')+')')
+   }}}
+ }
+ if(!b||b.count===0){boardAbsent++;boardVotes=0;if(boardAbsent>=22&&state.board.length){state.board=[];log('BOARD LOCAL vazio');invalidateDecision();render()}}
+ else{boardAbsent=0;if(b.cards){const k=b.cards.join(' ');boardVotes=k===boardKey?boardVotes+1:1;boardKey=k;if(boardVotes>=2&&k!==state.board.join(' ')){state.board=[...b.cards];log('BOARD LOCAL '+k+' · '+Math.round(b.ms||0)+'ms');invalidateDecision();render();decide()}}}
+ if(heroAbsent>=35&&boardAbsent>=25&&visualBoardSeen===0&&state.heroCards.length&&!heroTurn)resetHand('RESET AUTO · mesa realmente limpa')
+}
+function buttonVisual`);
+
+    patch('botões visuais',/function buttonVisual\(\)\{[\s\S]*?\nasync function scanHeroButtons/,`function buttonVisual(){
+ const c=capture(.36,.80,.64,.19,360);if(!c)return null;const ctx=c.getContext('2d',{willReadFrequently:true}),d=ctx.getImageData(0,0,c.width,c.height).data,w=c.width,h=c.height;
+ const frac=(x0,x1,y0,y1,p)=>{let hit=0,n=0;for(let y=Math.floor(h*y0);y<Math.ceil(h*y1);y+=2)for(let x=Math.floor(w*x0);x<Math.ceil(w*x1);x+=2){const i=(y*w+x)*4;n++;if(p(d[i],d[i+1],d[i+2]))hit++}return n?hit/n:0};
+ const grey=frac(.04,.39,.30,.96,(r,g,b)=>Math.abs(r-g)<30&&Math.abs(g-b)<30&&r>48&&r<185);
+ const green=frac(.34,.70,.30,.96,(r,g,b)=>g>72&&g>r*1.10&&g>b*1.06);
+ const warmR=frac(.65,.995,.30,.96,(r,g,b)=>r>120&&g>55&&g<205&&b<125&&r>g*1.05);
+ const blue=frac(.22,.58,.30,.96,(r,g,b)=>b>82&&b>r*1.22&&b>g*1.06&&g>38);
+ const warmB=frac(.54,.995,.30,.96,(r,g,b)=>r>125&&g>75&&b<120&&r>g*1.02);
+ if(grey>.020&&green>.035&&warmR>.025)return{legal:['FOLD','CALL','RAISE'],confidence:Math.min(.99,.78+green+warmR)};
+ if(blue>.028&&warmB>.025)return{legal:['CHECK','BET'],confidence:Math.min(.99,.80+blue+warmB)};
+ return null
+}
+async function scanHeroButtons`);
+
+    patch('scanner de botões',/async function scanHeroButtons\(\)\{[\s\S]*?\nfunction endHeroTurn/,`async function scanHeroButtons(){
+ if(buttonsBusy||!running)return;buttonsBusy=true;
+ try{
+   const now=Date.now(),vf=buttonVisual();let legal=vf?.legal||[],tc=null,q=null;
+   if(!ocrBusy){ocrBusy=true;const c=capture(.36,.81,.64,.18,760),r=c?await ocr.readFast(c,{cacheMs:65}):null;ocrBusy=false;q=textLegal(r?.text||'');if(q.legal.length>=2)legal=q.legal;if(q.toCall!=null)tc=q.toCall}
+   if(!legal.length){if(now-lastButtonsAt>330&&state.legalActions.length){endHeroTurn();state.legalActions=[];state.toCall=null;lastVisualButtonKey='';invalidateDecision();render()}return}
+   lastButtonsAt=now;
+   if(legal.includes('CALL')&&tc==null&&now-lastCallReadAt>55&&!ocrBusy){lastCallReadAt=now;ocrBusy=true;const cc=capture(.49,.84,.23,.12,620),r2=cc?await ocr.readFast(cc,{cacheMs:50}):null;ocrBusy=false;const raw=String(r2?.text||'');const m=raw.match(/(?:pago|pagar|call)?[^0-9]{0,12}(\d+(?:[.,]\d+)?)/i);if(m)tc=Number(m[1].replace(',','.'))}
+   const hs=num(state.heroStack);if(tc!=null&&hs!=null&&hs>0&&tc>hs*1.03){log('CALL OCR rejeitado '+tc+' > stack '+hs);tc=null}
+   const vk=legal.join('/')+'|'+(tc??'');if(vk!==lastVisualButtonKey){lastVisualButtonKey=vk;log('BOTÕES LOCAL '+legal.join('/')+(tc!=null?' · call '+tc:'')+' · '+Math.round((vf?.confidence||.80)*100)+'%')}
+   const old=state.legalActions.join('|')+'|'+state.toCall;state.legalActions=[...new Set(legal)];state.toCall=state.legalActions.includes('CHECK')&&!state.legalActions.includes('CALL')?null:tc;
+   if(!heroTurn){heroTurn=true;heroTurnSnap={stack:num(state.heroStack),toCall:num(state.toCall),legal:[...state.legalActions],street:street()};updatePosition();log('SUA VEZ · '+state.legalActions.join('/')+(tc!=null?' · call '+tc:''))}
+   const nk=state.legalActions.join('|')+'|'+state.toCall;if(old!==nk){invalidateDecision();render();decide()}
+ }catch(e){ocrBusy=false;log('botões erro '+e.message)}finally{buttonsBusy=false;render()}
+}
+function endHeroTurn`);
+
+    patch('valores locais',/async function scanQuick\(force=false\)\{[\s\S]*?\nfunction queueSeatOcr/,`async function scanQuick(force=false){
+ if(quickBusy||ocrBusy||!running)return;if(!force&&Date.now()-lastQuickAt<520)return;quickBusy=true;lastQuickAt=Date.now();
+ try{
+   const jobs=[['pot',capture(.37,.265,.26,.105,700)],['stack',capture(.38,.645,.24,.115,700)]];
+   if(Date.now()-lastBlindAt>2500){lastBlindAt=Date.now();jobs.push(['blinds',capture(.00,.00,.82,.055,1400)])}
+   for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:160});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);
+     if(kind==='pot'&&ns.length){let v=ns.at(-1);const m=text.match(/(?:pote|pot)[^0-9]{0,22}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>=0&&v<1000)state.pot=v}
+     if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,8}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000)state.heroStack=v}
+     if(kind==='blinds'){const m=text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(?:US\$?\s*)?(\d+(?:[.,]\d+)?)/i);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(a>0&&b>a&&b/a<=10)state.blinds=a+'/'+b}}
+   }
+   if(state.toCall!=null&&state.heroStack!=null&&state.toCall>state.heroStack*1.03){log('toCall impossível removido '+state.toCall+' > '+state.heroStack);state.toCall=null}
+   render();decide()
+ }catch(e){ocrBusy=false;log('quick erro '+e.message)}finally{quickBusy=false;render()}
+}
+function queueSeatOcr`);
+
+    s=s.replace('if(now-lastDealerAt>260){','if(!heroPosLocked&&now-lastDealerAt>260){');
+    if(s.includes('if(now-lastDealerAt>260){'))throw new Error('Patch V29 não travou o dealer durante a mão');
+
+    document.open();document.write(s);document.close();
+  }catch(e){document.body.innerHTML='<pre style="padding:24px;color:#ff9b9b;white-space:pre-wrap">ERRO AO CARREGAR V29\n'+String(e?.message||e)+'</pre>'}
+})();
+</script></body></html>
