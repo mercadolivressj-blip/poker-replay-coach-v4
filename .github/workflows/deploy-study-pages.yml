@@ -36,7 +36,8 @@ jobs:
           p=Path('standalone-lab/ssj-poker-auto-v24-local.html')
           s=p.read_text(encoding='utf-8')
           assert 'getDisplayMedia' in s
-          assert '/api/vision/read' not in s
+          assert 'ssj-poker-hybrid-v1-r3-fast.vercel.app' not in s
+          assert 'fetch(VISION' not in s
           scripts=re.findall(r'<script>([\s\S]*?)</script>',s)
           assert scripts, 'inline script not found'
           Path('/tmp/v24.js').write_text(scripts[-1],encoding='utf-8')
