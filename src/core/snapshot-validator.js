@@ -32,6 +32,7 @@ export function validatePokerSnapshot(snapshot = {}) {
 
   if (!snapshot.heroPosition) errors.push('position_missing');
   if (snapshot.positionSource !== 'dealer-plus-occupied-seats-only') errors.push('position_source_invalid');
+  if (snapshot.actionLedgerSource !== 'seat-state-ledger-v1') errors.push('action_ledger_source_invalid');
   if (snapshot.actionComplete !== true) errors.push('action_history_incomplete');
 
   if (!finite(snapshot.pot)) errors.push('pot_missing');
