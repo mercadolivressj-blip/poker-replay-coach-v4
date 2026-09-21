@@ -1,5 +1,6 @@
 import { validatePokerSnapshot } from '../core/snapshot-validator.js';
 import { computeToCallFromCommitments } from '../core/seat-delta-inference.js';
+import { resolveCommitmentMapV1 } from '../core/commitment-state.js';
 import { runStudyRuntime } from './study-runtime.js';
 
 const amount = (v) => {
@@ -14,8 +15,15 @@ const amount = (v) => {
 export function snapshotFromVisionState(state={}, context={}) {
   const physicalButtons=context.buttonsSource==='physical-action-buttons' && Array.isArray(context.heroButtons)
     ? context.heroButtons : [];
-  const derivedToCall=context.seatStates && typeof context.seatStates==='object'
-    ? computeToCallFromCommitments(context.seatStates,context.heroSeatId || 'hero') : null;
+  const resolvedSeatStates=context.seatStates && typeof context.seatStates==='object'
+    ? resolveCommitmentMapV1(context.seatStates,{
+        persistedCommitments:context.persistedCommitments,
+        streetStartStacks:context.streetStartStacks,
+        epsilon:context.commitmentEpsilon,
+      })
+    : null;
+  const derivedToCall=resolvedSeatStates
+    ? computeToCallFromCommitments(resolvedSeatStates,context.heroSeatId || 'hero') : null;
   const hasDerived=derivedToCall && Number.isFinite(derivedToCall.value);
   const ledger=context.actionLedgerStatus && typeof context.actionLedgerStatus==='object'
     ? context.actionLedgerStatus : null;
@@ -36,6 +44,7 @@ export function snapshotFromVisionState(state={}, context={}) {
     actionComplete: ledgerComplete,
     actionLedgerSource: ledger?.source ?? null,
     actionHistory: Array.isArray(state.actionHistory) ? state.actionHistory : [],
+    resolvedSeatStates,
   };
 }
 
