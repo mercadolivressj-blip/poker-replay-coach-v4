@@ -65,6 +65,31 @@ assert.equal(
   assert.equal(r.value,0);
   assert.equal(r.source,'commitment-delta');
 }
+
+// Session-4 terminal all-in regressions. Hero is covered; legal CALL is the
+// remaining stack, not the opponent's full unmatched commitment.
+{
+  const r=computeToCallFromCommitments({
+    hero:{cardsPresent:true,commitment:1.50,stack:3.43},
+    top:{cardsPresent:true,commitment:5.82},
+  });
+  assert.deepEqual(r,{
+    value:3.43,source:'commitment-delta',heroCommitment:1.5,tableMax:5.82,
+    heroStack:3.43,uncappedValue:4.32,allInCapped:true,
+  });
+}
+{
+  const r=computeToCallFromCommitments({
+    hero:{cardsPresent:true,commitment:.45,stack:2.01},
+    top:{cardsPresent:true,commitment:7.26},
+    rb:{cardsPresent:true,commitment:5.71},
+  });
+  assert.equal(r.value,2.01);
+  assert.equal(r.allInCapped,true);
+  assert.equal(r.uncappedValue,6.81);
+  assert.equal(r.heroStack,2.01);
+}
+
 assert.equal(computeToCallFromCommitments({hero:{cardsPresent:true}},'hero').value,null);
 
 console.log('seat-delta-inference-v1 ok');
