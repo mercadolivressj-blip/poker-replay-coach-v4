@@ -1,0 +1,67 @@
+{
+  "version": "pokerstars-fixed-layout-v2",
+  "source": {
+    "video": "2026-09-20 22-25-57.mkv",
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "durationSeconds": 1027.6333333333334,
+    "notes": "Fixed PokerStars layout calibrated from the uploaded session; offline gate, not a generic detector."
+  },
+  "rois": {
+    "heroCards": [
+      {"id":"hero1","x":0.4515625,"y":0.6055556,"w":0.046875,"h":0.0597222},
+      {"id":"hero2","x":0.5007812,"y":0.6055556,"w":0.0476562,"h":0.0597222}
+    ],
+    "board": [
+      {"id":"board1","x":0.371875,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board2","x":0.4242187,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board3","x":0.4765625,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board4","x":0.5289063,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board5","x":0.58125,"y":0.3277778,"w":0.046875,"h":0.1180556}
+    ],
+    "potValue":{"x":0.5,"y":0.2944444,"w":0.0546875,"h":0.0347222},
+    "heroStackValue":{"x":0.5078125,"y":0.7083333,"w":0.0664062,"h":0.0361111},
+    "table":{"x":0.1992188,"y":0.1875,"w":0.59375,"h":0.4652778},
+    "heroButtons":{"x":0.4921875,"y":0.8541667,"w":0.3671875,"h":0.1180556},
+    "titleBlinds":{"x":0.1171875,"y":0.0,"w":0.390625,"h":0.0305556}
+  },
+  "validator": {
+    "allowedBoardCounts":[0,3,4,5],
+    "requireTwoHeroCards":true,
+    "decisionRequiresCurrentHeroButtons":true,
+    "decisionMustBeLegalAction":true,
+    "rejectPartialBoard":true,
+    "rejectBoardDecodeGap":true,
+    "rejectIncompleteActionHistory":true,
+    "rejectImpossibleToCallVsStack":true,
+    "positionSource":"dealer-plus-occupied-seats-only",
+    "actionSource":"seat-card-presence-plus-commitment-delta-plus-stack-delta; transient text is confirmation only"
+  },
+  "knownVisualAnchors": [
+    {"t":240,"pot":"2.60","heroStack":"50.69","dealerSeat":"rt"},
+    {"t":300,"pot":"1.75","heroStack":"49.54","dealerSeat":"hero"},
+    {"t":420,"pot":"2.14","heroStack":"56.85","dealerSeat":"top"},
+    {"t":600,"pot":"0.75","heroStack":"54.35","dealerSeat":"rb"},
+    {"t":780,"pot":"33.49","heroStack":"42.43","dealerSeat":"lt"}
+  ],
+  "commitmentAnchors": [
+    {"t":300,"seat":"lb","value":"0.25"},
+    {"t":300,"seat":"top","value":"0.50"},
+    {"t":600,"seat":"hero","value":"0.25"},
+    {"t":600,"seat":"lb","value":"0.50"}
+  ],
+  "goldenFrames": {
+    "240":{"board":["Tc","5d","6d"]},
+    "420":{"hero":["2s","2c"],"board":["As","7d","9s","4d","Ah"]},
+    "600":{"hero":["Kc","Qh"],"board":[]}
+  },
+  "seats": {
+    "hero":{"panel":{"x":0.4179688,"y":0.6583333,"w":0.1875,"h":0.0972222},"cards":{"x":0.4453125,"y":0.5972222,"w":0.109375,"h":0.0777778},"stack":{"x":0.484375,"y":0.7013889,"w":0.09375,"h":0.0472222},"commit":{"x":0.4414062,"y":0.5361111,"w":0.1171875,"h":0.0583333}},
+    "lb":{"panel":{"x":0.1289062,"y":0.4861111,"w":0.1601562,"h":0.1111111},"cards":{"x":0.15625,"y":0.4416667,"w":0.109375,"h":0.0916667},"stack":{"x":0.1523438,"y":0.5305556,"w":0.0976562,"h":0.0486111},"commit":{"x":0.28125,"y":0.4722222,"w":0.1054688,"h":0.0666667}},
+    "lt":{"panel":{"x":0.1523438,"y":0.1916667,"w":0.1601562,"h":0.1},"cards":{"x":0.1835938,"y":0.1458333,"w":0.1054688,"h":0.0861111},"stack":{"x":0.171875,"y":0.2458333,"w":0.0976562,"h":0.0458333},"commit":{"x":0.2890625,"y":0.2361111,"w":0.1054688,"h":0.0666667}},
+    "top":{"panel":{"x":0.421875,"y":0.1041667,"w":0.1601562,"h":0.1},"cards":{"x":0.4492188,"y":0.0625,"w":0.1054688,"h":0.0916667},"stack":{"x":0.4414062,"y":0.1541667,"w":0.0976562,"h":0.0458333},"commit":{"x":0.4960938,"y":0.1916667,"w":0.1132812,"h":0.0638889}},
+    "rt":{"panel":{"x":0.6875,"y":0.1916667,"w":0.1601562,"h":0.1},"cards":{"x":0.7148438,"y":0.1458333,"w":0.109375,"h":0.0902778},"stack":{"x":0.7460938,"y":0.2458333,"w":0.0976562,"h":0.0458333},"commit":{"x":0.59375,"y":0.2444444,"w":0.1132812,"h":0.0694444}},
+    "rb":{"panel":{"x":0.7109375,"y":0.4861111,"w":0.1601562,"h":0.1111111},"cards":{"x":0.7382812,"y":0.4416667,"w":0.109375,"h":0.0916667},"stack":{"x":0.7734375,"y":0.5319444,"w":0.0976562,"h":0.0486111},"commit":{"x":0.625,"y":0.4722222,"w":0.1132812,"h":0.0694444}}
+  }
+}
