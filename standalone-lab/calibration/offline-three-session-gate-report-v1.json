@@ -1,0 +1,96 @@
+{
+  "version": "ssj-offline-three-session-gate-v1",
+  "date": "2026-09-21",
+  "baseline": {
+    "ok": true,
+    "timeline": "sequential-frame-index",
+    "framesDecoded": 30757,
+    "hands": 23,
+    "decisions": 47,
+    "heroCards": "47/47",
+    "buttons": "47/47",
+    "positions": "23/23",
+    "stackHoldout": "47/47",
+    "potHoldout": "3/3",
+    "toCall": "47/47"
+  },
+  "session2": {
+    "ok": true,
+    "baselineGate": "run tests/offline_video_regression.py separately",
+    "generalization": {
+      "hands": "14/14",
+      "decisions": "31/31",
+      "buttons": 31,
+      "positions": 14,
+      "heroHoldout": 30,
+      "heroHoldoutTotal": 30,
+      "boardHoldout": 58,
+      "boardHoldoutTotal": 58,
+      "boardWrong": 0,
+      "boardAbstain": 0,
+      "stack": 31,
+      "stackTotal": 31,
+      "potHoldout": 30,
+      "potHoldoutTotal": 30,
+      "toCall": 31,
+      "toCallTotal": 31,
+      "toCallDirect": 28,
+      "toCallStateResolved": 3,
+      "actionComplete": 31
+    },
+    "calibration": {
+      "blindPassCompletedBeforeLabels": true,
+      "postBlind": [
+        {"kind": "hero-rank", "decision": 3, "card": "6h", "excludedFromHoldout": true},
+        {"kind": "pot-font", "decision": 12, "value": 0.08, "excludedFromHoldout": true}
+      ],
+      "video2CommitmentLabelsUsedForReader": 0,
+      "video2BoardLabelsUsedForReader": 0
+    },
+    "stateResolution": {
+      "buttonOcrUsedForToCall": false,
+      "directToCall": 28,
+      "stateResolvedToCall": 3
+    }
+  },
+  "session3": {
+    "ok": true,
+    "session3": {
+      "hands": "19/19",
+      "decisions": "40/40",
+      "buttons": "40/40",
+      "heroCards": "40/40",
+      "boardCards": "63/63",
+      "heroStack": "40/40",
+      "pot": "40/40",
+      "toCall": "40/40",
+      "positions": "19/19",
+      "decisionHistory": "40/40",
+      "handContinuity": "19/19",
+      "fastFoldsRecovered": 26,
+      "actionEvents": 129
+    },
+    "blindCriticalError": [
+      {
+        "decision": 11,
+        "field": "toCall",
+        "blindValue": 0.2,
+        "truth": 1.1,
+        "rootCause": "clipped-US-prefix-caused-1.20-opponent-commitment-to-be-missed"
+      }
+    ],
+    "runtimeButtonOcrUsedForToCall": false
+  },
+  "aggregate": {
+    "hands": 56,
+    "heroDecisions": 118,
+    "criticalBlindErrorsFound": 1,
+    "postFixSourceVideoErrors": 0,
+    "runtimeButtonOcrUsedForToCall": false
+  },
+  "notes": [
+    "Session 3 blind pass exposed one critical toCall error: 0.20 instead of 1.10 due clipped US$ prefix hiding opponent commitment 1.20.",
+    "The parser was fixed generically and sessions 1, 2, and 3 were rerun with no source-video regression.",
+    "Session 3 action continuity recovered 26 fast folds from stable card disappearance; end-of-hand card cleanup no longer overrides a valid CHECK."
+  ]
+}
