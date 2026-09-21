@@ -44,6 +44,25 @@ The blind pass was completed before manual labels. Two post-blind calibrations a
 
 The blind pass did **not** pass perfectly. Decision 11 exposed one critical bug: an opponent commitment `US$1.20` was parsed without its clipped leading `1`, producing `toCall=0.20` instead of the true `1.10`. The parser now has a decimal-row fallback that recovers 1–3 integer digits even when the `US$` prefix is clipped. After that generic fix, sessions 1, 2 and 3 were rerun without source-video regression. The original blind miss stays recorded in ground truth and in `offline-three-session-gate-report-v1.json`.
 
+### Session 4 — strict blind holdout / continuity gate
+
+- Recording: `2026-09-21 15-18-10.mkv`
+- 1280x720, 30 FPS, ~742 s
+- Ground truth: `session-2026-09-21-video4-ground-truth-v1.json`
+- Action summary: `session-2026-09-21-video4-action-gate-summary-v1.json`
+- **14 hands / 35 physical Hero decisions**
+- Strict blind policy: no video-4 label, template or threshold change before the first sequential score
+- Blind result: Hero cards 35/35, board 72/72, Hero stack 35/35, pot 35/35, `toCall` 35/35, positions 14/14, buttons 35/35
+- Blind critical errors: 0
+- Blind abstentions: 0 on the lossless sequential runner
+- Decision history complete: 35/35
+- Hero action reconstructed after every decision: 35/35
+- Hand continuity: 14/14
+- Unknown actions before decision: 0
+- Audited action distribution: 28 CALL, 42 FOLD, 14 RAISE, 23 CHECK, 9 BET
+
+An intermediate JPEG-based audit falsely showed one pot abstention at `US$0.07`. Re-reading the same frame directly from the MKV through lossless sequential decode returned `0.07` correctly. The JPEG artifact is documented but is not counted as a reader failure. Session 4 required **no post-blind reader calibration**.
+
 ## Fixed reader architecture
 
 1. Hero: two fixed independent card slots.
@@ -74,6 +93,8 @@ A bad read should become an abstention/BLOCK. It must never be converted into a 
 - `40,78` must never become `0,78`.
 - Session 3 opponent commitment `1,20` must never become `0,20` because the `US$` prefix was clipped.
 - Session 3 decision 11 must resolve `toCall=1.10`.
+- Session 4 pot `0,07` must remain `0,07` under lossless sequential decode.
+- Session 4 must retain 14/14 hand continuity and 35/35 complete Hero actions.
 - Board count 5 with only 4 decoded cards is BLOCKED.
 - Hero time bank/button text cannot become `toCall`.
 - A visible stack/panel does not imply dealt-in.
@@ -94,8 +115,6 @@ python3 tests/offline_video3_regression.py "/path/to/2026-09-20 22-25-57.mkv" "/
 npm test
 ```
 
-`offline_video_regression.py` protects the baseline session. `offline_video_generalization.py` protects the independent second-session behavior. `offline_video3_regression.py` reproduces the third-session source-video gate without local caches. `npm test` locks all compact ground-truth, continuity, runtime and safety regressions in CI.
+`offline_video_regression.py` protects the baseline session. `offline_video_generalization.py` protects the independent second-session behavior. `offline_video3_regression.py` reproduces the third-session source-video gate without local caches. Session 4 is currently locked in CI through its strict-blind ground truth + continuity/action fixture, while its source-video sequential evaluation was performed directly against the uploaded MKV. `npm test` locks all compact ground-truth, continuity, runtime and safety regressions in CI.
 
-Frozen aggregate report: `standalone-lab/calibration/offline-three-session-gate-report-v1.json`.
-
-Current audited source-video scope: **56 hands and 118 physical Hero decisions** across three sessions. Passing these recordings is evidence of materially better generalization and continuity, not a claim of universal perfection. No new runtime/release should be produced until all four commands are green.
+Current audited source-video scope: **70 hands and 153 physical Hero decisions** across four sessions. Session 4 is the first new holdout to pass its blind reader score with **0 critical errors and 0 lossless-run abstentions**. Passing these recordings is strong evidence of improved generalization and continuity, not a claim of universal perfection.
