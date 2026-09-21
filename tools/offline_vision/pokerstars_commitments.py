@@ -41,8 +41,12 @@ def _layout(roi):
             base=int(round((a[1]+b[1]+c[1]+d[1])/4))
             if abs(d[1]-base)<=4:
                 prefixes.append((j,base));break
-    if not prefixes:return None
     candidates=[]
+    # Primary path: amount following a visible `US$`-like prefix.
+    # Some PokerStars commitment labels sit against the ROI edge, clipping the
+    # leading `U`. In that case the prefix detector can fail even though the
+    # numeric `1,20` row is perfectly visible. Keep the prefix path when it is
+    # available, but add a decimal-row fallback below instead of returning.
     for j,base in prefixes:
         amount=[]
         for b in glyphs[j:]:
@@ -58,21 +62,49 @@ def _layout(roi):
             before=[b for b in amount if b[0]+b[2]<=p[0]+1]
             after=[b for b in amount if b[0]>=p[0]+p[2]]
             if 1<=len(before)<=3 and len(after)>=2:
-                left=before[-1]; right=after[0]
-                if p[0]-(left[0]+left[2])<=6 and right[0]-(p[0]+p[2])<=7:
+                l=before[-1]; r=after[0]
+                if p[0]-(l[0]+l[2])<=6 and r[0]-(p[0]+p[2])<=7:
                     comma=p;break
         if comma is not None:
             before=[b for b in amount if b[0]+b[2]<=comma[0]+1][-3:]
             after=[b for b in amount if b[0]>=comma[0]+comma[2]][:2]
             if 1<=len(before)<=3 and len(after)==2:
-                boxes=before+after
-                candidates.append((sum(b[4] for b in boxes),True,len(before),boxes));continue
+                boxes=before+after; candidates.append((sum(b[4] for b in boxes),True,len(before),boxes));continue
         chain=[amount[0]]
         for b in amount[1:]:
             gap=b[0]-(chain[-1][0]+chain[-1][2])
             if gap<=6 and len(chain)<3:chain.append(b)
             else:break
         if chain:candidates.append((sum(b[4] for b in chain),False,len(chain),chain))
+    # Fallback: detect the amount from the decimal comma itself. We only accept
+    # an aligned chain with exactly two decimal glyphs and 1-3 integer glyphs.
+    # Walking left from the comma by tight glyph gaps prevents a clipped `S$`
+    # prefix from being mistaken for leading integer digits.
+    if not candidates:
+        punct=[]
+        for x,y,w,h,ink in allc:
+            if 1<=w<=4 and 1<=h<=6 and ink>=3:
+                punct.append((x,y,w,h,ink))
+        for p in sorted(punct,key=lambda z:z[0]):
+            # amount digits share a baseline and the comma sits near their foot
+            aligned=[b for b in glyphs if abs((b[1]+b[3])-(p[1]+p[3]))<=5]
+            left=[b for b in aligned if b[0]+b[2]<=p[0]+1]
+            right=[b for b in aligned if b[0]>=p[0]+p[2]]
+            if len(right)<2 or not left: continue
+            # nearest two digits after comma must form a tight cents pair
+            after=right[:2]
+            if after[0][0]-(p[0]+p[2])>7: continue
+            if after[1][0]-(after[0][0]+after[0][2])>5: continue
+            # build integer part right-to-left, stopping at prefix-sized gap
+            before=[left[-1]]
+            for b in reversed(left[:-1]):
+                gap=before[-1][0]-(b[0]+b[2])
+                if gap<=4 and len(before)<3: before.append(b)
+                else: break
+            before=list(reversed(before))
+            if p[0]-(before[-1][0]+before[-1][2])>6: continue
+            boxes=before+after
+            candidates.append((sum(b[4] for b in boxes),True,len(before),boxes))
     if not candidates:return None
     _,decimal,nint,boxes=max(candidates,key=lambda q:q[0])
     return {'decimal':decimal,'nint':nint,'boxes':boxes}
@@ -81,7 +113,7 @@ def _masks(roi,layout):
     if not layout:return []
     bw=_bw(roi); out=[]
     for x,y,w,h,*_ in layout['boxes']:
-        m=np.zeros_like(bw); m[y:y+h,x:x+w]=bw[y:y+h,x:x+w]; out.append(m)
+        m=np.zeros_like(bw); m[y:y+h,x:x+w]=bw[y:y+h,x:x+w];out.append(m)
     return out
 
 def add_commitment_labeled(nt,roi,value):
