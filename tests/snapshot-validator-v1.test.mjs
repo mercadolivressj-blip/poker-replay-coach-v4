@@ -15,6 +15,7 @@ const good = {
   toCallSource:'commitment-delta',
   heroStack:56.85,
   actionComplete:true,
+  actionLedgerSource:'seat-state-ledger-v1',
   actionHistory:[{seat:'rb',action:'CHECK'}],
 };
 
@@ -41,5 +42,6 @@ assert(validatePokerSnapshot({...good,heroPresence:'absent'}).errors.includes('h
 assert(validatePokerSnapshot({...good,heroCards:['2s','2s']}).errors.includes('duplicate_card'));
 assert(validatePokerSnapshot({...good,toCall:1,heroButtons:['CHECK','BET']}).errors.includes('buttons_to_call_inconsistent'));
 assert(validatePokerSnapshot({...good,toCall:0,heroButtons:['FOLD','CALL','RAISE']}).errors.includes('buttons_to_call_inconsistent'));
+assert(validatePokerSnapshot({...good,actionLedgerSource:'transient-text-only'}).errors.includes('action_ledger_source_invalid'));
 
 console.log('snapshot-validator-v1 ok');
