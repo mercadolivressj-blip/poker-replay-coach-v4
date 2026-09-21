@@ -3,15 +3,18 @@ const finite = (v) => v !== null && v !== undefined && Number.isFinite(Number(v)
 const money = (v) => Math.round((Number(v)+Number.EPSILON)*100)/100;
 
 export function inferSeatAction(prev = {}, cur = {}, { tableMaxBefore = 0, epsilon = 0.02 } = {}) {
-  if (prev.cardsPresent === true && cur.cardsPresent === false) return { action:'FOLD', amount:null, source:'card-presence-delta' };
-
   const pCommit = n(prev.commitment);
   const cCommit = n(cur.commitment);
   const pStack = prev.stack == null ? null : n(prev.stack);
   const cStack = cur.stack == null ? null : n(cur.stack);
   const delta = cCommit - pCommit;
   const tableMax = n(tableMaxBefore);
+  const cardsDropped = prev.cardsPresent === true && cur.cardsPresent === false;
+  const turnEnded = prev.turn === true && cur.turn === false;
+  const facingBet = pCommit + epsilon < tableMax;
 
+  // Money evidence is stronger than card disappearance. This prevents a later
+  // table cleanup from erasing a call/raise/all-in that was already visible.
   if (pStack != null && cStack != null && pStack > epsilon && cStack <= epsilon && delta > epsilon) {
     return { action:'ALLIN', amount:cCommit, source:'commitment-plus-stack-delta' };
   }
@@ -19,13 +22,24 @@ export function inferSeatAction(prev = {}, cur = {}, { tableMaxBefore = 0, epsil
     if (cCommit > tableMax + epsilon) return { action: tableMax > epsilon ? 'RAISE' : 'BET', amount:cCommit, source:'commitment-delta' };
     return { action:'CALL', amount:cCommit, source:'commitment-delta' };
   }
-  if (prev.turn === true && cur.turn === false && Math.abs(delta) <= epsilon) {
-    // A player cannot CHECK while still facing a bet. Missing commitment evidence
-    // in that situation must stay unresolved so the Snapshot Validator blocks the
-    // Brain instead of silently inventing a check.
-    if (pCommit + epsilon < tableMax) return null;
+
+  // Card disappearance is authoritative for a fast fold only while the player
+  // still owes chips. We intentionally do not require a visible turn ring here:
+  // short PokerStars folds can happen between sampled turn-indicator frames.
+  if (cardsDropped && facingBet) {
+    return { action:'FOLD', amount:null, source:'card-presence-delta-facing-bet' };
+  }
+
+  // If nothing was owed, a completed turn with no commitment increase is a
+  // CHECK even when PokerStars clears the cards immediately afterwards at the
+  // end of a street/hand. This avoids the historical CHECK -> FOLD false event.
+  if (turnEnded && Math.abs(delta) <= epsilon) {
+    if (facingBet) return null;
     return { action:'CHECK', amount:null, source:'turn-plus-commitment-delta' };
   }
+
+  // Cards disappearing while no bet was pending and without an observed turn
+  // transition is ambiguous (showdown/cleanup/new-hand animation). Abstain.
   return null;
 }
 
