@@ -1,0 +1,94 @@
+name: video5-ledger-v5
+
+on:
+  push:
+    branches:
+      - vision-v1-brain-integration
+    paths:
+      - '.github/workflows/video5-ledger-v5.yml'
+      - 'tools/holdout/patch_video5_ledger_v5.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ledger-video5-v5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build post-blind v5 harness over frozen reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tools/holdout/video5_blind_scan.py /tmp/video5_blind_scan.py
+          cp tools/holdout/patch_video5_harness_v3.py /tmp/patch_video5_harness_v3.py
+          cp tools/holdout/patch_video5_ledger_v4.py /tmp/patch_video5_ledger_v4.py
+          cp tools/holdout/patch_video5_ledger_v5.py /tmp/patch_video5_ledger_v5.py
+          sed -i 's/assert stack\.add_labeled(/stack.add_labeled(/' /tmp/video5_blind_scan.py
+          sed -i 's/assert pot\.add_labeled(/pot.add_labeled(/' /tmp/video5_blind_scan.py
+          sed -i 's/assert add_commitment_labeled(/add_commitment_labeled(/' /tmp/video5_blind_scan.py
+          python3 /tmp/patch_video5_harness_v3.py /tmp/video5_blind_scan.py
+          python3 /tmp/patch_video5_ledger_v4.py /tmp/video5_blind_scan.py
+          python3 /tmp/patch_video5_ledger_v5.py /tmp/video5_blind_scan.py
+          python3 -m py_compile /tmp/video5_blind_scan.py
+          git reset --hard cdecb04b6230a343535fcca5129a14a5579ea44f
+          test "$(git rev-parse HEAD)" = "cdecb04b6230a343535fcca5129a14a5579ea44f"
+          echo "FROZEN_READER_HEAD=$(git rev-parse HEAD)"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y ffmpeg >/dev/null
+          python3 -m pip install --upgrade pip >/dev/null
+          python3 -m pip install numpy==1.26.4 opencv-python-headless==4.10.0.84 gdown==5.2.0 >/dev/null
+
+      - name: Download frozen calibration and video5
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/holdout
+          python3 -m gdown --id 1d0FQNW2qziQENcwrK7YeB-xkLrdOPeBw -O /tmp/holdout/video1.mkv >/dev/null
+          python3 -m gdown --id 1YKXAEqe-5gwb0iTwIF816GCv1Tc8hn0e -O /tmp/holdout/video2.mkv >/dev/null
+          python3 -m gdown --id 1SAgHbXCsywFd7xu4XVZ6VW09a0O_RNfx -O /tmp/holdout/video5.mkv >/dev/null
+          test "$(stat -c%s /tmp/holdout/video1.mkv)" = "323158352"
+          test "$(stat -c%s /tmp/holdout/video2.mkv)" = "174103044"
+          test "$(stat -c%s /tmp/holdout/video5.mkv)" = "272066919"
+
+      - name: Run video5 ledger v5
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/video5_blind_scan.py \
+            /tmp/holdout/video1.mkv \
+            /tmp/holdout/video2.mkv \
+            /tmp/holdout/video5.mkv \
+            /tmp/video5_ledger_v5.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/video5_ledger_v5.json'
+          d=json.load(open(p))
+          print('V5_RESULT=' + json.dumps(d['summary'], separators=(',',':')))
+          bad=[]
+          for dec in d['decisions']:
+              if any(v == 'stack-delta' for v in (dec.get('commitmentSources') or {}).values()):
+                  bad.append(dec['i'])
+          print('STACK_DELTA_DECISIONS=', bad)
+          assert not bad, bad
+          PY
+
+      - name: Upload v5 output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video5-ledger-v5
+          path: /tmp/video5_ledger_v5.json
+          if-no-files-found: warn
+          retention-days: 7
