@@ -5,7 +5,7 @@ let calls=0;
 const runner=()=>{calls++;return {result:{action:'CHECK'}}};
 const base={heroCards:['2s','2c'],heroPresence:'present',board:['As','7d','9s','4d','Ah'],legalActions:['CHECK','BET'],heroPosition:'BB',pot:'2.14',toCall:'0',heroStack:'56.85',actionHistory:[{action:'CHECK'}]};
 const context={
-  actionComplete:true,
+  actionLedgerStatus:{complete:true,source:'seat-state-ledger-v1',errors:[],eventCount:1,unresolved:0},
   positionSource:'dealer-plus-occupied-seats-only',
   heroTurnConfirmed:true,
   buttonsSource:'physical-action-buttons',
@@ -35,10 +35,15 @@ assert.equal(bad.blocked,true);
 assert.equal(calls,2);
 assert(bad.validation.errors.includes('board_decode_gap'));
 
-const incomplete=runValidatedStudyRuntime(base,{...context,actionComplete:false},runner);
+const incomplete=runValidatedStudyRuntime(base,{...context,actionLedgerStatus:{complete:false,source:'seat-state-ledger-v1',errors:['ledger_unresolved_actions'],eventCount:1,unresolved:1}},runner);
 assert.equal(incomplete.blocked,true);
 assert.equal(calls,2);
 assert(incomplete.validation.errors.includes('action_history_incomplete'));
+
+const fakeLedger=runValidatedStudyRuntime(base,{...context,actionLedgerStatus:{complete:true,source:'transient-text-only'}},runner);
+assert.equal(fakeLedger.blocked,true);
+assert.equal(calls,2);
+assert(fakeLedger.validation.errors.includes('action_ledger_source_invalid'));
 
 // Pre-action checkboxes and stale/absent Hero never call the runner.
 const preAction=runValidatedStudyRuntime(base,{...context,heroTurnConfirmed:false,buttonsSource:'pre-action-checkboxes'},runner);
