@@ -6,7 +6,8 @@
   "scripts": {
     "prepare": "node scripts/generate-policy-v4-runtime.mjs",
     "serve": "python3 -m http.server 4173",
-    "test": "node tests/run-public.mjs",
+    "test": "node tests/run-public.mjs && node tests/snapshot-validator-v1.test.mjs && node tests/seat-delta-inference-v1.test.mjs && node tests/validated-study-runtime-v1.test.mjs",
+    "test:offline-video": "python3 tests/offline_video_regression.py",
     "test:brain": "node tests/brain-v1.test.mjs",
     "test:visual": "node tests/visual-fixtures.test.mjs",
     "test:ocr": "node tests/system-ocr.test.mjs",
