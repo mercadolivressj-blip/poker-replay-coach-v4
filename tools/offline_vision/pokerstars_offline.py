@@ -43,40 +43,47 @@ def norm_gray(binary_crop, out=(24,32)):
     return canvas
 
 class NumericTemplates:
-    """PokerStars numeric reader trained only on labeled fixed ROIs.
-
-    Currency prefixes are never classified as digits. The reader anchors itself
-    to the decimal comma and evaluates 1/2/3-integer-digit hypotheses. Ambiguous
-    or contaminated reads abstain instead of silently dropping a leading digit.
-    """
     def __init__(self): self.bank={str(i):[] for i in range(10)}
-
     def _bw(self, roi):
         hsv=cv2.cvtColor(roi,cv2.COLOR_BGR2HSV); v=hsv[:,:,2]; sat=hsv[:,:,1]
         med=float(np.median(v)); th=175 if med>45 else 60
         return (((sat<105)&(v>th)).astype(np.uint8))*255
-
     def _comma_x(self, roi):
-        bw=self._bw(roi); H=roi.shape[0]; cand=[]
+        bw=self._bw(roi); H,W=bw.shape; small=[]; wide=[]
         for c in _contours(bw):
             x,y,w,h=cv2.boundingRect(c); area=int(cv2.countNonZero(bw[y:y+h,x:x+w]))
-            if 1<=w<=6 and 2<=h<=8 and y>=H*0.48 and area>=3: cand.append((x,area,y))
-        return max(cand,key=lambda z:z[0])[0] if cand else None
-
+            if 1<=w<=6 and 2<=h<=8 and y>=H*0.48 and area>=3 and W*0.15<=x<=W*0.72:
+                small.append((area,x,y,w,h))
+            if 14<=w<=30 and h>=10 and W*0.28<=x<=W*0.62:
+                wide.append((area,x,y,w,h))
+        if small:
+            return max(small,key=lambda z:(z[0],z[1]))[1]
+        if wide:
+            return min(wide,key=lambda z:z[1])[1]
+        return None
     def _raw_digit_boxes(self, roi):
         bw=self._bw(roi); H=roi.shape[0]; out=[]
         for c in _contours(bw):
             x,y,w,h=cv2.boundingRect(c); ink=int(cv2.countNonZero(bw[y:y+h,x:x+w]))
             if h>=7 and ink>=9 and w<=13 and y<=H-5: out.append((x,y,w,h,ink))
         return sorted(out,key=lambda b:b[0])
-
+    def _infer_integer_digits(self, roi):
+        cx=self._comma_x(roi)
+        if cx is None: return None
+        boxes=[b for b in self._raw_digit_boxes(roi) if b[0]+b[2] <= cx]
+        if not boxes: return None
+        chosen=[boxes[-1]]
+        for b in reversed(boxes[:-1]):
+            right=b[0]+b[2]; left=chosen[-1][0]; gap=left-right
+            if gap <= 3 and len(chosen)<3: chosen.append(b)
+            else: break
+        return len(chosen)
     def _digit_groups(self, roi):
         bw=self._bw(roi); out=[]
         for x,y,w,h,ink in self._raw_digit_boxes(roi):
             m=np.zeros_like(bw); m[y:y+h,x:x+w]=bw[y:y+h,x:x+w]
             out.append((x,m,ink))
         return out
-
     def _fixed_masks(self, roi, integer_digits):
         cx=self._comma_x(roi)
         if cx is None or integer_digits not in (1,2,3): return []
@@ -99,16 +106,13 @@ class NumericTemplates:
             m[y0+y:y0+y+h,xa+x:xa+x+w]=z[y:y+h,x:x+w]
             masks.append(m)
         return masks
-
     def add_labeled(self, roi, value, profile=None):
         left,right=f'{float(value):.2f}'.split('.'); labels=left+right
         masks=self._fixed_masks(roi,len(left))
         if len(masks)!=len(labels): return False
         for ch,m in zip(labels,masks): self.bank[ch].append(norm_gray(m))
         return True
-
     def ready(self): return all(self.bank[d] for d in self.bank)
-
     def classify_digit(self, mask):
         z=norm_gray(mask).astype(np.float32)/255; scores=[]
         for d,temps in self.bank.items():
@@ -122,7 +126,18 @@ class NumericTemplates:
         if not scores: return '?',0.0,0.0
         best=scores[0]; second=scores[1][1] if len(scores)>1 else 0.0
         return best[0],best[1],best[1]-second
-
+    def _integer_only_masks(self, roi):
+        boxes=self._raw_digit_boxes(roi)
+        if not boxes: return []
+        chosen=[boxes[-1]]
+        for b in reversed(boxes[:-1]):
+            right=b[0]+b[2]; left=chosen[-1][0]; gap=left-right
+            if gap<=3 and len(chosen)<3: chosen.append(b)
+            else: break
+        chosen=list(reversed(chosen)); bw=self._bw(roi); masks=[]
+        for x,y,w,h,_ in chosen:
+            m=np.zeros_like(bw); m[y:y+h,x:x+w]=bw[y:y+h,x:x+w]; masks.append(m)
+        return masks
     def _read_hypothesis(self, roi, integer_digits):
         masks=self._fixed_masks(roi,integer_digits)
         if len(masks)!=integer_digits+2: return None
@@ -134,11 +149,17 @@ class NumericTemplates:
         digits=''.join(chars)
         text=digits[:-2]+','+digits[-2:] if len(digits)>=3 else ''
         return {'valid':valid,'digits':digits,'text':text,'mean':mean,'minScore':min(scores) if scores else 0.0,'minMargin':min(margins) if margins else 0.0}
-
     def read(self, roi, profile=None):
-        # Longest independently-valid hypothesis wins. This prevents a weak
-        # leading digit from collapsing 40,78 into 0,78 while currency-prefix
-        # contamination still fails the same confidence gate.
+        if self._comma_x(roi) is None:
+            if profile!='stack': return None,0.0,''
+            masks=self._integer_only_masks(roi)
+            if not (1<=len(masks)<=3): return None,0.0,''
+            rr=[self.classify_digit(m) for m in masks]
+            scores=[x[1] for x in rr]; margins=[x[2] for x in rr]
+            if '?' in [x[0] for x in rr] or min(scores)<0.43 or float(np.mean(scores))<0.50 or min(margins)<0.012:
+                return None,float(np.mean(scores)),''
+            text=''.join(x[0] for x in rr)
+            return float(text),float(np.mean(scores)),text
         valid=[]
         for integer_digits in (1,2,3):
             h=self._read_hypothesis(roi,integer_digits)
@@ -160,7 +181,6 @@ def card_face_present(roi):
 
 def board_presence(img, cal=DEFAULT_CAL): return [card_face_present(crop(img,r)) for r in cal['board']]
 def hero_presence(img, cal=DEFAULT_CAL): return [card_face_present(crop(img,r)) for r in cal['heroCards']]
-
 def occupied_seat(panel_roi):
     g=cv2.cvtColor(panel_roi,cv2.COLOR_BGR2GRAY)
     return float((g>95).mean())>0.055
@@ -171,8 +191,6 @@ def seat_dealt_in(cards_roi, hero=False):
     if hero:
         white=((s<65)&(v>170))
         return bool(float(white.mean())>0.18)
-    # Opponent backs in this PokerStars theme are red. Detect at hand start and
-    # freeze the result; generic blue/white texture was counting empty panels.
     red=(((h<10)|(h>170))&(s>80)&(v>50))
     return bool(float(red.mean())>0.12)
 
@@ -207,13 +225,7 @@ def hero_position_from_dealer(dealer, active):
     if dealer not in active or 'hero' not in active or len(active)<2: return None
     i=active.index(dealer); ordered=active[i:]+active[:i]
     n=len(ordered)
-    labels={
-      2:['BTN/SB','BB'],
-      3:['BTN','SB','BB'],
-      4:['BTN','SB','BB','CO'],
-      5:['BTN','SB','BB','UTG','CO'],
-      6:['BTN','SB','BB','UTG','HJ','CO'],
-    }.get(n)
+    labels={2:['BTN/SB','BB'],3:['BTN','SB','BB'],4:['BTN','SB','BB','CO'],5:['BTN','SB','BB','UTG','CO'],6:['BTN','SB','BB','UTG','HJ','CO']}.get(n)
     return labels[ordered.index('hero')] if labels else None
 
 @dataclass
@@ -226,7 +238,6 @@ class ButtonState:
     orange_ratio: float
 
 def hero_button_state_from_roi(roi, to_call=None):
-    # Fixed three-cell reading: fold / check-or-call / bet-or-raise.
     hsv=cv2.cvtColor(roi,cv2.COLOR_BGR2HSV)
     W=roi.shape[1]
     cells=[(0,int(W*.35)),(int(W*.35),int(W*.71)),(int(W*.71),W)]
