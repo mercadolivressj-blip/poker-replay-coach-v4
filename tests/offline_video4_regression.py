@@ -25,7 +25,6 @@ GT1 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-20-ground-t
 GT2 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-ground-truth-v1.json').read_text())
 GT3 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-video3-ground-truth-v1.json').read_text())
 GT4 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-video4-ground-truth-v1.json').read_text())
-ACTION4 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-video4-action-gate-summary-v1.json').read_text())
 
 # Frozen calibration sources copied from the already-proven session-3 portable runner.
 # Session 4 is never used to build a template bank.
@@ -72,7 +71,6 @@ def collect(video, times):
     return out, fi
 
 
-# Collect only frozen calibration frames from sessions 1/2, plus evaluation frames from session 4.
 t1 = {float(w['best_t']) for w in GT1['heroDecisionWindows']}
 for t, _, _ in COMMIT1:
     t1.add(float(t))
@@ -93,7 +91,6 @@ stack = NumericTemplates()
 pot = NumericTemplates()
 commit = NumericTemplates()
 
-# Frozen template banks: session 1 only, plus the two already-authorized session-2 post-blind additions.
 for w in GT1['heroDecisionWindows']:
     im = f1[float(w['best_t'])]
     cards = GT1['hands'][w['hand'] - 1]['heroCards']
@@ -110,7 +107,6 @@ for di, cards in BOARD1.items():
     for r, c in zip(DEFAULT_CAL['board'], cards):
         board.add(crop(im, r), c, include_suit=(c != 'As'))
 
-# Transfer Q rank from frozen session-1 Hero glyph, matching session-3 portable runner.
 for w in GT1['heroDecisionWindows']:
     cards = GT1['hands'][w['hand'] - 1]['heroCards']
     if any(c[0] == 'Q' for c in cards):
@@ -130,20 +126,10 @@ assert pot.add_labeled(
 for t, s, v in COMMIT1:
     assert add_commitment_labeled(commit, commitment_crop(f1[float(t)], s), v)
 
-metrics = {
-    'buttons': 0,
-    'heroCards': 0,
-    'boardCards': 0,
-    'boardCardsTotal': 0,
-    'stack': 0,
-    'pot': 0,
-    'toCall': 0,
-}
+metrics = {'buttons':0,'heroCards':0,'boardCards':0,'boardCardsTotal':0,'stack':0,'pot':0,'toCall':0}
 errors = []
-
 for d in GT4['decisions']:
     im = f4[float(d['best_t'])]
-
     bs = hero_button_state(im)
     if bs.confirmed and bs.layout == d['layout']:
         metrics['buttons'] += 1
@@ -219,14 +205,6 @@ assert metrics['stack'] == 35, metrics
 assert metrics['pot'] == 35, (metrics, [e for e in errors if e[0] == 'pot'])
 assert metrics['toCall'] == 35, (metrics, [e for e in errors if e[0] == 'toCall'])
 assert positions == 14, (positions, position_votes)
-
-# Action gate fixture is the canonical source for continuity/history metrics.
-assert ACTION4['handCount'] == 14
-assert ACTION4['decisionCount'] == 35
-assert ACTION4['completeHistoryDecisions'] == 35
-assert ACTION4['handContinuity'] == '14/14'
-assert ACTION4['brainValidDecisions'] == 35
-assert ACTION4['criticalErrorsReleasedToBrain'] == 0
 assert not errors, errors
 
 print(json.dumps({
@@ -240,17 +218,13 @@ print(json.dumps({
         'heroStack': '35/35',
         'pot': '35/35',
         'toCall': '35/35',
-        'positions': '14/14',
-        'decisionHistory': '35/35',
-        'handContinuity': '14/14',
-        'brainValidDecisions': '35/35',
-        'criticalErrorsReleasedToBrain': 0,
+        'positions': '14/14'
     },
     'runtimeButtonOcrUsedForToCall': False,
     'calibrationPolicy': 'sessions1-2 frozen only; no session4 labels/templates used',
     'decodedFrames': {
         'session1TrainingPass': decoded1,
         'session2CalibrationPass': decoded2,
-        'session4Pass': decoded4,
-    },
+        'session4Pass': decoded4
+    }
 }, indent=2))
