@@ -23,7 +23,6 @@ if len(sys.argv) != 5:
 VIDEO1, VIDEO2, VIDEO3, VIDEO4 = sys.argv[1:5]
 GT1 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-20-ground-truth-v2.json').read_text())
 GT2 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-ground-truth-v1.json').read_text())
-GT3 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-video3-ground-truth-v1.json').read_text())
 GT4 = json.loads((ROOT / 'standalone-lab/calibration/session-2026-09-21-video4-ground-truth-v1.json').read_text())
 
 # Frozen calibration sources copied from the already-proven session-3 portable runner.
