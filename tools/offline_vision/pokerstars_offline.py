@@ -46,9 +46,8 @@ class NumericTemplates:
     """PokerStars numeric reader trained only on labeled fixed ROIs.
 
     Currency prefixes are never classified as digits. The reader anchors itself
-    to the decimal comma and walks left through adjacent integer glyphs. Fixed
-    glyph windows then isolate 1-3 integer digits plus exactly two decimals.
-    Ambiguous or contaminated reads abstain instead of dropping a leading digit.
+    to the decimal comma and evaluates 1/2/3-integer-digit hypotheses. Ambiguous
+    or contaminated reads abstain instead of silently dropping a leading digit.
     """
     def __init__(self): self.bank={str(i):[] for i in range(10)}
 
@@ -71,20 +70,7 @@ class NumericTemplates:
             if h>=7 and ink>=9 and w<=13 and y<=H-5: out.append((x,y,w,h,ink))
         return sorted(out,key=lambda b:b[0])
 
-    def _infer_integer_digits(self, roi):
-        cx=self._comma_x(roi)
-        if cx is None: return None
-        boxes=[b for b in self._raw_digit_boxes(roi) if b[0]+b[2] <= cx]
-        if not boxes: return None
-        chosen=[boxes[-1]]
-        for b in reversed(boxes[:-1]):
-            right=b[0]+b[2]; left=chosen[-1][0]; gap=left-right
-            if gap <= 3 and len(chosen)<3: chosen.append(b)
-            else: break
-        return len(chosen)
-
     def _digit_groups(self, roi):
-        # Diagnostic helper only. Production reads use comma-anchored windows.
         bw=self._bw(roi); out=[]
         for x,y,w,h,ink in self._raw_digit_boxes(roi):
             m=np.zeros_like(bw); m[y:y+h,x:x+w]=bw[y:y+h,x:x+w]
@@ -97,8 +83,6 @@ class NumericTemplates:
         boxes=[b for b in self._raw_digit_boxes(roi) if b[0]+b[2] <= cx]
         if not boxes: return []
         anchor=boxes[-1]
-        # Stack font is taller than pot/commitment font. Vertical position varies
-        # by ROI, so derive the text band from the nearest integer glyph.
         style='stack' if anchor[3] >= 13 else 'pot'
         if style=='stack': last=cx-10; pitch=9; dec=[cx+4,cx+14]
         else: last=cx-9; pitch=9; dec=[cx+4,cx+13]
@@ -139,18 +123,29 @@ class NumericTemplates:
         best=scores[0]; second=scores[1][1] if len(scores)>1 else 0.0
         return best[0],best[1],best[1]-second
 
-    def read(self, roi, profile=None):
-        integer_digits=self._infer_integer_digits(roi)
-        if integer_digits is None: return None,0.0,''
+    def _read_hypothesis(self, roi, integer_digits):
         masks=self._fixed_masks(roi,integer_digits)
-        if len(masks)!=integer_digits+2: return None,0.0,''
+        if len(masks)!=integer_digits+2: return None
         chars=[]; scores=[]; margins=[]
         for m in masks:
             d,sc,margin=self.classify_digit(m); chars.append(d); scores.append(sc); margins.append(margin)
-        if '?' in chars or min(scores)<0.43 or float(np.mean(scores))<0.50 or min(margins)<0.012:
-            return None,float(np.mean(scores) if scores else 0.0),''
-        digits=''.join(chars); text=digits[:-2]+','+digits[-2:]
-        return float(text.replace(',','.')),float(np.mean(scores)),text
+        mean=float(np.mean(scores)) if scores else 0.0
+        valid=('?' not in chars and min(scores)>=0.43 and mean>=0.50 and min(margins)>=0.012)
+        digits=''.join(chars)
+        text=digits[:-2]+','+digits[-2:] if len(digits)>=3 else ''
+        return {'valid':valid,'digits':digits,'text':text,'mean':mean,'minScore':min(scores) if scores else 0.0,'minMargin':min(margins) if margins else 0.0}
+
+    def read(self, roi, profile=None):
+        # Longest independently-valid hypothesis wins. This prevents a weak
+        # leading digit from collapsing 40,78 into 0,78 while currency-prefix
+        # contamination still fails the same confidence gate.
+        valid=[]
+        for integer_digits in (1,2,3):
+            h=self._read_hypothesis(roi,integer_digits)
+            if h and h['valid']: valid.append((integer_digits,h))
+        if not valid: return None,0.0,''
+        _,h=max(valid,key=lambda x:x[0])
+        return float(h['text'].replace(',','.')),h['mean'],h['text']
 
 @dataclass
 class SlotPresence:
@@ -170,14 +165,22 @@ def occupied_seat(panel_roi):
     g=cv2.cvtColor(panel_roi,cv2.COLOR_BGR2GRAY)
     return float((g>95).mean())>0.055
 
-def seat_dealt_in(cards_roi):
+def seat_dealt_in(cards_roi, hero=False):
     hsv=cv2.cvtColor(cards_roi,cv2.COLOR_BGR2HSV)
-    blue=((hsv[:,:,0]>=90)&(hsv[:,:,0]<=135)&(hsv[:,:,1]>65)&(hsv[:,:,2]>40))
-    white=((hsv[:,:,1]<65)&(hsv[:,:,2]>170))
-    return bool(float(blue.mean())>0.045 or float(white.mean())>0.12)
+    h,s,v=hsv[:,:,0],hsv[:,:,1],hsv[:,:,2]
+    if hero:
+        white=((s<65)&(v>170))
+        return bool(float(white.mean())>0.18)
+    # Opponent backs in this PokerStars theme are red. Detect at hand start and
+    # freeze the result; generic blue/white texture was counting empty panels.
+    red=(((h<10)|(h>170))&(s>80)&(v>50))
+    return bool(float(red.mean())>0.12)
 
 def dealt_seats(img, cal=DEFAULT_CAL):
-    return [seat for seat,row in cal['seats'].items() if seat_dealt_in(crop(img,row['cards']))]
+    out=[]
+    for seat,row in cal['seats'].items():
+        if seat_dealt_in(crop(img,row['cards']),hero=(seat=='hero')): out.append(seat)
+    return out
 
 def dealer_center(img, cal=DEFAULT_CAL):
     x,y,w,h=cal['table']; roi=img[y:y+h,x:x+w]; hsv=cv2.cvtColor(roi,cv2.COLOR_BGR2HSV)
@@ -223,17 +226,26 @@ class ButtonState:
     orange_ratio: float
 
 def hero_button_state_from_roi(roi, to_call=None):
+    # Fixed three-cell reading: fold / check-or-call / bet-or-raise.
     hsv=cv2.cvtColor(roi,cv2.COLOR_BGR2HSV)
-    h,s,v=hsv[:,:,0],hsv[:,:,1],hsv[:,:,2]
-    blue=((h>=90)&(h<=135)&(s>75)); green=((h>=35)&(h<=90)&(s>75))
-    orange=((h>=4)&(h<=28)&(s>90)); red=(((h<=5)|(h>=170))&(s>90))
-    # Disabled/post-action buttons retain hue but lose brightness. Bright-fill
-    # gating prevents those controls and pre-action checkboxes from reopening turn.
-    br=float((blue&(v>130)).mean()); gr=float((green&(v>130)).mean())
-    aggressive=float(((orange|red)&(v>130)).mean())
-    if br>0.10 and aggressive>0.10:
+    W=roi.shape[1]
+    cells=[(0,int(W*.35)),(int(W*.35),int(W*.71)),(int(W*.71),W)]
+    stats=[]
+    for xa,xb in cells:
+        z=hsv[:,xa:xb]; h,s,v=z[:,:,0],z[:,:,1],z[:,:,2]
+        vivid=(s>70)&(v>90)
+        ratio=float(vivid.mean())
+        hue=float(np.median(h[vivid])) if vivid.any() else -1.0
+        value=float(np.median(v[vivid])) if vivid.any() else 0.0
+        stats.append((ratio,hue,value))
+    mr,mh,mv=stats[1]; rr,rh,rv=stats[2]
+    mid_blue=(mr>0.30 and 90<=mh<=135 and mv>=100)
+    mid_green=(mr>0.30 and 35<=mh<=90 and mv>=100)
+    right_aggr=(rr>0.45 and ((4<=rh<=30) or rh>=170 or rh<=5) and rv>=120)
+    br=mr if mid_blue else 0.0; gr=mr if mid_green else 0.0; aggressive=rr if right_aggr else 0.0
+    if mid_blue and right_aggr:
         return ButtonState(True,'check-bet',('CHECK','BET'),br,gr,aggressive)
-    if gr>0.045 and aggressive>0.10:
+    if mid_green and right_aggr:
         last='RAISE' if to_call is None or float(to_call)>0.001 else 'BET'
         return ButtonState(True,'fold-call-raise',('FOLD','CALL',last),br,gr,aggressive)
     return ButtonState(False,None,tuple(),br,gr,aggressive)
@@ -250,27 +262,17 @@ def infer_action(prev, cur, table_max, eps=0.02):
     return None
 
 class SessionHandTracker:
-    """Conservative hand boundary tracker for replay/video.
-
-    Hero disappearance only suspends the hand. A new hand requires confirmed
-    different hole cards, or the same hole cards with a rotated dealer button.
-    This prevents the known false split around 868.5s in the 2026-09-20 video.
-    """
     def __init__(self):
-        self.hand_id=0; self.cards=None; self.dealer=None; self.suspended=False
-        self.candidate=None; self.candidate_votes=0
+        self.hand_id=0; self.cards=None; self.dealer=None; self.suspended=False; self.candidate=None; self.candidate_votes=0
     def observe(self, cards, present, dealer=None):
         cards=tuple(cards or ()) if present else tuple()
         if not present or len(cards)!=2:
-            self.suspended=True; self.candidate=None; self.candidate_votes=0
-            return {'event':'suspended','handId':self.hand_id}
+            self.suspended=True; self.candidate=None; self.candidate_votes=0; return {'event':'suspended','handId':self.hand_id}
         if self.cards is None:
-            self.hand_id=1; self.cards=cards; self.dealer=dealer; self.suspended=False
-            return {'event':'started','handId':self.hand_id}
+            self.hand_id=1; self.cards=cards; self.dealer=dealer; self.suspended=False; return {'event':'started','handId':self.hand_id}
         dealer_rotated=bool(dealer and self.dealer and dealer!=self.dealer)
         if cards==self.cards and not dealer_rotated:
-            was=self.suspended; self.suspended=False; self.candidate=None; self.candidate_votes=0
-            return {'event':'resumed' if was else 'same','handId':self.hand_id}
+            was=self.suspended; self.suspended=False; self.candidate=None; self.candidate_votes=0; return {'event':'resumed' if was else 'same','handId':self.hand_id}
         key=(cards,dealer)
         if self.candidate==key: self.candidate_votes+=1
         else: self.candidate=key; self.candidate_votes=1
