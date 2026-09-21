@@ -17,6 +17,9 @@ export function snapshotFromVisionState(state={}, context={}) {
   const derivedToCall=context.seatStates && typeof context.seatStates==='object'
     ? computeToCallFromCommitments(context.seatStates,context.heroSeatId || 'hero') : null;
   const hasDerived=derivedToCall && Number.isFinite(derivedToCall.value);
+  const ledger=context.actionLedgerStatus && typeof context.actionLedgerStatus==='object'
+    ? context.actionLedgerStatus : null;
+  const ledgerComplete=ledger?.source==='seat-state-ledger-v1' && ledger?.complete===true;
   return {
     heroCards: Array.isArray(state.heroCards) ? state.heroCards : [],
     heroPresence: state.heroPresence ?? context.heroPresence ?? null,
@@ -30,7 +33,8 @@ export function snapshotFromVisionState(state={}, context={}) {
     toCall: hasDerived ? derivedToCall.value : amount(context.toCall ?? state.toCall),
     toCallSource: hasDerived ? derivedToCall.source : (context.toCallSource ?? null),
     heroStack: amount(state.heroStack),
-    actionComplete: context.actionComplete === true,
+    actionComplete: ledgerComplete,
+    actionLedgerSource: ledger?.source ?? null,
     actionHistory: Array.isArray(state.actionHistory) ? state.actionHistory : [],
   };
 }
