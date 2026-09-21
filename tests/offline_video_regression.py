@@ -3,6 +3,7 @@ import cv2, json, sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).parents[1]/'tools'/'offline_vision'))
 from pokerstars_offline import *
+from card_templates import CardTemplates
 
 VIDEO=sys.argv[1]
 cap=cv2.VideoCapture(VIDEO)
@@ -21,6 +22,23 @@ assert [x.present for x in hero_presence(im)]==[True,True]
 assert [x.present for x in board_presence(im)]==[False,False,False,False,False]
 im=frame_at(cap,240)
 assert [x.present for x in board_presence(im)]==[True,True,True,False,False]
+
+# Rank+suit template matching: learn from labeled golden frames, then verify temporal jitter.
+ct=CardTemplates()
+card_sets=[
+    (240,DEFAULT_CAL['board'][:3],['Tc','5d','6d']),
+    (420,DEFAULT_CAL['heroCards'],['2s','2c']),
+    (420,DEFAULT_CAL['board'],['As','7d','9s','4d','Ah']),
+    (600,DEFAULT_CAL['heroCards'],['Kc','Qh']),
+]
+for t,slots,labels in card_sets:
+    im=frame_at(cap,t)
+    for r,label in zip(slots,labels): ct.add(crop(im,r),label)
+for t,slots,labels in card_sets:
+    for dt in (-0.2,0.2):
+        im=frame_at(cap,t+dt)
+        got=[ct.read(crop(im,r))[0] for r in slots]
+        assert got==labels, (t,dt,got,labels)
 
 # Numeric templates are learned only from labeled ROIs in the real session.
 nt=NumericTemplates()
@@ -68,4 +86,4 @@ assert infer_action({'cards':True,'commitment':.25,'stack':50,'turn':True},{'car
 assert infer_action({'cards':True,'commitment':.25,'stack':50,'turn':True},{'cards':True,'commitment':2.0,'stack':48.25,'turn':False},1.0)=='raise'
 assert infer_action({'cards':True,'commitment':2.0,'stack':5,'turn':True},{'cards':True,'commitment':7.0,'stack':0,'turn':False},7.0)=='all-in'
 
-print(json.dumps({'ok':True,'numeric':results},indent=2))
+print(json.dumps({'ok':True,'cardSets':len(card_sets),'numeric':results},indent=2))
