@@ -43,7 +43,13 @@ export function inferSeatAction(prev = {}, cur = {}, { tableMaxBefore = 0, epsil
   return null;
 }
 
-/** Canonical to-call calculation. Button OCR/time-bank text is never an input. */
+/**
+ * Canonical to-call calculation. Button OCR/time-bank text is never an input.
+ *
+ * PokerStars displays the legal call amount, not the opponent's full unmatched
+ * commitment, when Hero is covered. Therefore the amount Hero can actually call
+ * is capped by Hero's remaining stack. This matters in multiway/all-in spots.
+ */
 export function computeToCallFromCommitments(seatsInput = {}, heroId = 'hero') {
   const rows = Array.isArray(seatsInput)
     ? seatsInput.map((row,i)=>[String(row?.id ?? i),row])
@@ -55,8 +61,16 @@ export function computeToCallFromCommitments(seatsInput = {}, heroId = 'hero') {
   if (!eligible.length) return { value:null, source:'commitment-delta', reason:'table-commitments-missing' };
   const heroCommitment=Number(hero.commitment);
   const tableMax=Math.max(...eligible.map(([,row])=>Number(row.commitment)));
-  const value=money(Math.max(0,tableMax-heroCommitment));
-  return { value, source:'commitment-delta', heroCommitment:money(heroCommitment), tableMax:money(tableMax) };
+  const rawToCall=Math.max(0,tableMax-heroCommitment);
+  const heroStack=finite(hero.stack) ? Math.max(0,Number(hero.stack)) : null;
+  const value=money(heroStack == null ? rawToCall : Math.min(rawToCall,heroStack));
+  const out={ value, source:'commitment-delta', heroCommitment:money(heroCommitment), tableMax:money(tableMax) };
+  if (heroStack != null && rawToCall > heroStack) {
+    out.heroStack=money(heroStack);
+    out.uncappedValue=money(rawToCall);
+    out.allInCapped=true;
+  }
+  return out;
 }
 
 export function updateSeatObservation(prev = {}, observed = {}) {
