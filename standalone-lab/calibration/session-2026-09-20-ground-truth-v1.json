@@ -1,0 +1,71 @@
+{
+  "version": "ssj-poker-session-ground-truth-v1",
+  "video": "2026-09-20 22-25-57.mkv",
+  "durationSeconds": 1027.6333333333334,
+  "handCount": 23,
+  "handStartsSeconds": [
+    32.0, 65.0, 78.5, 127.0, 184.0, 212.0, 246.0, 281.0,
+    320.0, 394.5, 430.5, 466.0, 485.5, 513.0, 527.0, 567.0,
+    588.5, 615.0, 648.5, 702.5, 785.5, 859.0, 961.0
+  ],
+  "falseSplitRegressions": [
+    {
+      "t": 868.5,
+      "handStart": 859.0,
+      "reason": "same 7s7c hand continues; transient visual gap must not create a new hand"
+    }
+  ],
+  "heroDecisionCount": 45,
+  "heroDecisionAnchors": [
+    {"hand":1,"t":33.0,"layout":"check-bet"},
+    {"hand":1,"t":48.0,"layout":"check-bet"},
+    {"hand":1,"t":57.0,"layout":"fold-call-raise"},
+    {"hand":2,"t":72.0,"layout":"fold-call-raise"},
+    {"hand":3,"t":103.5,"layout":"fold-call-raise"},
+    {"hand":4,"t":130.0,"layout":"fold-call-raise"},
+    {"hand":4,"t":142.0,"layout":"check-bet"},
+    {"hand":4,"t":166.0,"layout":"check-bet"},
+    {"hand":4,"t":177.0,"layout":"check-bet"},
+    {"hand":5,"t":185.0,"layout":"fold-call-raise"},
+    {"hand":6,"t":219.0,"layout":"fold-call-raise"},
+    {"hand":7,"t":258.0,"layout":"fold-call-raise"},
+    {"hand":7,"t":265.0,"layout":"check-bet"},
+    {"hand":7,"t":272.0,"layout":"fold-call-raise"},
+    {"hand":9,"t":321.0,"layout":"fold-call-raise"},
+    {"hand":9,"t":340.0,"layout":"check-bet"},
+    {"hand":9,"t":363.0,"layout":"check-bet"},
+    {"hand":9,"t":375.0,"layout":"fold-call-raise"},
+    {"hand":10,"t":396.5,"layout":"fold-call-raise"},
+    {"hand":10,"t":418.5,"layout":"check-bet"},
+    {"hand":10,"t":422.5,"layout":"fold-call-raise"},
+    {"hand":11,"t":442.5,"layout":"fold-call-raise"},
+    {"hand":13,"t":494.5,"layout":"fold-call-raise"},
+    {"hand":13,"t":505.5,"layout":"fold-call-raise"},
+    {"hand":14,"t":518.0,"layout":"fold-call-raise"},
+    {"hand":15,"t":528.0,"layout":"fold-call-raise"},
+    {"hand":16,"t":581.0,"layout":"fold-call-raise"},
+    {"hand":17,"t":605.5,"layout":"fold-call-raise"},
+    {"hand":19,"t":655.5,"layout":"fold-call-raise"},
+    {"hand":19,"t":671.5,"layout":"check-bet"},
+    {"hand":19,"t":677.5,"layout":"fold-call-raise"},
+    {"hand":19,"t":693.5,"layout":"fold-call-raise"},
+    {"hand":20,"t":703.5,"layout":"fold-call-raise"},
+    {"hand":20,"t":725.5,"layout":"fold-call-raise"},
+    {"hand":20,"t":731.5,"layout":"check-bet"},
+    {"hand":20,"t":742.5,"layout":"fold-call-raise"},
+    {"hand":20,"t":745.5,"layout":"check-bet"},
+    {"hand":20,"t":755.5,"layout":"fold-call-raise"},
+    {"hand":20,"t":759.5,"layout":"check-bet"},
+    {"hand":20,"t":773.5,"layout":"fold-call-raise"},
+    {"hand":22,"t":863.0,"layout":"fold-call-raise"},
+    {"hand":22,"t":884.0,"layout":"fold-call-raise"},
+    {"hand":23,"t":965.0,"layout":"fold-call-raise"},
+    {"hand":23,"t":1010.0,"layout":"check-bet"},
+    {"hand":23,"t":1025.0,"layout":"fold-call-raise"}
+  ],
+  "notes": [
+    "Decision anchors denote frames where physical PokerStars action buttons are visible, not the action ultimately taken.",
+    "Frames with only pre-action checkboxes are negative examples and must not set heroTurnConfirmed.",
+    "Position is derived from dealer button plus dealt-in seats, never from transient action text or visible stacks alone."
+  ]
+}
