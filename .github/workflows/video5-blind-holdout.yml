@@ -1,0 +1,69 @@
+name: video5-blind-holdout
+
+on:
+  push:
+    branches:
+      - vision-v1-brain-integration
+    paths:
+      - '.github/workflows/video5-blind-holdout.yml'
+      - 'tools/holdout/video5_blind_scan.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  blind-video5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Freeze scanner then reset reader to requested HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp tools/holdout/video5_blind_scan.py /tmp/video5_blind_scan.py
+          git reset --hard cdecb04b6230a343535fcca5129a14a5579ea44f
+          test "$(git rev-parse HEAD)" = "cdecb04b6230a343535fcca5129a14a5579ea44f"
+          echo "FROZEN_READER_HEAD=$(git rev-parse HEAD)"
+
+      - name: Install offline reader dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install numpy==1.26.4 opencv-python-headless==4.10.0.84 gdown==5.2.0
+
+      - name: Download frozen calibration and blind holdout videos
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/holdout
+          python3 -m gdown --id 1d0FQNW2qziQENcwrK7YeB-xkLrdOPeBw -O '/tmp/holdout/video1.mkv'
+          python3 -m gdown --id 1YKXAEqe-5gwb0iTwIF816GCv1Tc8hn0e -O '/tmp/holdout/video2.mkv'
+          python3 -m gdown --id 1SAgHbXCsywFd7xu4XVZ6VW09a0O_RNfx -O '/tmp/holdout/video5.mkv'
+          test "$(stat -c%s '/tmp/holdout/video1.mkv')" = "323158352"
+          test "$(stat -c%s '/tmp/holdout/video2.mkv')" = "174103044"
+          test "$(stat -c%s '/tmp/holdout/video5.mkv')" = "272066919"
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate -of default=nw=1 '/tmp/holdout/video5.mkv'
+
+      - name: Run strict blind video 5 scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/video5_blind_scan.py \
+            '/tmp/holdout/video1.mkv' \
+            '/tmp/holdout/video2.mkv' \
+            '/tmp/holdout/video5.mkv' \
+            '/tmp/video5_blind_raw.json'
+
+      - name: Upload first blind output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video5-blind-first-score
+          path: /tmp/video5_blind_raw.json
+          if-no-files-found: warn
+          retention-days: 7
