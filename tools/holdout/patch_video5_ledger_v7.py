@@ -97,12 +97,10 @@ helper = '''def reconcile_before_hero_decision(hand, t, commits, present_now):
 '''
 s = s[:idx] + helper + s[idx:]
 
-# Mark a real Hero decision from the authoritative physical buttons before the
-# snapshot is taken, then reconcile any zero-owed prior action proven by turn
-# order. action_observe runs earlier in the sample, so the flag is available for
-# subsequent disappearance samples and cannot manufacture an action retroactively.
-old = """    bs = hero_button_state(im)\n    if bs.confirmed:\n        snap = decision_snapshot(im, t, current, commits, commit_sources, ambiguous, bs)\n"""
-new = """    bs = hero_button_state(im)\n    if bs.confirmed:\n        if current is not None and not current.get('terminal'):\n            current['heroDecisionSeen'] = True\n            current['lastHeroDecisionT'] = round(t, 3)\n            reconcile_before_hero_decision(current, t, commits, dealt_now)\n        snap = decision_snapshot(im, t, current, commits, commit_sources, ambiguous, bs)\n"""
+# V3 changed this line to include the hand-transition guard. Preserve that guard
+# while marking a real Hero decision and reconciling prior zero-owed actions.
+old = """    bs = hero_button_state(im)\n    if bs.confirmed and not hand_transition_pending:\n        snap = decision_snapshot(im, t, current, commits, commit_sources, ambiguous, bs)\n"""
+new = """    bs = hero_button_state(im)\n    if bs.confirmed and not hand_transition_pending:\n        if current is not None and not current.get('terminal'):\n            current['heroDecisionSeen'] = True\n            current['lastHeroDecisionT'] = round(t, 3)\n            reconcile_before_hero_decision(current, t, commits, dealt_now)\n        snap = decision_snapshot(im, t, current, commits, commit_sources, ambiguous, bs)\n"""
 assert old in s
 s = s.replace(old, new, 1)
 
