@@ -1,4 +1,5 @@
 import { validatePokerSnapshot } from '../core/snapshot-validator.js';
+import { computeToCallFromCommitments } from '../core/seat-delta-inference.js';
 import { runStudyRuntime } from './study-runtime.js';
 
 const amount = (v) => {
@@ -13,6 +14,9 @@ const amount = (v) => {
 export function snapshotFromVisionState(state={}, context={}) {
   const physicalButtons=context.buttonsSource==='physical-action-buttons' && Array.isArray(context.heroButtons)
     ? context.heroButtons : [];
+  const derivedToCall=context.seatStates && typeof context.seatStates==='object'
+    ? computeToCallFromCommitments(context.seatStates,context.heroSeatId || 'hero') : null;
+  const hasDerived=derivedToCall && Number.isFinite(derivedToCall.value);
   return {
     heroCards: Array.isArray(state.heroCards) ? state.heroCards : [],
     heroPresence: state.heroPresence ?? context.heroPresence ?? null,
@@ -23,8 +27,8 @@ export function snapshotFromVisionState(state={}, context={}) {
     heroPosition: state.heroPosition ?? context.heroPosition ?? null,
     positionSource: context.positionSource ?? null,
     pot: amount(state.pot),
-    toCall: amount(context.toCall ?? state.toCall),
-    toCallSource: context.toCallSource ?? null,
+    toCall: hasDerived ? derivedToCall.value : amount(context.toCall ?? state.toCall),
+    toCallSource: hasDerived ? derivedToCall.source : (context.toCallSource ?? null),
     heroStack: amount(state.heroStack),
     actionComplete: context.actionComplete === true,
     actionHistory: Array.isArray(state.actionHistory) ? state.actionHistory : [],
