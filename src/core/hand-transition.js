@@ -1,48 +1,69 @@
-// HAND TRANSITION V1 — lives outside Lovable. It consumes observations only.
-// Goal: clear the old hand fast without changing the frozen vision reader.
+// HAND TRANSITION V1 — consumes observations only; no UI/network coupling.
+// Conservative rule: transient Hero disappearance suspends the current hand.
+// A new hand requires different confirmed hole cards, or the same cards with a
+// rotated dealer button. This prevents replay animation/dropout false splits.
 export function createHandTransitionV1() {
-  let absentVotes = 0;
   let candidate = '';
+  let candidateDealer = null;
   let candidateVotes = 0;
+  let suspended = false;
+  let confirmedDealer = null;
 
-  const resetCandidate = () => { candidate = ''; candidateVotes = 0; };
+  const resetCandidate = () => { candidate = ''; candidateDealer = null; candidateVotes = 0; };
 
   return {
-    observeHero({ heroCards = [], heroPresence = null, confidence = 0 }, currentHero = []) {
+    observeHero({ heroCards = [], heroPresence = null, confidence = 0, dealerSeat = null }, currentHero = []) {
       const currentKey = currentHero.join(' ');
+
       if (heroPresence === 'absent') {
-        absentVotes += 1;
+        suspended = currentHero.length === 2 || suspended;
         resetCandidate();
-        if (absentVotes >= 2 && currentHero.length === 2) {
-          absentVotes = 0;
-          return { type: 'HAND_ENDED', clear: true, reason: 'hero region absent twice' };
-        }
-        return { type: 'NO_CHANGE' };
+        return { type: suspended ? 'HAND_SUSPENDED' : 'NO_CHANGE', clear: false, reason: suspended ? 'hero temporarily absent; identity preserved' : undefined };
       }
 
       if (heroPresence !== 'present' || heroCards.length !== 2) return { type: 'NO_CHANGE' };
-      absentVotes = 0;
       const key = heroCards.join(' ');
-      if (key === currentKey) { resetCandidate(); return { type: 'NO_CHANGE' }; }
 
-      if (candidate === key) candidateVotes += 1;
-      else { candidate = key; candidateVotes = 1; }
+      if (currentHero.length === 0) {
+        if (confidence < 0.9) return { type: 'NO_CHANGE' };
+        confirmedDealer = dealerSeat || confirmedDealer;
+        suspended = false;
+        resetCandidate();
+        return { type: 'HAND_STARTED', clear: false, heroCards: [...heroCards], dealerSeat: confirmedDealer, reason: 'first hero hand confirmed' };
+      }
 
-      // First ever hand may fast-lock at high confidence. A transition between
-      // two different hands always requires 2 matching observations.
-      const need = currentHero.length === 0 && confidence >= 0.9 ? 1 : 2;
-      if (candidateVotes >= need) {
+      const dealerRotated = Boolean(dealerSeat && confirmedDealer && dealerSeat !== confirmedDealer);
+      if (key === currentKey && !dealerRotated) {
+        const wasSuspended = suspended;
+        suspended = false;
+        if (dealerSeat) confirmedDealer = dealerSeat;
+        resetCandidate();
+        return wasSuspended
+          ? { type: 'HAND_RESUMED', clear: false, heroCards: [...heroCards], dealerSeat: confirmedDealer, reason: 'same hero cards and dealer after visual gap' }
+          : { type: 'NO_CHANGE' };
+      }
+
+      const dealerKey = dealerSeat || '';
+      if (candidate === key && candidateDealer === dealerKey) candidateVotes += 1;
+      else { candidate = key; candidateDealer = dealerKey; candidateVotes = 1; }
+
+      // Every transition requires two matching observations. Same-card
+      // consecutive hands are allowed only when the dealer button rotated.
+      if (candidateVotes >= 2 && (key !== currentKey || dealerRotated)) {
         const next = [...heroCards];
+        confirmedDealer = dealerSeat || confirmedDealer;
+        suspended = false;
         resetCandidate();
         return {
-          type: currentHero.length ? 'NEW_HAND' : 'HAND_STARTED',
-          clear: currentHero.length > 0,
+          type: 'NEW_HAND',
+          clear: true,
           heroCards: next,
-          reason: currentHero.length ? 'new hero cards confirmed twice' : 'first hero hand confirmed',
+          dealerSeat: confirmedDealer,
+          reason: key !== currentKey ? 'new hero cards confirmed twice' : 'dealer rotated with same hero cards',
         };
       }
       return { type: 'NO_CHANGE' };
     },
-    reset() { absentVotes = 0; resetCandidate(); },
+    reset() { resetCandidate(); suspended = false; confirmedDealer = null; },
   };
 }
