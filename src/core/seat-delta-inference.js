@@ -10,15 +10,20 @@ export function inferSeatAction(prev = {}, cur = {}, { tableMaxBefore = 0, epsil
   const pStack = prev.stack == null ? null : n(prev.stack);
   const cStack = cur.stack == null ? null : n(cur.stack);
   const delta = cCommit - pCommit;
+  const tableMax = n(tableMaxBefore);
 
   if (pStack != null && cStack != null && pStack > epsilon && cStack <= epsilon && delta > epsilon) {
     return { action:'ALLIN', amount:cCommit, source:'commitment-plus-stack-delta' };
   }
   if (delta > epsilon) {
-    if (cCommit > n(tableMaxBefore) + epsilon) return { action: tableMaxBefore > epsilon ? 'RAISE' : 'BET', amount:cCommit, source:'commitment-delta' };
+    if (cCommit > tableMax + epsilon) return { action: tableMax > epsilon ? 'RAISE' : 'BET', amount:cCommit, source:'commitment-delta' };
     return { action:'CALL', amount:cCommit, source:'commitment-delta' };
   }
   if (prev.turn === true && cur.turn === false && Math.abs(delta) <= epsilon) {
+    // A player cannot CHECK while still facing a bet. Missing commitment evidence
+    // in that situation must stay unresolved so the Snapshot Validator blocks the
+    // Brain instead of silently inventing a check.
+    if (pCommit + epsilon < tableMax) return null;
     return { action:'CHECK', amount:null, source:'turn-plus-commitment-delta' };
   }
   return null;
