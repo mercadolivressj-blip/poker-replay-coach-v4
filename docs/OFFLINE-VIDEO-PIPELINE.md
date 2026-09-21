@@ -1,77 +1,76 @@
 # SSJ Poker AUTO — offline video gate
 
-This branch treats the PokerStars 1280x720 capture as a fixed-layout engineering dataset. The scope remains replay/simulation/post-session analysis; the gate is intentionally conservative and never trades missing evidence for a recommendation.
+This branch treats fixed-layout PokerStars 1280x720 recordings as an engineering dataset for replay/simulation/post-session analysis. The gate is deliberately conservative: missing evidence blocks the Brain instead of being guessed.
 
-## Source dataset
+## Datasets
+
+### Session 1 — baseline/training
 
 - Recording: `2026-09-20 22-25-57.mkv`
 - 1280x720, 30 FPS, 1027.633 s
-- Offline sample grid: one frame every 5 seconds (206 frames)
-- Session ground truth: `standalone-lab/calibration/session-2026-09-20-ground-truth-v1.json`
+- Ground truth: `session-2026-09-20-ground-truth-v2.json`
 - 23 confirmed hands
-- 45 confirmed Hero physical decision-button anchors
-- Golden states are hand-labeled from the recording, not inferred from Hand History.
+- 47 physical Hero decision windows
+- 85 reconstructed actions, 0 UNKNOWN, 47/47 complete decision histories
+- Video regression: Hero 47/47, buttons 47/47, positions 23/23, stack holdout 47/47, pot holdout 3/3, `toCall` 47/47
 
-A previous coarse segmentation produced 24 starts. The `868.5 s` split is explicitly rejected: the `7s 7c` hand beginning around `859 s` continues through the visual gap and reaches another Hero decision around `884 s`.
+The old 24-hand/45-decision timeline came from random OpenCV seeking and is obsolete. Official regressions decode sequentially by frame index. The known false split around 868.5 s remains a locked regression.
 
-## Reader order
+### Session 2 — independent generalization, then regression
 
-1. Fixed Hero card slots (2 independent slots)
-2. Fixed board card slots (5 independent slots; face-up presence per slot)
-3. Rank+suit template matcher with absolute-score + distinct-label margin; ambiguous cards abstain
-4. Dedicated numeric ROIs for pot, Hero stack and seat commitments
-5. PokerStars-theme digit template bank for `0-9`; values are segmented into glyphs before classification and the last two glyphs are cents
-6. Dealer button detector constrained to the known table geometry
-7. Dealt-in seat detector from card backs/faces, not merely visible player panels/stacks
-8. Per-seat state: cardsPresent, stack, commitment, previousCommitment, turn, folded
-9. Action reconstruction from state deltas; transient action text is confirmation only
-10. `toCall = max(active commitments) - Hero commitment`; button OCR/time-bank text is never an input
-11. Position from dealer + dealt-in seats only
-12. Physical Hero action-button detector; pre-action checkboxes are negative examples
-13. Snapshot Validator
-14. Brain/strategy runner only after the validator returns `ok:true`
+- Recording: `2026-09-21 11-49-44.mkv`
+- 1280x720, 30 FPS, 553.033 s
+- Ground truth: `session-2026-09-21-ground-truth-v1.json`
+- 14 hands / 31 Hero decisions
+- Action history complete: 31/31
+- Generalization gate: buttons 31/31, positions 14/14, Hero holdout 30/30, board 58/58, stack 31/31, pot holdout 30/30, `toCall` 31/31
+- `toCall`: 29 direct fixed-ROI reads + 2 resolved from seat-state/stack delta; 0 from button OCR
+
+The blind pass was completed before manual labels. Two post-blind calibrations are explicitly excluded from their holdouts: Hero rank `6` at decision 3 and pot-font `0.08` at decision 12. No video-2 board labels or commitment labels train their respective readers in the official two-session runner.
+
+## Fixed reader architecture
+
+1. Hero: two fixed independent card slots.
+2. Board: five fixed independent slots; presence and rank/suit decoding are separate.
+3. Hero and board use context-separated card template banks.
+4. Stack, pot and commitment use context-separated numeric evidence.
+5. Commitments require a fixed `US$ + value` layout; generic table text is rejected.
+6. Dealer detection requires the actual PokerStars button signature: approximately 30x25 white disc with a red star, not generic red/white blobs.
+7. Dealt-in seats come from card backs/faces and are frozen near hand start.
+8. Position is derived once from dealer + frozen dealt-in seats and cannot change after folds.
+9. Opponent turn uses the yellow/green panel progress bar only as evidence; action state changes remain authoritative.
+10. Action ledger combines cards, commitments, stack, expected order and street transitions. Transient `Pago/Desisto/Aumento` text is corroboration only.
+11. Commitment resolution priority: fixed ROI numeric → persisted seat-ledger commitment → street stack delta → BLOCK.
+12. `toCall = max(active commitments) - Hero commitment`; button OCR/time-bank text is never a price source.
+13. Physical Hero action buttons confirm the Hero decision window; pre-action checkboxes do not.
+14. Snapshot Validator + `seat-state-ledger-v1` must both be complete before the Brain can run.
 
 ## Hard Brain gate
 
-A snapshot is blocked unless all of the following are true:
+The Brain is blocked unless Hero has two valid unique cards, board count is exactly 0/3/4/5 with no decode gap, the physical Hero turn is confirmed, buttons are physical/legal, position is frozen from dealer + dealt-in seats, pot/stack/`toCall` are finite and consistent, `toCall` comes from seat state, and the action ledger is complete with zero unresolved actions.
 
-- Hero has exactly two valid, unique cards and `heroPresence === present`;
-- board has exactly 0/3/4/5 valid cards with no decode gap or duplicate/overlapping card;
-- Hero turn is physically confirmed by the action-button band;
-- Hero buttons came from `physical-action-buttons`, not pre-action checkboxes or OCR text;
-- position exists and its provenance is `dealer-plus-occupied-seats-only` (occupied here means dealt-in for the hand);
-- pot, Hero stack and `toCall` are finite and internally consistent;
-- `toCallSource === commitment-delta`;
-- reconstructed action history is complete up to Hero;
-- the eventual recommended action is one of the currently physical/legal Hero buttons.
+A bad read should become an abstention/BLOCK. It must never be converted into a plausible-looking recommendation.
 
-## Golden video regressions
+## Important locked regressions
 
-- 240 s: board face-up slots 1-3 only; pot 2.60; Hero stack 50.69; dealer nearest RT.
-- 300 s: no board; pot 1.75; Hero stack 49.54; commitments LB 0.25 and TOP 0.50; dealer nearest Hero.
-- 420 s: Hero `2s 2c`; board `As 7d 9s 4d Ah`; pot 2.14; Hero stack 56.85; dealer TOP. This is the regression for the historical `board count=5 / decode=4` failure.
-- 600 s: Hero `Kc Qh`; empty board; pot 0.75; Hero stack 54.35; commitments Hero 0.25 and LB 0.50; dealer RB.
-- 780 s: showdown frame; pot 33.49; Hero stack 42.43; dealer LT.
-- 859–884 s: same `7s 7c` hand across a transient Hero visual gap; no false hand transition at 868.5 s.
+- `50,69` must never become `0,69`.
+- `40,78` must never become `0,78`.
+- Board count 5 with only 4 decoded cards is BLOCKED.
+- Hero time bank/button text cannot become `toCall`.
+- A visible stack/panel does not imply dealt-in.
+- A fold cannot change Hero position mid-hand.
+- `CHECK` is invalid if the player still owes chips relative to table max.
+- Hand 22 in session 1 remains continuous across the historical 868.5 s visual gap.
+- Session 2 hands 6 and 12 have dealer `LT` and Hero `HJ`; these lock the strict dealer-button detector.
 
-The older calibration entry for 780 s (`3.55 / 39.28`) was incorrect and was corrected by direct inspection of the uploaded recording.
-
-## Numeric safety changes
-
-The numeric reader no longer tries a shorter integer hypothesis when a leading glyph is difficult. It segments the actual digit glyphs first and requires 1–3 integer digits plus exactly two decimals. Ambiguous/malformed strings return `None` rather than silently converting `50,69` into `0,69`.
-
-`connectedComponentsWithStats` was also removed from the long-running fixed-layout readers after native OpenCV crashes were observed during dataset work. Tiny PokerStars glyph/button/dealer components now use contour-based extraction.
-
-## Running the offline battery
+## Release battery
 
 ```bash
 python3 tests/offline_video_regression.py "/path/to/2026-09-20 22-25-57.mkv"
-node tests/snapshot-validator-v1.test.mjs
-node tests/seat-delta-inference-v1.test.mjs
-node tests/hand-transition-v1.test.mjs
-node tests/validated-study-runtime-v1.test.mjs
+python3 tests/offline_video_generalization.py "/path/to/2026-09-20 22-25-57.mkv" "/path/to/2026-09-21 11-49-44.mkv"
+npm test
 ```
 
-The video regression checks the 23-hand ground truth, all 45 Hero decision anchors, card abstention, numeric leading digits, dealer anchors, commitments, action-delta rules and the known false hand split.
+`offline_video_regression.py` protects the baseline session. `offline_video_generalization.py` runs one forward sequential pass per recording and protects cross-session behavior. See `offline-generalization-gate-report-v1.json` for the frozen metrics.
 
-No new runtime/release should be produced from this work until the source-video battery and the normal CI suite are both green.
+No new runtime/release should be produced until all three commands are green. Passing these two recordings is evidence of materially better generalization, not a claim of universal perfection.
