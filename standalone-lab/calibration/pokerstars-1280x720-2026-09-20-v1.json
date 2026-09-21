@@ -1,0 +1,48 @@
+{
+  "version": "pokerstars-fixed-layout-v1",
+  "source": {
+    "video": "2026-09-20 22-25-57.mkv",
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "durationSeconds": 1027.6333,
+    "notes": "17m07s user-recorded PokerStars 6-max session. Coordinates are normalized from the stable captured window. This is a calibration/test dataset, not a generic theme detector."
+  },
+  "rois": {
+    "heroCards": [
+      {"id":"hero1","x":0.4515625,"y":0.6055556,"w":0.046875,"h":0.0597222},
+      {"id":"hero2","x":0.5007813,"y":0.6055556,"w":0.0476563,"h":0.0597222}
+    ],
+    "board": [
+      {"id":"board1","x":0.371875,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board2","x":0.4242188,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board3","x":0.4765625,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board4","x":0.5289063,"y":0.3277778,"w":0.046875,"h":0.1180556},
+      {"id":"board5","x":0.58125,"y":0.3277778,"w":0.046875,"h":0.1180556}
+    ],
+    "potValue": {"x":0.5,"y":0.2944444,"w":0.0546875,"h":0.0347222},
+    "heroStackValue": {"x":0.5078125,"y":0.7083333,"w":0.0664063,"h":0.0361111},
+    "titleBlinds": {"x":0.1171875,"y":0.0,"w":0.390625,"h":0.0305556},
+    "heroButtons": {"x":0.4921875,"y":0.8541667,"w":0.3671875,"h":0.1180556}
+  },
+  "validator": {
+    "allowedBoardCounts": [0,3,4,5],
+    "requireTwoHeroCards": true,
+    "decisionRequiresCurrentHeroButtons": true,
+    "decisionMustBeLegalAction": true,
+    "rejectPartialBoard": true,
+    "rejectImpossibleToCallVsStack": true,
+    "positionSource": "dealer-plus-occupied-seats-only",
+    "actionSource": "seat-card-presence-plus-commitment-delta-plus-stack-delta; transient text is confirmation only"
+  },
+  "heroPresenceSegments": [
+    [32.0,57.5],[65.0,72.5],[78.5,103.5],[127.0,182.0],[184.0,185.0],[212.0,220.0],[246.0,274.5],[281.0,297.0],[320.0,392.5],[394.5,424.0],[430.5,443.0],[466.0,477.0],[485.5,507.0],[513.0,518.0],[527.0,528.5],[567.0,581.5],[588.5,610.5],[615.0,626.5],[648.5,700.0],[702.5,778.0],[785.5,805.0],[859.0,864.5],[868.5,884.0],[961.0,1026.0]
+  ],
+  "knownVisualAnchors": [
+    {"t":240,"pot":"2.60","heroStack":"50.69"},
+    {"t":300,"pot":"1.75","heroStack":"49.54"},
+    {"t":420,"pot":"2.14","heroStack":"56.85"},
+    {"t":600,"pot":"0.75","heroStack":"54.35"},
+    {"t":780,"pot":"3.55","heroStack":"39.28"}
+  ]
+}
