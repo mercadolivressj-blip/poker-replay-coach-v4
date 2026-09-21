@@ -36,11 +36,31 @@ for(const d of session.decisions){
   assert(Number.isFinite(d.toCall)&&d.toCall>=0);
 }
 
-// Locks the independent-session cases that exposed the first-video overfit.
+// Locks the dealer audit that caught the old generic red/white blob detector.
+assert.deepEqual(
+  [session.hands[5].dealer,session.hands[5].heroPosition],
+  ['lt','HJ'],
+  'hand 6 dealer/position must come from the real PokerStars dealer button'
+);
+assert.deepEqual(
+  [session.hands[11].dealer,session.hands[11].heroPosition],
+  ['lt','HJ'],
+  'hand 12 dealer/position must come from the real PokerStars dealer button'
+);
+
+// Locks the independent-session cases that exposed first-session overfit.
 assert(session.decisions.some((d)=>d.heroCards.includes('6h')),'session 2 must exercise Hero rank 6');
 assert(session.decisions.some((d)=>d.board.includes('Qc')),'session 2 must exercise board Qc');
 assert(session.decisions.some((d)=>d.board.includes('8c')),'session 2 must exercise board 8c');
 assert(session.decisions.some((d)=>Math.abs(d.pot-.08)<1e-9),'session 2 must exercise small-pot digit 8');
 assert(session.decisions.some((d)=>Math.abs(d.toCall-.28)<1e-9),'session 2 must exercise larger micro-stakes toCall');
+
+// Blind pass is preserved as history. Only two post-blind reader calibrations
+// are permitted; neither commitments nor board cards may be trained from video 2.
+assert.equal(session.calibrationPolicy.blindPass,'no video-2 labels used before first evaluation');
+assert.deepEqual(session.calibrationPolicy.postBlindCalibration.map((x)=>x.kind),['hero-card','pot']);
+assert.equal(session.calibrationPolicy.postBlindCalibration[0].decision,3);
+assert.equal(session.calibrationPolicy.postBlindCalibration[1].decision,12);
+assert(session.notes.some((x)=>/button OCR is never used/i.test(x)));
 
 console.log('offline-generalization-ground-truth-v1 ok: 14 hands / 31 decisions / 31 complete histories');
