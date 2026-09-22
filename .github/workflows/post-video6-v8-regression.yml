@@ -84,9 +84,9 @@ jobs:
         run: |
           set -euo pipefail
           for f in tests/offline_video_regression.py tests/offline_video_generalization.py; do
-            sed -i 's/assert nt\\.add_labeled(/nt.add_labeled(/' "$f"
-            sed -i 's/assert stack\\.add_labeled(/stack.add_labeled(/' "$f"
-            sed -i 's/assert pot\\.add_labeled(/pot.add_labeled(/' "$f"
+            sed -i 's/assert nt\.add_labeled(/nt.add_labeled(/' "$f"
+            sed -i 's/assert stack\.add_labeled(/stack.add_labeled(/' "$f"
+            sed -i 's/assert pot\.add_labeled(/pot.add_labeled(/' "$f"
             sed -i 's/assert add_commitment_labeled(/add_commitment_labeled(/' "$f"
           done
           python3 -m py_compile tests/offline_video_regression.py tests/offline_video_generalization.py
