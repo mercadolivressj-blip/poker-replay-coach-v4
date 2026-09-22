@@ -1,0 +1,127 @@
+name: post-video6-v8-regression
+
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - '.github/workflows/post-video6-v8-regression.yml'
+      - 'tools/holdout/patch_video6_generic_safety_v8.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run repository and frozen fixture regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install >/dev/null
+          npm test
+          node tests/offline-ground-truth-v1.test.mjs
+          node tests/offline-generalization-ground-truth-v1.test.mjs
+          node tests/offline-video3-ground-truth-v1.test.mjs
+          node tests/offline-video4-ground-truth-v1.test.mjs
+          node tests/offline-video5-postblind-v7.test.mjs
+          python3 -m py_compile tests/offline_video*.py tools/offline_vision/*.py
+
+      - name: Build approved V7 plus generic V8 over frozen reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          V7_REF=c1aecb66e73464a2c9b17a8f31f2aa888c6c48d3
+          git show "${V7_REF}:tools/holdout/video5_blind_scan.py" > /tmp/scan_v8.py
+          for f in patch_video5_harness_v3.py patch_video5_ledger_v4.py patch_video5_ledger_v5.py patch_video5_ledger_v6.py patch_video5_ledger_v7.py; do
+            git show "${V7_REF}:tools/holdout/${f}" > "/tmp/${f}"
+          done
+          cp tools/holdout/patch_video6_generic_safety_v8.py /tmp/patch_v8.py
+          sed -i 's/assert stack\.add_labeled(/stack.add_labeled(/' /tmp/scan_v8.py
+          sed -i 's/assert pot\.add_labeled(/pot.add_labeled(/' /tmp/scan_v8.py
+          sed -i 's/assert add_commitment_labeled(/add_commitment_labeled(/' /tmp/scan_v8.py
+          python3 /tmp/patch_video5_harness_v3.py /tmp/scan_v8.py
+          python3 /tmp/patch_video5_ledger_v4.py /tmp/scan_v8.py
+          python3 /tmp/patch_video5_ledger_v5.py /tmp/scan_v8.py
+          python3 /tmp/patch_video5_ledger_v6.py /tmp/scan_v8.py
+          python3 /tmp/patch_video5_ledger_v7.py /tmp/scan_v8.py
+          python3 /tmp/patch_v8.py /tmp/scan_v8.py
+          python3 -m py_compile /tmp/scan_v8.py
+          git reset --hard cdecb04b6230a343535fcca5129a14a5579ea44f
+          git clean -fdx
+          test "$(git rev-parse HEAD)" = "cdecb04b6230a343535fcca5129a14a5579ea44f"
+
+      - name: Install video dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y ffmpeg >/dev/null
+          python3 -m pip install --upgrade pip >/dev/null
+          python3 -m pip install numpy==1.26.4 opencv-python-headless==4.10.0.84 gdown==5.2.0 >/dev/null
+
+      - name: Download available source regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/videos /tmp/results
+          python3 -m gdown --id 1d0FQNW2qziQENcwrK7YeB-xkLrdOPeBw -O /tmp/videos/video1.mkv >/dev/null
+          python3 -m gdown --id 1YKXAEqe-5gwb0iTwIF816GCv1Tc8hn0e -O /tmp/videos/video2.mkv >/dev/null
+          python3 -m gdown --id 1SAgHbXCsywFd7xu4XVZ6VW09a0O_RNfx -O /tmp/videos/video5.mkv >/dev/null
+          test "$(stat -c%s /tmp/videos/video1.mkv)" = "323158352"
+          test "$(stat -c%s /tmp/videos/video2.mkv)" = "174103044"
+          test "$(stat -c%s /tmp/videos/video5.mkv)" = "272066919"
+
+      - name: Run source video1 regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/offline_video_regression.py /tmp/videos/video1.mkv | tee /tmp/results/video1.log
+
+      - name: Run source video2 independent generalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/offline_video_generalization.py /tmp/videos/video1.mkv /tmp/videos/video2.mkv | tee /tmp/results/video2.log
+
+      - name: Run V8 against known video5 source and require zero regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/scan_v8.py /tmp/videos/video1.mkv /tmp/videos/video2.mkv /tmp/videos/video5.mkv /tmp/results/video5-v8.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/results/video5-v8.json'
+          d=json.load(open(p))
+          s=d['summary']
+          print('VIDEO5_V8_REGRESSION='+json.dumps(s,separators=(',',':')))
+          assert s['handsDetected']==17, s
+          assert s['heroDecisionsDetected']==37, s
+          for k in ['buttonsConfirmed','heroCardsComplete','boardComplete','heroStackComplete','potComplete','toCallComplete','positionComplete','historyComplete','brainValidDecisions','heroActionAfterDecision']:
+              assert s[k]==37, (k,s)
+          assert s['handContinuity']=='17/17', s
+          assert s['blockReasons']=={}, s
+          assert s['criticalInternalInconsistencies']==0, s
+          semantic={h['id']:h.get('ledgerSemanticErrors',[]) for h in d['hands'] if h.get('ledgerSemanticErrors')}
+          bad=[x['i'] for x in d['decisions'] if not x['brainGate']['ok'] or x.get('heroAction') is None]
+          print('VIDEO5_V8_SEMANTIC='+json.dumps(semantic,separators=(',',':')))
+          print('VIDEO5_V8_BAD='+json.dumps(bad))
+          assert semantic=={}, semantic
+          assert bad==[], bad
+          PY
+
+      - name: Upload regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-video6-v8-regression
+          path: /tmp/results/
+          if-no-files-found: warn
+          retention-days: 7
