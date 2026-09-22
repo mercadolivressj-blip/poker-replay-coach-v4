@@ -460,6 +460,10 @@ function observeStableCommitment(seat,obs){
 function commitmentCandidatesSettled(){
  for(const [seat,candidate] of Object.entries(commitCandidates)){const stable=seatCommit[seat];if(!folded.has(seat)&&stable!=null&&candidate&&Math.abs(candidate.value-stable)>.005)return false}return true
 }
+function updateCommitReady(derived){
+ if(!heroTurn)return;const moneySettled=!state.legalActions.includes('CALL')||Date.now()-heroTurnStartedAt>=260;
+ commitReadyEpoch=derived.ok&&moneySettled&&commitmentCandidatesSettled()&&commitScanEpoch-heroTurnCommitStartEpoch>=2?heroTurnEpoch:0
+}
 function commitmentBatchCanvas(seats){
  const labels=['AAAA','BBBB','CCCC','DDDD','EEEE','FFFF'],w=300,rowH=96,c=document.createElement('canvas');c.width=w;c.height=rowH*seats.length;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#050505';ctx.fillRect(0,0,c.width,c.height);ctx.font='bold 20px ui-monospace,monospace';ctx.textBaseline='middle';
  for(let i=0;i<seats.length;i++){const seat=seats[i],r=COMMIT_ROI[seat],y=i*rowH;ctx.fillStyle='#fff';ctx.fillText(labels[i],3,y+rowH/2);const crop=r?capture(r[0],r[1],r[2],r[3],200):null;if(crop)ctx.drawImage(crop,70,y,w-72,rowH)}
@@ -537,7 +541,7 @@ async function scanCommitments(force=false){
       if(tail.value!=null&&(parsed.value==null||(!parsed.text.includes(',')&&tail.text.includes(','))))parsed=tail;
       observeStableCommitment(seat,parsed.value!=null?{kind:'amount',value:parsed.value}:parsed.visible?{kind:'unreadable',value:null}:{kind:'empty',value:0});
     }
-    commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitmentCandidatesSettled()&&commitScanEpoch-heroTurnCommitStartEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+    commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();updateCommitReady(derived);
     if(test)test.lastCommitState={mediaTime:video.currentTime,heroTurn,heroTurnEpoch,commitReadyEpoch,commitScanEpoch,derivedOk:derived.ok,toCall:state.toCall,ambiguous:[...commitAmbiguous]};
     if(test)test.numericReaderMs=Math.round(performance.now()-numericStarted);
     if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();return;
@@ -545,7 +549,7 @@ async function scanCommitments(force=false){
    const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.rawText||out?.text||'';
    const parts=out?.tsv?commitmentBatchTsv(out.tsv,seats):commitmentBatchParts(out?.rawText||out?.text,seats);
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
-   commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitmentCandidatesSettled()&&commitScanEpoch-heroTurnCommitStartEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+   commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();updateCommitReady(derived);
    if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();
  }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(heroTurn&&commitReadyEpoch!==heroTurnEpoch)setTimeout(()=>scanCommitments(true),0);else if(heroTurn)setTimeout(decide,0);else if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
