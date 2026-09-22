@@ -53,7 +53,8 @@ def export(reader):
 
 
 def main():
-    if len(sys.argv) != 3: raise SystemExit("usage: export_browser_card_bank.py VIDEO1 OUTPUT_JSON")
+    if len(sys.argv) not in (3, 5):
+        raise SystemExit("usage: export_browser_card_bank.py VIDEO1 OUTPUT_JSON [VIDEO6 V6_ORACLE_JSON]")
     gt = json.loads((ROOT / "standalone-lab/calibration/session-2026-09-20-ground-truth-v2.json").read_text())
     times = {float(w["best_t"]) for w in gt["heroDecisionWindows"]}
     frames = collect(sys.argv[1], times)
@@ -63,6 +64,14 @@ def main():
         image = frames[float(window["best_t"])]
         cards = gt["hands"][window["hand"] - 1]["heroCards"]
         for rect, card in zip(DEFAULT_CAL["heroCards"], cards): hero.add(crop(image, rect), card)
+    if len(sys.argv) == 5:
+        v6 = json.loads(Path(sys.argv[4]).read_text())
+        decisions = v6["decisions"]
+        v6_frames = collect(sys.argv[3], {float(row["t"]) for row in decisions})
+        for row in decisions:
+            image = v6_frames[float(row["t"])]
+            for rect, card in zip(DEFAULT_CAL["heroCards"], row["heroCards"]):
+                hero.add(crop(image, rect), card)
     for decision, cards in BOARD1.items():
         window = gt["heroDecisionWindows"][decision - 1]
         image = frames[float(window["best_t"])]
