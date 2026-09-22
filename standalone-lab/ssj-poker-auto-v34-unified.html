@@ -64,7 +64,7 @@
  async function startReplay(){
    if(!replay||window.__SSJ_CAPTURE.active)return;
    try{
-     window.__SSJ_CAPTURE.active=true;window.__SSJ_CAPTURE.mode='replay';video.muted=true;video.preload='auto';video.src=replay;
+     window.__SSJ_CAPTURE.active=true;window.__SSJ_CAPTURE.mode='replay';video.crossOrigin='anonymous';video.muted=true;video.preload='auto';video.src=replay;
      await new Promise((resolve,reject)=>{if(video.readyState>=2)return resolve();video.addEventListener('loadeddata',resolve,{once:true});video.addEventListener('error',()=>reject(new Error('vídeo de replay não carregou')),{once:true})});
      const rate=Number(new URLSearchParams(location.search).get('rate')||1);video.playbackRate=Number.isFinite(rate)&&rate>0?rate:1;await video.play();
      $('engine').textContent='REPLAY DE TESTE';$('reason').textContent='Vídeo local reproduzindo no mesmo pipeline da captura.';say('REPLAY OK '+video.videoWidth+'x'+video.videoHeight+' @'+video.playbackRate+'x');
