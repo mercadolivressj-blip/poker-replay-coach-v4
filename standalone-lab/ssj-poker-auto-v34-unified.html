@@ -110,6 +110,7 @@ import {postflopPolicyV4Decision} from 'https://raw.githack.com/mercadolivressj-
 import {resolveSeatCommitmentV1} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/bdc06ebae3c47d434a2b64c05d3f38f8f0ae474e/src/core/commitment-state.js';
 import {computeToCallFromCommitments} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/bdc06ebae3c47d434a2b64c05d3f38f8f0ae474e/src/core/seat-delta-inference.js';
 import {validatePokerSnapshot} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/bdc06ebae3c47d434a2b64c05d3f38f8f0ae474e/src/core/snapshot-validator.js';
+import {PokerStarsCommitmentReader} from '../src/core/pokerstars-numeric-reader.js';
 
 const $=id=>document.getElementById(id),video=$('video'),analysis=$('analysis'),actx=analysis.getContext('2d',{willReadFrequently:true});
 const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
@@ -126,6 +127,11 @@ let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,v
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
 let heroStackTotal=null;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
+let numericReader=null,numericReaderState='loading';
+const numericReaderPromise=fetch('../src/core/pokerstars-commitment-bank.json',{cache:'no-store'})
+ .then(r=>{if(!r.ok)throw new Error('bank HTTP '+r.status);return r.json()})
+ .then(bank=>{numericReader=new PokerStarsCommitmentReader(bank);numericReaderState='ready';log('LEITOR NUMÉRICO determinístico pronto')})
+ .catch(e=>{numericReaderState='error';log('LEITOR NUMÉRICO indisponível: '+e.message)});
 
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
 function syncTest(){if(testSink)testSink.textContent=JSON.stringify(test)}
@@ -398,6 +404,9 @@ function commitmentBatchCanvas(seats){
  for(let i=0;i<seats.length;i++){const seat=seats[i],r=COMMIT_ROI[seat],y=i*rowH;ctx.fillStyle='#fff';ctx.fillText(labels[i],3,y+rowH/2);const crop=r?capture(r[0],r[1],r[2],r[3],200):null;if(crop)ctx.drawImage(crop,70,y,w-72,rowH)}
  return c
 }
+function commitmentPixelCanvas(seat,tail=false){
+ const z=COMMIT_ROI[seat];if(!z||!video.videoWidth)return null;const x=Math.round(z[0]*1280),y=Math.round(z[1]*720),w=Math.round(z[2]*1280)+(tail?24:0),h=Math.round(z[3]*720),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d',{willReadFrequently:true}).drawImage(video,x,y,w,h,0,0,w,h);return c;
+}
 function commitmentBatchParts(text,seats){
  const source=String(text||''),lines=source.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),grouped=Array.from({length:seats.length},()=>[]);let current=-1;
  const marker=line=>{const s=line.toUpperCase().replace(/[^A-Z]/g,'');if(/^A{3,}/.test(s))return 0;if(/^B{3,}/.test(s))return 1;if(s.length>=4&&s.includes('C')&&/^[CE]+$/.test(s))return 2;if(/^D{3,}/.test(s))return 3;if(/^E{3,}/.test(s))return 4;if(/^F{3,}/.test(s))return 5;return-1};
@@ -453,6 +462,17 @@ async function scanCommitments(force=false){
  const testStarted=performance.now();
  try{
    const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
+   if(numericReader){
+    const numericStarted=performance.now();
+    for(const seat of seats){
+      let parsed=numericReader.readCanvas(commitmentPixelCanvas(seat));
+      if(parsed.value==null&&parsed.visible){const tail=numericReader.readCanvas(commitmentPixelCanvas(seat,true));if(tail.value!=null)parsed=tail}
+      observeStableCommitment(seat,parsed.value!=null?{kind:'amount',value:parsed.value}:parsed.visible?{kind:'unreadable',value:null}:{kind:'empty',value:0});
+    }
+    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+    if(test)test.numericReaderMs=Math.round(performance.now()-numericStarted);
+    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();return;
+   }
    const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.rawText||out?.text||'';
    const parts=out?.tsv?commitmentBatchTsv(out.tsv,seats):commitmentBatchParts(out?.rawText||out?.text,seats);
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);

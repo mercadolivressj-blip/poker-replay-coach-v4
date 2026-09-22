@@ -12,6 +12,27 @@ assert.match(html, /buttonsSource:'physical-action-buttons'/);
 assert.match(html, /actionLedgerSource:'seat-state-ledger-v1'/);
 assert.match(html, /if\(heroTurn\)void scanCommitments\(false\)/);
 assert.match(html, /V11 · ESTADO BLOQUEADO/);
+assert.match(html, /new URLSearchParams\(location\.search\)\.get\('replay'\)/);
+assert.match(html, /window\.__SSJ_TEST=/);
+assert.match(html, /latencyMs/);
+assert.match(html, /video\.crossOrigin='anonymous'/);
+assert.match(html, /ssj-test-telemetry/);
+assert.match(html, /heroTurn&&commitReadyEpoch!==heroTurnEpoch/);
+assert.match(html, /if\(heroTurn\|\|quickBusy\|\|ocrBusy\|\|commitScanBusy/);
+assert.match(html, /cropRect\(band\.region,300\)/);
+assert.match(html, /function commitmentBatchCanvas/);
+assert.match(html, /function commitmentBatchParts/);
+assert.match(html, /function commitmentBatchTsv/);
+assert.match(html, /ocr\.readBatch\(batch/);
+assert.match(html, /setTimeout\(\(\)=>scanCommitments\(true\),0\)/);
+assert.match(html, /quiet<700/);
+assert.match(html, /commitment-delta/);
+assert.match(html, /DEFESA CONSERVADORA/);
+assert.match(html, /betweenHands&&!heroTurn/);
+assert.match(html, /PokerStarsCommitmentReader/);
+assert.match(html, /numericReaderPromise/);
+assert.match(html, /commitmentPixelCanvas/);
+assert.match(html, /numericReaderMs/);
 
 // V33 read the CALL amount from the physical button crop.  V34 may use the
 // button only to establish legal actions; money must come from commitments.
