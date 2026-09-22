@@ -542,7 +542,7 @@ async function scanCommitments(force=false){
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
    commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();
- }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(heroTurn&&commitReadyEpoch!==heroTurnEpoch)setTimeout(()=>scanCommitments(true),0);else if(!heroTurn&&actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
+ }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(heroTurn&&commitReadyEpoch!==heroTurnEpoch)setTimeout(()=>scanCommitments(true),0);else if(heroTurn)setTimeout(decide,0);else if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 function preContext(){
  const pre=actions.filter(a=>a.street==='preflop'),ag=pre.filter(a=>a.action==='RAISE'||a.action==='ALLIN'),calls=pre.filter(a=>a.action==='CALL'),m=posMap();
