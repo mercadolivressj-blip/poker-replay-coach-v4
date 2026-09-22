@@ -369,6 +369,7 @@ const COMMIT_ROI={
  'hero':[545/1280,370/720,220/1280,60/720]
 };
 function commitAmountFromText(text){
+ const raw=String(text||'').toUpperCase(),lostZero=raw.match(/US\s*\$?S?[^0-9A-Z]{0,8}[OB]\s*(\d{2})\b/);if(lostZero)return Number(lostZero[1])/100;
  const vals=nums(text).filter(x=>x>0&&x<1000);if(!vals.length)return null;
  // The contribution is almost always the smallest positive money value in this tight ROI;
  // player stacks are larger and may share the crop on some themes.
@@ -400,7 +401,10 @@ function commitmentBatchCanvas(seats){
  return c
 }
 function commitmentBatchParts(text,seats){
- const source=String(text||''),lines=source.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(lines.length===seats.length)return seats.map((seat,i)=>({seat,text:lines[i]}));
+ const source=String(text||''),lines=source.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),grouped=Array.from({length:seats.length},()=>[]);let current=-1;
+ const marker=line=>{const s=line.toUpperCase().replace(/[^A-Z]/g,'');if(/^A{3,}/.test(s))return 0;if(/^B{3,}/.test(s))return 1;if(s.length>=4&&s.includes('C')&&/^[CE]+$/.test(s))return 2;if(/^D{3,}/.test(s))return 3;if(/^E{3,}/.test(s))return 4;if(/^F{3,}/.test(s))return 5;return-1};
+ for(const line of lines){const m=marker(line);if(m>=0&&m<seats.length){current=m;grouped[m].push(line.replace(/^\S+\s*/,''))}else if(current>=0)grouped[current].push(line)}
+ if(grouped.every((g,i)=>i>=seats.length||g.length))return seats.map((seat,i)=>({seat,text:grouped[i].join(' ')}));
  const labels=['A','B','C','D','E','F'],raw=source.toUpperCase(),marks=[];for(let i=0;i<seats.length;i++){const re=new RegExp(labels[i]+'\\s*'+labels[i]+'\\s*'+labels[i]+'\\s*'+labels[i]),m=re.exec(raw);if(!m)return null;marks.push({i:m.index,end:m.index+m[0].length})}
  for(let i=1;i<marks.length;i++)if(marks[i].i<=marks[i-1].i)return null;
  return seats.map((seat,i)=>({seat,text:raw.slice(marks[i].end,i+1<marks.length?marks[i+1].i:raw.length)}))
