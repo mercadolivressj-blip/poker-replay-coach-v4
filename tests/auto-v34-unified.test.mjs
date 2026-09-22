@@ -40,6 +40,7 @@ assert.match(html, /function observeLedger/);
 assert.match(html, /turn-transition/);
 assert.match(html, /card-disappearance/);
 assert.match(html, /id="replay-file"/);
+assert.match(html, /lastDecisionStreet==='preflop'/);
 
 // V33 read the CALL amount from the physical button crop.  V34 may use the
 // button only to establish legal actions; money must come from commitments.
