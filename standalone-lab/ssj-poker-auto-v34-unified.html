@@ -103,7 +103,7 @@ import * as cards from 'https://raw.githack.com/mercadolivressj-blip/poker-repla
 import * as geometry from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/geometry.js';
 import * as actionCapture from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/action-capture.js';
 import * as actionBand from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/action-band.js';
-import {ActionTextOcr} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/e2239c3efa08c2e2de10cf896dd8e8f20a235b86/src/core/action-ocr.js';
+import {ActionTextOcr} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/8e52bc88072b1c99780a9dc6b7bb7fa50483bf79/src/core/action-ocr.js';
 import {positionsFromDealer,detectDealerButtonSeat} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/dealer-button.js';
 import {preflopDecision,handCode} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/brain/preflop.js';
 import {postflopPolicyV4Decision} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/brain/postflop-policy-v4-browser-safe.js';
@@ -400,7 +400,8 @@ function commitmentBatchCanvas(seats){
  return c
 }
 function commitmentBatchParts(text,seats){
- const labels=['A','B','C','D','E','F'],raw=String(text||'').toUpperCase(),marks=[];for(let i=0;i<seats.length;i++){const re=new RegExp(labels[i]+'\\s*'+labels[i]+'\\s*'+labels[i]+'\\s*'+labels[i]),m=re.exec(raw);if(!m)return null;marks.push({i:m.index,end:m.index+m[0].length})}
+ const source=String(text||''),lines=source.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);if(lines.length===seats.length)return seats.map((seat,i)=>({seat,text:lines[i]}));
+ const labels=['A','B','C','D','E','F'],raw=source.toUpperCase(),marks=[];for(let i=0;i<seats.length;i++){const re=new RegExp(labels[i]+'\\s*'+labels[i]+'\\s*'+labels[i]+'\\s*'+labels[i]),m=re.exec(raw);if(!m)return null;marks.push({i:m.index,end:m.index+m[0].length})}
  for(let i=1;i<marks.length;i++)if(marks[i].i<=marks[i-1].i)return null;
  return seats.map((seat,i)=>({seat,text:raw.slice(marks[i].end,i+1<marks.length?marks[i+1].i:raw.length)}))
 }
@@ -439,8 +440,8 @@ async function scanCommitments(force=false){
  const testStarted=performance.now();
  try{
    const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
-   const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.text||'';
-   const parts=commitmentBatchParts(out?.text,seats);
+   const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.rawText||out?.text||'';
+   const parts=commitmentBatchParts(out?.rawText||out?.text,seats);
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
