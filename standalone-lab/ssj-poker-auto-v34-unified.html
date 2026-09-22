@@ -124,6 +124,7 @@ let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKe
 let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0;
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
+let heroStackTotal=null;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
 
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
@@ -197,9 +198,6 @@ function activeSlots(){const x=VISUAL_ORDER.filter(s=>sessionSlots.has(s));retur
 function posMap(){
  const slots=activeSlots();
  if(heroPosLocked&&heroPos)return {...(dealerSeat&&slots.length>=2?(positionsFromDealer(slots,dealerSeat)||{}):{}),hero:heroPos};
- if(street()==='preflop'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){
-   heroPos='BB';state.heroPosition='BB';heroPosLocked=true;return {...(dealerSeat&&slots.length>=2?(positionsFromDealer(slots,dealerSeat)||{}):{}),hero:'BB'};
- }
  if(dealerSeat&&slots.length>=2)return positionsFromDealer(slots,dealerSeat)||{};
  const m={},order=slots.length>=6?['UTG','HJ','CO','BTN','SB','BB']:slots.length===5?['HJ','CO','BTN','SB','BB']:slots.length===4?['CO','BTN','SB','BB']:['BTN','SB','BB'];
  const pre=actions.filter(a=>a.street==='preflop').sort((a,b)=>a.at-b.at),first=[];for(const a of pre)if(!first.includes(a.seatId))first.push(a.seatId);
@@ -225,7 +223,7 @@ function resetHand(reason='RESET'){
  const advance=/NOVAS CARTAS|MESA LIMPA|TRANSIÇÃO/i.test(reason);const prevDealer=dealerSeat;
  actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
- newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;
+ newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroStackTotal=null;
  if(advance&&prevDealer){dealerSeat=nextOccupiedSeat(prevDealer)||prevDealer;dealerPredicted=true;log('DEALER PREDITO '+dealerSeat)}else if(!prevDealer){dealerSeat=null;dealerPredicted=false}
  Object.assign(state,{heroCards:[],board:[],pot:null,toCall:null,heroStack:null,legalActions:[],heroPosition:null,actionHistory:[]});
  handId++;lastDecisionKey='';invalidate('Nova mão. Aguardando cartas.');log(reason+' · mão #'+handId);render()
@@ -317,7 +315,6 @@ async function scanButtons(){
   if(!legal.includes('CALL'))state.toCall=0;else tc=state.toCall;
   const key=legal.join('/')+'|'+(tc??'');if(key!==lastButtonKey){lastButtonKey=key;log('BOTÕES '+legal.join('/')+(tc!=null?' call '+tc:''))}
   const old=state.legalActions.join('|')+'|'+state.toCall;state.legalActions=[...legal];
-  if(street()==='preflop'&&legal.includes('CHECK')&&legal.includes('RAISE')&&!legal.includes('CALL')){heroPos='BB';state.heroPosition='BB';heroPosLocked=true}
   updatePosition();
   if(newTurn||old!==state.legalActions.join('|')+'|'+state.toCall){invalidate('Sua vez confirmada. Fechando estado.');render();decide();void scanQuick(true)}else if(heroTurn&&heroTurnStartedAt&&now-heroTurnStartedAt>=480)decide();
  }catch(e){ocrBusy=false;log('BOTÕES erro '+e.message)}finally{buttonsBusy=false;if(actionOcrQueue.length&&!ocrBusy)setTimeout(pumpActionOcr,15)}
@@ -353,7 +350,7 @@ async function scanQuick(force=false){
   const jobs=[['pot',capture(.37,.29,.26,.105,360)],['stack',capture(.39,.72,.22,.105,360)]];if(force||now-lastBlindAt>1800){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,720)])}
   for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:120});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);
    if(kind==='pot'&&ns.length){let v=ns.at(-1);const m=text.match(/(?:pote|pot)[^0-9]{0,24}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>=0&&v<1000)state.pot=v}
-   if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,10}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000)state.heroStack=v}
+   if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,10}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000){const committed=seatCommit.hero||0;if(heroStackTotal==null)heroStackTotal=v+committed;const expected=Math.max(0,heroStackTotal-committed);if(Math.abs(v-expected)<=Math.max(.06,expected*.08))state.heroStack=v;else state.heroStack=expected}}
    if(kind==='blinds'){const m=text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(?:US\$?\s*)?(\d+(?:[.,]\d+)?)/i);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(a>0&&b>a&&b/a<=10)state.blinds=a+'/'+b}}
   }
   inferEconomics();render();decide()
@@ -423,7 +420,7 @@ function deriveLiveToCall(){
  const rows=commitmentRows(),missing=Object.entries(rows).filter(([,r])=>r.folded!==true&&r.commitment==null).map(([s])=>s),bad=[...new Set([...missing,...commitAmbiguous])];
  if(bad.length){state.toCall=null;return{ok:false,ambiguous:bad,reason:'commitment_ambiguity'}}
  const derived=computeToCallFromCommitments(rows,'hero');if(derived.value==null){state.toCall=null;return{ok:false,ambiguous:['hero'],reason:derived.reason}}
- state.toCall=derived.value;return{ok:true,derived,ambiguous:[]}
+ state.toCall=derived.value;if(street()==='preflop'){const vals=Object.values(seatCommit).filter(Number.isFinite);if(vals.length)state.pot=Math.round(vals.reduce((a,b)=>a+b,0)*100)/100;if(heroStackTotal!=null&&seatCommit.hero!=null)state.heroStack=Math.max(0,Math.round((heroStackTotal-seatCommit.hero)*100)/100)}return{ok:true,derived,ambiguous:[]}
 }
 function actorSeatForPosition(pos){const m=posMap();return Object.keys(m).find(k=>m[k]===pos&&k!=='hero')||null}
 function reconstructPreflopFromCommitments(){
@@ -469,11 +466,10 @@ function bbFreeDecision(){
  return{decision:'PASSAR',engine:'PREFLOP LOCAL · BB OPTION',reason:`${hc||'Mão'}: opção grátis do big blind confirmada pelos botões atuais.`};
 }
 function liveSnapshot(){
- const physicalBb=street()==='preflop'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL');
  return{
   heroCards:[...state.heroCards],heroPresence:state.heroCards.length===2?'present':'missing',board:[...state.board],
   heroButtons:[...state.legalActions],heroTurnConfirmed:heroTurn,buttonsSource:'physical-action-buttons',
-  heroPosition:state.heroPosition,positionSource:(dealerSeat||physicalBb)?'dealer-plus-occupied-seats-only':'pending',
+  heroPosition:state.heroPosition,positionSource:dealerSeat?'dealer-plus-occupied-seats-only':'pending',
   pot:num(state.pot),heroStack:num(state.heroStack),toCall:num(state.toCall),toCallSource:'commitment-delta',
   actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitScanBusy&&!commitAmbiguous.size,
   actionLedgerSource:'seat-state-ledger-v1',actionHistory:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount}))
@@ -491,7 +487,7 @@ function decide(){
  updatePosition();inferEconomics();
  if(visualBoardSeen>=3&&state.board.length<visualBoardSeen){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOARD INCOMPLETO';$('reason').textContent=`Vejo ${visualBoardSeen} cartas na mesa, mas decodifiquei ${state.board.length}. Não vou recomendar com board parcial.`;return}
  const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';const turn=testTurn();if(turn){turn.lastGateErrors=[...gate.errors];turn.lastGateMediaTime=video.currentTime;syncTest()}lastDecisionKey='';return}
- if(st==='preflop'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){heroPos='BB';state.heroPosition='BB';heroPosLocked=true;const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
+ if(st==='preflop'&&state.heroPosition==='BB'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
  if(st==='preflop'&&state.legalActions.includes('CALL')&&!historyStrings().some(x=>/RAISE|ALLIN|CALL/.test(String(x)))&&age<1800){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='AÇÕES LOCAIS';$('reason').textContent='Reconstruindo ações anteriores pelas fichas comprometidas; não vou usar fallback cego.';return}
  const hist=historyStrings(),key=[handId,state.heroCards.join(''),state.board.join(''),state.pot,state.toCall,state.heroStack,state.blinds,state.heroPosition,state.legalActions.join('-'),hist.join('>'),Math.floor(age/500)].join('|');if(key===lastDecisionKey)return;lastDecisionKey=key;
  try{
