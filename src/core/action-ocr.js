@@ -95,6 +95,18 @@ export class ActionTextOcr{
     finally{this.busy=false;}
   }
 
+  async readBatch(source){
+    const worker=await getWorker();if(!worker)return {text:'',confidence:0,parsed:null,unavailable:true};
+    if(this.busy)return {text:'',confidence:0,parsed:null,busy:true};
+    this.busy=true;
+    try{
+      await worker.setParameters({tessedit_pageseg_mode:'6'});
+      const image=contrast(source,{invert:true,threshold:146,scale:1.7});
+      return await recognize(worker,image);
+    }catch{return {text:'',confidence:0,parsed:null,error:true};}
+    finally{try{await worker.setParameters({tessedit_pageseg_mode:'7'});}catch{}this.busy=false;}
+  }
+
   async read(source,{timeoutMs=1400}={}){
     const worker=await getWorker();if(!worker)return {text:'',confidence:0,parsed:null,unavailable:true};
     while(this.busy)await sleep(8);this.busy=true;
