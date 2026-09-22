@@ -361,12 +361,12 @@ async function scanQuick(force=false){
 }
 
 const COMMIT_ROI={
- 'top':[.46,.12,.18,.11],
- 'left-high':[.25,.22,.16,.13],
- 'left-low':[.25,.45,.16,.13],
- 'right-high':[.59,.20,.17,.13],
- 'right-low':[.60,.45,.17,.13],
- 'hero':[.42,.43,.17,.12]
+ 'top':[575/1280,130/720,210/1280,80/720],
+ 'left-high':[340/1280,155/720,280/1280,80/720],
+ 'left-low':[335/1280,325/720,210/1280,70/720],
+ 'right-high':[735/1280,155/720,220/1280,80/720],
+ 'right-low':[755/1280,325/720,220/1280,75/720],
+ 'hero':[545/1280,370/720,220/1280,60/720]
 };
 function commitAmountFromText(text){
  const vals=nums(text).filter(x=>x>0&&x<1000);if(!vals.length)return null;
@@ -395,12 +395,12 @@ function observeStableCommitment(seat,obs){
  else if(persisted==null)commitAmbiguous.add(seat)
 }
 function commitmentBatchCanvas(seats){
- const segW=280,h=112,c=document.createElement('canvas');c.width=segW*seats.length;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#050505';ctx.fillRect(0,0,c.width,c.height);ctx.font='bold 22px ui-monospace,monospace';ctx.textBaseline='middle';
- for(let i=0;i<seats.length;i++){const seat=seats[i],r=COMMIT_ROI[seat],x=i*segW;ctx.fillStyle='#fff';ctx.fillText('X'+i+'X',x+3,h/2);const crop=r?capture(r[0],r[1],r[2],r[3],220):null;if(crop)ctx.drawImage(crop,x+48,0,segW-50,h)}
+ const labels=['ZAZ','ZBZ','ZCZ','ZDZ','ZEZ','ZFZ'],segW=230,h=96,c=document.createElement('canvas');c.width=segW*seats.length;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#050505';ctx.fillRect(0,0,c.width,c.height);ctx.font='bold 20px ui-monospace,monospace';ctx.textBaseline='middle';
+ for(let i=0;i<seats.length;i++){const seat=seats[i],r=COMMIT_ROI[seat],x=i*segW;ctx.fillStyle='#fff';ctx.fillText(labels[i],x+3,h/2);const crop=r?capture(r[0],r[1],r[2],r[3],180):null;if(crop)ctx.drawImage(crop,x+43,0,segW-45,h)}
  return c
 }
 function commitmentBatchParts(text,seats){
- const raw=String(text||'').toUpperCase(),marks=[];for(let i=0;i<seats.length;i++){const re=new RegExp('X\\s*'+i+'\\s*X'),m=re.exec(raw);if(!m)return null;marks.push({i:m.index,end:m.index+m[0].length})}
+ const labels=['A','B','C','D','E','F'],raw=String(text||'').toUpperCase(),marks=[];for(let i=0;i<seats.length;i++){const re=new RegExp('Z\\s*'+labels[i]+'\\s*Z'),m=re.exec(raw);if(!m)return null;marks.push({i:m.index,end:m.index+m[0].length})}
  for(let i=1;i<marks.length;i++)if(marks[i].i<=marks[i-1].i)return null;
  return seats.map((seat,i)=>({seat,text:raw.slice(marks[i].end,i+1<marks.length?marks[i+1].i:raw.length)}))
 }
