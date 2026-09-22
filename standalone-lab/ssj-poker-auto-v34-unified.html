@@ -511,7 +511,7 @@ function reconstructPreflopFromCommitments(){
  // A second hero decision can happen after BTN/SB/BB acted later in the same
  // orbit. Any stable non-hero contribution materially above Hero's is direct
  // evidence of aggression, regardless of the initial positional prefix.
- for(const seat of activeSlots()){
+ if(heroTurnEpoch>1)for(const seat of activeSlots()){
    if(seat==='hero'||folded.has(seat)||lastBySeat[seat])continue;const amt=seatCommit[seat];if(amt==null||heroC==null)continue;
    if(amt>heroC+Math.max(.01,heroC*.22))recordAction(seat,'RAISE',amt,.88,'commitment-delta');
  }
@@ -585,7 +585,6 @@ function decide(){
  if(visualBoardSeen>=3&&state.board.length<visualBoardSeen){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOARD INCOMPLETO';$('reason').textContent=`Vejo ${visualBoardSeen} cartas na mesa, mas decodifiquei ${state.board.length}. Não vou recomendar com board parcial.`;return}
  const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';const turn=testTurn();if(turn){turn.lastGateErrors=[...gate.errors];turn.unresolvedSeats=[...ledgerUnresolved];turn.ambiguousSeats=[...commitAmbiguous];turn.lastGateMediaTime=video.currentTime;syncTest()}lastDecisionKey='';return}
  if(st==='preflop'&&state.heroPosition==='BB'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
- if(st==='preflop'&&state.legalActions.includes('CALL')&&!historyStrings().some(x=>/RAISE|ALLIN|CALL/.test(String(x)))&&age<1800){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='AÇÕES LOCAIS';$('reason').textContent='Reconstruindo ações anteriores pelas fichas comprometidas; não vou usar fallback cego.';return}
  const hist=historyStrings(),key=[handId,state.heroCards.join(''),state.board.join(''),state.pot,state.toCall,state.heroStack,state.blinds,state.heroPosition,state.legalActions.join('-'),hist.join('>'),Math.floor(age/500)].join('|');if(key===lastDecisionKey)return;lastDecisionKey=key;
  try{
   let d=null;
