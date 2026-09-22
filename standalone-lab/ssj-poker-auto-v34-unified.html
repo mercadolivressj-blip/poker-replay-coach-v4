@@ -129,6 +129,7 @@ let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKe
 let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0,heroTurnCommitStartEpoch=0;
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',lastDecisionStreet=null,newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
+let recentHeroTurnClose=null;
 let heroStackTotal=null;
 let ledgerPrev={},ledgerActive=new Set(),ledgerPresent=new Set(),ledgerTurn=null,ledgerTurnCandidate=null,ledgerTurnVotes=0,ledgerTurnInfo=null,ledgerUnresolved=new Set(),ledgerAbsentVotes={},heroDecisionSeen=false,handMediaStartedAt=0;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
@@ -157,7 +158,7 @@ function nums(v){return (String(v||'').match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>Num
 function money(v){const n=num(v);return n==null?'—':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function street(){const n=Math.max(state.board.length,visualBoardSeen);return n>=5?'river':n===4?'turn':n>=3?'flop':'preflop'}
 function capture(nx,ny,nw,nh,w=420){if(!video.videoWidth)return null;const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.max(1,Math.round(video.videoWidth*nw)),sh=Math.max(1,Math.round(video.videoHeight*nh)),c=document.createElement('canvas');c.width=w;c.height=Math.max(40,Math.round(w*sh/sw));c.getContext('2d',{willReadFrequently:true}).drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);return c}
-function captureNative(x,y,w,h){if(!video.videoWidth)return null;const sx=Math.round(x*video.videoWidth/1280),sy=Math.round(y*video.videoHeight/720),sw=Math.round(w*video.videoWidth/1280),sh=Math.round(h*video.videoHeight/720),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d',{willReadFrequently:true}).drawImage(video,sx,sy,sw,sh,0,0,w,h);return c}
+function captureNative(x,y,w,h,smooth=true){if(!video.videoWidth)return null;const sx=Math.round(x*video.videoWidth/1280),sy=Math.round(y*video.videoHeight/720),sw=Math.round(w*video.videoWidth/1280),sh=Math.round(h*video.videoHeight/720),c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.imageSmoothingEnabled=smooth;ctx.drawImage(video,sx,sy,sw,sh,0,0,w,h);return c}
 function cropRect(rect,w=380){return rect?capture(rect.x,rect.y,rect.w,rect.h,w):null}
 
 const ORD='23456789TJQKA';
@@ -241,7 +242,7 @@ function invalidate(reason='Atualizando estado local.'){lastDecisionKey='';$('de
 function resetHand(reason='RESET'){
  const advance=/NOVAS CARTAS|MESA LIMPA|TRANSIÇÃO/i.test(reason);const prevDealer=dealerSeat;
  if(test&&advance){const pending=test.turns.at(-1);if(pending?.handId===handId&&!pending.decision&&video.currentTime-pending.mediaTime<2){test.turns.pop();testEvent('hero-turn-cancelled',{handId,epoch:pending.epoch,reason:'hand-transition',startedMediaTime:pending.mediaTime})}}
- actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;lastDecisionStreet=null;
+ actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;lastDecisionStreet=null;recentHeroTurnClose=null;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
  newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroTurnCommitStartEpoch=0;heroStackTotal=null;
  ledgerPrev={};ledgerActive=new Set();ledgerPresent=new Set();ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();ledgerAbsentVotes={};heroDecisionSeen=false;handMediaStartedAt=video.currentTime||0;
@@ -332,16 +333,27 @@ function buttonVisual(){
  if(blue>.024&&yellow>.022)return{kind:'checkAgg',confidence:.98};
  return null
 }
+const HERO_TURN_RESUME_MS=4000;
+function heroTurnFingerprint(legal=state.legalActions){
+ return{handId,street:street(),heroCards:state.heroCards.join(' '),board:state.board.join(' '),legal:[...legal].sort().join('|'),heroCommit:seatCommit.hero??null,actionCount:actions.length}
+}
+function sameCommitment(a,b){return a==null&&b==null||Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=.005}
+function canResumeHeroTurn(legal,now){
+ const closed=recentHeroTurnClose;if(!closed||now-closed.at>HERO_TURN_RESUME_MS)return false;const current=heroTurnFingerprint(legal);
+ return current.handId===closed.handId&&current.street===closed.street&&current.heroCards===closed.heroCards&&current.board===closed.board&&current.legal===closed.legal&&current.actionCount===closed.actionCount&&sameCommitment(current.heroCommit,closed.heroCommit)
+}
 async function scanButtons(){
  if(buttonsBusy||!running)return;buttonsBusy=true;
  try{
   const now=Date.now(),vf=buttonVisual();let legal=[],tc=state.toCall;
   if(vf?.kind==='fcr')legal=['FOLD','CALL','RAISE'];else if(vf?.kind==='checkAgg')legal=street()==='preflop'?['CHECK','RAISE']:['CHECK','BET'];
   if(vf?.kind==='checkAgg'&&street()==='preflop'&&lastDecisionStreet==='preflop')return;
-  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn){turn.endedMediaTime=video.currentTime;syncTest()}state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
+  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn){turn.endedMediaTime=video.currentTime;syncTest()}recentHeroTurnClose={...heroTurnFingerprint(),at:now,startedAt:heroTurnStartedAt,epoch:heroTurnEpoch};state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
   lastButtonsAt=now;
-  const newTurn=!heroTurn;
+  const resumed=!heroTurn&&canResumeHeroTurn(legal,now),newTurn=!heroTurn&&!resumed;
+  if(resumed){heroTurn=true;heroTurnStartedAt=recentHeroTurnClose.startedAt;const turn=testTurn();if(turn)delete turn.endedMediaTime;log('SUA VEZ · retomada após oscilação');testEvent('hero-turn-resumed',{handId,epoch:heroTurnEpoch,street:street()});recentHeroTurnClose=null}
   if(newTurn){heroTurn=true;heroDecisionSeen=true;if(ledgerTurn&&ledgerTurn!=='hero')finishLedgerTurn(ledgerTurn);heroTurnStartedAt=now;heroTurnEpoch++;heroTurnCommitStartEpoch=commitScanEpoch;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal],heroCards:[...state.heroCards],board:[...state.board],actions:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount,street:a.street,mediaTime:a.mediaTime}))};test.turns.push(turn);testEvent('hero-turn',turn)}}
+  if(newTurn)recentHeroTurnClose=null;
   // O texto do botão confirma somente a ação legal. O valor de CALL nunca vem
   // do botão/time-bank: V34 deriva exclusivamente do ledger de compromissos.
   if(!legal.includes('CALL'))state.toCall=0;else tc=state.toCall;
@@ -471,7 +483,7 @@ function commitmentBatchCanvas(seats){
  return c
 }
 function commitmentPixelCanvas(seat,tail=false){
- const z=COMMIT_ROI[seat];if(!z||!video.videoWidth)return null;const x=Math.round(z[0]*1280),y=Math.round(z[1]*720),w=Math.round(z[2]*1280)+(tail?24:0),h=Math.round(z[3]*720),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d',{willReadFrequently:true}).drawImage(video,x,y,w,h,0,0,w,h);return c;
+ const z=COMMIT_ROI[seat];if(!z||!video.videoWidth)return null;const x=Math.round(z[0]*1280),y=Math.round(z[1]*720),w=Math.round(z[2]*1280)+(tail?24:0),h=Math.round(z[3]*720);return captureNative(x,y,w,h,false)
 }
 function commitmentBatchParts(text,seats){
  const source=String(text||''),lines=source.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),grouped=Array.from({length:seats.length},()=>[]);let current=-1;

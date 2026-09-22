@@ -41,6 +41,29 @@ assert.match(html, /turn-transition/);
 assert.match(html, /card-disappearance/);
 assert.match(html, /id="replay-file"/);
 assert.match(html, /lastDecisionStreet==='preflop'/);
+assert.match(html, /HERO_TURN_RESUME_MS=4000/);
+assert.match(html, /function canResumeHeroTurn/);
+assert.match(html, /hero-turn-resumed/);
+assert.match(html, /function commitmentPixelCanvas[\s\S]*?return captureNative\(x,y,w,h,false\)/);
+assert.match(html, /ctx\.imageSmoothingEnabled=smooth/);
+const commitmentPixelBody = html.match(/function commitmentPixelCanvas\(seat,tail=false\)\{([\s\S]*?)\n\}/)?.[1] || '';
+assert.doesNotMatch(commitmentPixelBody, /drawImage\(video,x,y,w,h/);
+
+const resumeBlock = html.slice(html.indexOf('const HERO_TURN_RESUME_MS='), html.indexOf('async function scanButtons'));
+const resumeFactory = new Function('deps', `
+ let {state,handId,seatCommit,actions,street,recentHeroTurnClose}=deps;
+ ${resumeBlock}
+ return {canResumeHeroTurn};
+`);
+const baseDeps = {
+  state:{heroCards:['Ah','Kd'],board:[],legalActions:[]},handId:7,seatCommit:{hero:.02},actions:[{action:'CALL'}],street:()=> 'preflop',
+  recentHeroTurnClose:{handId:7,street:'preflop',heroCards:'Ah Kd',board:'',legal:'CALL|FOLD|RAISE',heroCommit:.02,actionCount:1,at:1000},
+};
+assert.equal(resumeFactory(baseDeps).canResumeHeroTurn(['FOLD','CALL','RAISE'],4999),true,'brief visual dropout resumes the same turn');
+assert.equal(resumeFactory(baseDeps).canResumeHeroTurn(['FOLD','CALL','RAISE'],5001),false,'expired dropout opens a new turn');
+assert.equal(resumeFactory({...baseDeps,actions:[...baseDeps.actions,{action:'RAISE'}]}).canResumeHeroTurn(['FOLD','CALL','RAISE'],2000),false,'new action prevents false resume');
+assert.equal(resumeFactory({...baseDeps,seatCommit:{hero:.05}}).canResumeHeroTurn(['FOLD','CALL','RAISE'],2000),false,'changed hero commitment prevents false resume');
+assert.equal(resumeFactory({...baseDeps,street:()=> 'flop'}).canResumeHeroTurn(['FOLD','CALL','RAISE'],2000),false,'street change prevents false resume');
 
 // V33 read the CALL amount from the physical button crop.  V34 may use the
 // button only to establish legal actions; money must come from commitments.
