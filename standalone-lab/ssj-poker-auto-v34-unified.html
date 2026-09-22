@@ -137,10 +137,10 @@ const numericReaderPromise=fetch('../src/core/pokerstars-commitment-bank.json',{
  .then(r=>{if(!r.ok)throw new Error('bank HTTP '+r.status);return r.json()})
  .then(bank=>{numericReader=new PokerStarsCommitmentReader(bank);numericReaderState='ready';log('LEITOR NUMÉRICO determinístico pronto')})
  .catch(e=>{numericReaderState='error';log('LEITOR NUMÉRICO indisponível: '+e.message)});
-let boardReader=null,boardReaderState='loading';
+let heroReader=null,boardReader=null,boardReaderState='loading';
 fetch('../src/core/pokerstars-card-bank.json',{cache:'no-store'})
  .then(r=>{if(!r.ok)throw new Error('bank HTTP '+r.status);return r.json()})
- .then(bank=>{boardReader=new PokerStarsCardReader(bank,'board');boardReaderState='ready';log('LEITOR DE BOARD determinístico pronto')})
+ .then(bank=>{heroReader=new PokerStarsCardReader(bank,'hero');boardReader=new PokerStarsCardReader(bank,'board');boardReaderState='ready';log('LEITOR DE CARTAS determinístico pronto')})
  .catch(e=>{boardReaderState='error';log('LEITOR DE BOARD indisponível: '+e.message)});
 
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
@@ -266,8 +266,13 @@ function deterministicBoard(){
  if(count===0)return{cards:[],count,ms:0,confidence:1};if(![3,4,5].includes(count)||flags.some((v,i)=>v!==(i<count)))return{cards:null,count,ms:0,confidence:0};
  const rows=rects.slice(0,count).map(rect=>boardReader.readCanvas(captureNative(...rect))),cards=rows.map(x=>x.card);return{cards:cards.every(Boolean)?cards:null,count,ms:rows.reduce((n,x)=>n+x.latencyMs,0),confidence:Math.min(...rows.map(x=>x.confidence))}
 }
+function deterministicHero(){
+ const present=fixedSample(FIXED_SEATS.hero.cards,(h,s,v)=>s<65&&v>170)>.18;if(!present)return{cards:null,pairSeen:false,ms:0,confidence:0};
+ const rows=[[578,436,60,43],[641,436,61,43]].map(rect=>heroReader.readCanvas(captureNative(...rect))),cards=rows.map(x=>x.card);
+ return{cards:cards.every(Boolean)?cards:null,pairSeen:true,ms:rows.reduce((n,x)=>n+x.latencyMs,0),confidence:Math.min(...rows.map(x=>x.confidence))}
+}
 function applyCards(){
- const h=cards.readHeroLocal(video),legacy=boardReader?deterministicBoard():cards.readBoardLocal(video);visualBoardSeen=legacy?.count||0;let b=legacy;
+ const h=heroReader?deterministicHero():cards.readHeroLocal(video),legacy=boardReader?deterministicBoard():cards.readBoardLocal(video);visualBoardSeen=legacy?.count||0;let b=legacy;
  if(!boardReader&&legacy&&legacy.count>=3&&(!legacy.cards||legacy.cards.length<legacy.count)){const fb=classifyBoardFallback(boardProbe());if(fb&&fb.length===legacy.count){b={cards:fb,count:fb.length,ms:legacy.ms,confidence:.84};log('BOARD RECOVERY '+fb.join(' '))}}
 
  if(h){
@@ -472,7 +477,7 @@ function commitmentBatchTsv(tsv,seats){
  return seats.map((seat,i)=>({seat,text:rows[i].join(' ')}))
 }
 function commitmentRows(){
- const out={};for(const seat of activeSlots()){
+ const current=deterministicPresent(),targets=new Set(['hero',...ledgerActive,...current]),out={};for(const seat of targets){
   if(folded.has(seat)){out[seat]={cardsPresent:false,folded:true,commitment:seatCommit[seat]??0};continue}
   out[seat]={cardsPresent:true,folded:false,commitment:seatCommit[seat]??null,stack:seat==='hero'?num(state.heroStack):null}
  }return out
@@ -513,7 +518,8 @@ async function scanCommitments(force=false){
  if(!force&&now-lastCommitScanAt<(numericReader?90:520))return;lastCommitScanAt=now;commitScanBusy=true;
  const testStarted=performance.now();
  try{
-   const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
+   const currentlyPresent=numericReader?deterministicPresent():null;
+   const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>(!numericReader||currentlyPresent.has(s)||ledgerActive.has(s))&&!folded.has(s));
    if(numericReader){
     const numericStarted=performance.now();
     for(const seat of seats){
