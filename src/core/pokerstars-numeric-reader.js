@@ -116,6 +116,77 @@ function commitmentLayout(image) {
   return { layout: candidates[0] || null, binary, glyphs };
 }
 
+function moneyBinary(image) {
+  const { data, width, height } = image;
+  const binary = new Uint8Array(width * height);
+  for (let i = 0, pixel = 0; pixel < binary.length; pixel++, i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const saturation = max === 0 ? 0 : ((max - min) * 255) / max;
+    if (saturation < 115 && max > 160) binary[pixel] = 1;
+  }
+  return binary;
+}
+
+function moneyLayout(image, profile) {
+  const binary = moneyBinary(image), all = components(binary, image.width, image.height);
+  const usable = all.filter(b => b.h >= 2 && b.ink >= 3 && b.w <= 32 && b.y <= image.height - 4 && b.x < (image.width > 75 ? 65 : 60)).sort((a, b) => a.x - b.x);
+  if (!usable.length) return { layout: null, binary };
+  const chain = [usable.at(-1)];
+  for (const b of usable.slice(0, -1).reverse()) {
+    const current = chain.at(-1), gap = current.x - (b.x + b.w);
+    if (gap <= 3 || (gap <= 5 && (b.w <= 5 || current.w <= 5))) chain.push(b);
+    else break;
+  }
+  chain.reverse();
+  const start = Math.min(...chain.map(b => b.x)), end = Math.max(...chain.map(b => b.x + b.w));
+  const style = profile === 'stack' ? 'stack' : 'pot';
+  const commaCandidates = all.filter(b => b.w >= 1 && b.w <= 6 && b.h >= 2 && b.h <= 8 && b.y >= image.height * .60 && b.ink >= 3);
+  let comma = commaCandidates.length ? Math.max(...commaCandidates.map(b => b.x)) : null;
+  const decimal = (comma != null && comma >= start && comma < end) || end - start > 30;
+  const anchor = chain.filter(b => b.h >= 7).sort((a, b) => b.x - a.x)[0] || chain.at(-1);
+  if (decimal) {
+    if (comma == null) {
+      const y0 = Math.max(0, image.height - (style === 'stack' ? 5 : 8));
+      const y1 = image.height - (style === 'stack' ? 0 : 4), runs = [];
+      let run = null;
+      for (let x = start; x <= end; x++) {
+        let count = 0; for (let y = y0; y < y1; y++) count += binary[y * image.width + x];
+        if (count && run == null) run = { x, ink: 0 };
+        if (run) run.ink += count;
+        if ((!count || x === end) && run) { const w = x - run.x + (count ? 1 : 0); if (w >= 1 && w <= 6 && run.ink <= 16) runs.push(run.x); run = null; }
+      }
+      comma = runs.at(-1) ?? null;
+    }
+    if (comma == null) return { layout: null, binary };
+    const nint = chain.filter(b => b.h >= 7 && b.x + b.w <= comma + 1).length;
+    if (nint < 1 || nint > 3) return { layout: null, binary };
+    return { layout: { decimal: true, style, nint, comma, anchor }, binary };
+  }
+  const digits = chain.filter(b => b.h >= 7);
+  if (digits.length < 1 || digits.length > 3) return { layout: null, binary };
+  return { layout: { decimal: false, style, nint: digits.length, boxes: digits, anchor: digits.at(-1) }, binary };
+}
+
+function moneyBoxes(binary, width, height, layout) {
+  if (!layout) return [];
+  if (layout.boxes) return layout.boxes;
+  const comma = layout.comma, n = layout.nint, anchor = layout.anchor;
+  const last = comma - (layout.style === 'stack' ? 10 : 9), pitch = 9;
+  const decimal = layout.style === 'stack' ? [comma + 4, comma + 14] : [comma + 4, comma + 13];
+  const starts = Array.from({ length: n }, (_, i) => last - pitch * (n - 1 - i)).concat(decimal);
+  const y0 = Math.max(0, anchor.y - 2), y1 = Math.min(height, anchor.y + anchor.h + 4), out = [];
+  for (const x0 of starts) {
+    const xa = Math.max(0, Math.trunc(x0) - 1), xb = Math.min(width, xa + 11), w = xb - xa, h = y1 - y0;
+    const part = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) part[y * w + x] = binary[(y0 + y) * width + xa + x];
+    const candidates = components(part, w, h).filter(b => b.h >= 7 && b.ink >= 9 && b.w <= 11).sort((a, b) => b.ink - a.ink);
+    if (!candidates.length) return [];
+    const b = candidates[0]; out.push({ x: xa + b.x, y: y0 + b.y, w: b.w, h: b.h, ink: b.ink });
+  }
+  return out;
+}
+
 function normalizeBox(binary, sourceWidth, box) {
   const scale = Math.min((NORMAL_W - 4) / Math.max(1, box.w), (NORMAL_H - 4) / Math.max(1, box.h));
   const targetW = Math.max(1, Math.trunc(box.w * scale));
@@ -172,7 +243,7 @@ function decodedText(chars, layout) {
 }
 
 export class PokerStarsCommitmentReader {
-  constructor(bank) { this.bank = bank; }
+  constructor(bank) { this.bank = bank; this.profiles = bank.profiles || {}; }
 
   readImageData(image) {
     const startedAt = performance.now();
@@ -205,6 +276,24 @@ export class PokerStarsCommitmentReader {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     return this.readImageData(ctx.getImageData(0, 0, canvas.width, canvas.height));
   }
+
+  readMoneyImageData(image, profile) {
+    const startedAt = performance.now(), named = this.profiles?.[profile];
+    if (!named?.digits) return { value: null, text: '', visible: false, confidence: 0, latencyMs: performance.now() - startedAt };
+    const { layout, binary } = moneyLayout(image, profile), boxes = moneyBoxes(binary, image.width, image.height, layout);
+    if (!layout || !boxes.length) return { value: null, text: '', visible: false, confidence: 0, latencyMs: performance.now() - startedAt };
+    const classified = boxes.map(box => classify(normalizeBox(binary, image.width, box), named));
+    const chars = classified.map(x => x.digit), scores = classified.map(x => x.score), margins = classified.map(x => x.margin);
+    const mean = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
+    const accepted = !chars.includes('?') && Math.min(...scores) >= .40 && mean >= .50 && Math.min(...margins) >= .01;
+    const text = accepted ? decodedText(chars, layout) : '';
+    return { value: accepted ? Number(text.replace(',', '.')) : null, text, visible: true, confidence: mean, boxes, latencyMs: performance.now() - startedAt };
+  }
+
+  readMoneyCanvas(canvas, profile) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    return this.readMoneyImageData(ctx.getImageData(0, 0, canvas.width, canvas.height), profile);
+  }
 }
 
-export const __private = { binaryFromImageData, components, commitmentLayout, normalizeBox, classify, iou };
+export const __private = { binaryFromImageData, components, commitmentLayout, moneyBinary, moneyLayout, moneyBoxes, normalizeBox, classify, iou };

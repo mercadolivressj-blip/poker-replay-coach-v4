@@ -10,7 +10,7 @@ assert.match(html, /validatePokerSnapshot/);
 assert.match(html, /toCallSource:'commitment-delta'/);
 assert.match(html, /buttonsSource:'physical-action-buttons'/);
 assert.match(html, /actionLedgerSource:'seat-state-ledger-v1'/);
-assert.match(html, /if\(heroTurn\)void scanCommitments\(false\)/);
+assert.match(html, /void scanCommitments\(false\)/);
 assert.match(html, /V11 · ESTADO BLOQUEADO/);
 assert.match(html, /new URLSearchParams\(location\.search\)\.get\('replay'\)/);
 assert.match(html, /window\.__SSJ_TEST=/);
@@ -18,7 +18,7 @@ assert.match(html, /latencyMs/);
 assert.match(html, /video\.crossOrigin='anonymous'/);
 assert.match(html, /ssj-test-telemetry/);
 assert.match(html, /heroTurn&&commitReadyEpoch!==heroTurnEpoch/);
-assert.match(html, /if\(heroTurn\|\|quickBusy\|\|ocrBusy\|\|commitScanBusy/);
+assert.match(html, /interval=numericReader\?120:900/);
 assert.match(html, /cropRect\(band\.region,300\)/);
 assert.match(html, /function commitmentBatchCanvas/);
 assert.match(html, /function commitmentBatchParts/);
@@ -33,6 +33,11 @@ assert.match(html, /PokerStarsCommitmentReader/);
 assert.match(html, /numericReaderPromise/);
 assert.match(html, /commitmentPixelCanvas/);
 assert.match(html, /numericReaderMs/);
+assert.match(html, /readMoneyCanvas/);
+assert.match(html, /function observeLedger/);
+assert.match(html, /turn-transition/);
+assert.match(html, /card-disappearance/);
+assert.match(html, /id="replay-file"/);
 
 // V33 read the CALL amount from the physical button crop.  V34 may use the
 // button only to establish legal actions; money must come from commitments.

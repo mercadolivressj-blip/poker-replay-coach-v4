@@ -68,7 +68,7 @@
      if(!source.startsWith('blob:'))video.crossOrigin='anonymous';else video.removeAttribute('crossorigin');
      video.src=source;
      await new Promise((resolve,reject)=>{if(video.readyState>=2)return resolve();video.addEventListener('loadeddata',resolve,{once:true});video.addEventListener('error',()=>reject(new Error('vídeo de replay não carregou')),{once:true})});
-     const rate=Number(new URLSearchParams(location.search).get('rate')||1);video.playbackRate=Number.isFinite(rate)&&rate>0?rate:1;await video.play();
+     const params=new URLSearchParams(location.search),start=Number(params.get('start')||0),rate=Number(params.get('rate')||1);if(Number.isFinite(start)&&start>0&&start<video.duration)video.currentTime=start;video.playbackRate=Number.isFinite(rate)&&rate>0?rate:1;await video.play();
      $('engine').textContent='REPLAY DE TESTE';$('reason').textContent='Vídeo local reproduzindo no mesmo pipeline da captura.';say('REPLAY OK '+video.videoWidth+'x'+video.videoHeight+' @'+video.playbackRate+'x');
      window.dispatchEvent(new CustomEvent('ssj-capture-ready',{detail:{replay:true}}));
    }catch(e){window.__SSJ_CAPTURE.active=false;say('REPLAY ERRO '+(e?.message||e));}
@@ -129,6 +129,7 @@ let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
 let heroStackTotal=null;
+let ledgerPrev={},ledgerActive=new Set(),ledgerPresent=new Set(),ledgerTurn=null,ledgerTurnCandidate=null,ledgerTurnVotes=0,ledgerTurnInfo=null,ledgerUnresolved=new Set(),ledgerAbsentVotes={},heroDecisionSeen=false,handMediaStartedAt=0;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
 let numericReader=null,numericReaderState='loading';
 const numericReaderPromise=fetch('../src/core/pokerstars-commitment-bank.json',{cache:'no-store'})
@@ -150,6 +151,7 @@ function nums(v){return (String(v||'').match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>Num
 function money(v){const n=num(v);return n==null?'—':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function street(){const n=Math.max(state.board.length,visualBoardSeen);return n>=5?'river':n===4?'turn':n>=3?'flop':'preflop'}
 function capture(nx,ny,nw,nh,w=420){if(!video.videoWidth)return null;const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.max(1,Math.round(video.videoWidth*nw)),sh=Math.max(1,Math.round(video.videoHeight*nh)),c=document.createElement('canvas');c.width=w;c.height=Math.max(40,Math.round(w*sh/sw));c.getContext('2d',{willReadFrequently:true}).drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);return c}
+function captureNative(x,y,w,h){if(!video.videoWidth)return null;const sx=Math.round(x*video.videoWidth/1280),sy=Math.round(y*video.videoHeight/720),sw=Math.round(w*video.videoWidth/1280),sh=Math.round(h*video.videoHeight/720),c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d',{willReadFrequently:true}).drawImage(video,sx,sy,sw,sh,0,0,w,h);return c}
 function cropRect(rect,w=380){return rect?capture(rect.x,rect.y,rect.w,rect.h,w):null}
 
 const ORD='23456789TJQKA';
@@ -234,6 +236,7 @@ function resetHand(reason='RESET'){
  actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
  newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroStackTotal=null;
+ ledgerPrev={};ledgerActive=new Set();ledgerPresent=new Set();ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();ledgerAbsentVotes={};heroDecisionSeen=false;handMediaStartedAt=video.currentTime||0;
  if(advance&&prevDealer){dealerSeat=nextOccupiedSeat(prevDealer)||prevDealer;dealerPredicted=true;log('DEALER PREDITO '+dealerSeat)}else if(!prevDealer){dealerSeat=null;dealerPredicted=false}
  Object.assign(state,{heroCards:[],board:[],pot:null,toCall:null,heroStack:null,legalActions:[],heroPosition:null,actionHistory:[]});
  handId++;lastDecisionKey='';invalidate('Nova mão. Aguardando cartas.');log(reason+' · mão #'+handId);render()
@@ -267,7 +270,7 @@ function applyCards(){
       heroVotes=k===heroKey?heroVotes+1:1;heroKey=k;
       if(heroVotes>=2&&k!==state.heroCards.join(' ')){
         if(!state.heroCards.length){
-          state.heroCards=[...h.cards];newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;
+          state.heroCards=[...h.cards];newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;if(!handMediaStartedAt)handMediaStartedAt=video.currentTime||0;
           log('HERO '+k+' '+Math.round(h.ms||0)+'ms');invalidate('Cartas lidas. Confirmando sua vez.');render();decide();
         }else{
           newHandVotes=k===newHandCandidate?newHandVotes+1:1;newHandCandidate=k;
@@ -319,7 +322,7 @@ async function scanButtons(){
   if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn){turn.endedMediaTime=video.currentTime;syncTest()}state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
   lastButtonsAt=now;
   const newTurn=!heroTurn;
-  if(newTurn){heroTurn=true;heroTurnStartedAt=now;heroTurnEpoch++;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal]};test.turns.push(turn);testEvent('hero-turn',turn)}}
+  if(newTurn){heroTurn=true;heroDecisionSeen=true;if(ledgerTurn&&ledgerTurn!=='hero')finishLedgerTurn(ledgerTurn);heroTurnStartedAt=now;heroTurnEpoch++;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal],heroCards:[...state.heroCards],board:[...state.board],actions:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount,street:a.street,mediaTime:a.mediaTime}))};test.turns.push(turn);testEvent('hero-turn',turn)}}
   // O texto do botão confirma somente a ação legal. O valor de CALL nunca vem
   // do botão/time-bank: V34 deriva exclusivamente do ledger de compromissos.
   if(!legal.includes('CALL'))state.toCall=0;else tc=state.toCall;
@@ -330,9 +333,11 @@ async function scanButtons(){
  }catch(e){ocrBusy=false;log('BOTÕES erro '+e.message)}finally{buttonsBusy=false;if(actionOcrQueue.length&&!ocrBusy)setTimeout(pumpActionOcr,15)}
 }
 function recordAction(seatId,action,amount=null,confidence=.8,source='local'){
- if(!seatId||seatId==='hero'||!action||state.heroCards.length!==2||(betweenHands&&!heroTurn))return;if(folded.has(seatId))return;const st=street();if(st==='preflop'&&action==='BET')action='RAISE';
- const prev=lastBySeat[seatId];if(prev&&prev.action===action&&prev.street===st&&Date.now()-prev.at<900){const a=num(amount),b=num(prev.amount);if(a==null||b==null||Math.abs(a-b)<.01)return}
- if(action==='FOLD')folded.add(seatId);const row={id:actions.length+1,seatId,action,amount:num(amount),street:st,at:Date.now(),confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));
+ if(!seatId||!action||state.heroCards.length!==2||(betweenHands&&!heroTurn))return;if(seatId!=='hero'&&folded.has(seatId))return;const st=street();if(st==='preflop'&&action==='BET')action='RAISE';
+ const sameStreet=actions.filter(a=>a.seatId===seatId&&a.street===st);if(action==='CHECK'&&sameStreet.some(a=>a.action==='CHECK')){ledgerUnresolved.delete(seatId);return}
+ if((action==='BET'||action==='RAISE')&&sameStreet.some(a=>a.action==='CHECK'))actions=actions.filter(a=>!(a.seatId===seatId&&a.street===st&&a.action==='CHECK'));
+ const prev=lastBySeat[seatId];if(prev&&prev.action===action&&prev.street===st&&Date.now()-prev.at<900){const a=num(amount),b=num(prev.amount);if(a==null||b==null||Math.abs(a-b)<.01){ledgerUnresolved.delete(seatId);return}}
+ if(action==='FOLD')folded.add(seatId);ledgerUnresolved.delete(seatId);const row={id:actions.length+1,seatId,action,amount:num(amount),street:st,at:Date.now(),mediaTime:video.currentTime,confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));if(test)testEvent('action',row);
  invalidate('Ação adversária atualizada.');render();setTimeout(decide,70)
 }
 function queueSeatOcr(ev){
@@ -349,18 +354,26 @@ function analyzeOpponents(now){
  if(!video.videoWidth)return;actx.drawImage(video,0,0,analysis.width,analysis.height);const im=actx.getImageData(0,0,analysis.width,analysis.height),felt=geometry.detectFeltPixels(im.data,analysis.width,analysis.height);if(!felt)return;
  localFelt=localFelt?geometry.stabilizeFelt(localFelt,felt):felt;const samples=actionCapture.sampleSeats(im.data,analysis.width,analysis.height,localFelt);if(!seatState)seatState=actionCapture.createActionCaptureState(samples);
  const o=actionCapture.observeSeatSamples(seatState,samples,now,{refractoryMs:95,confirmFrames:2});seatState=o.state;for(const sm of samples)if(sm.id==='hero'||seatState.seats?.[sm.id]?.cardPresent===true)sessionSlots.add(sm.id);
- for(const ev of o.events){if(ev.type==='fold-candidate'||ev.type==='seat-change')queueSeatOcr(ev)};
- const bs=actionBand.sampleActionBands(im.data,analysis.width,analysis.height,localFelt);if(!bandState)bandState=actionBand.createActionBandState(bs);const bo=actionBand.observeActionBands(bandState,bs,now,{threshold:.026,refractoryMs:95,confirmFrames:1});bandState=bo.state;for(const ev of bo.events)queueSeatOcr(ev);
+ if(!numericReader)for(const ev of o.events){if(ev.type==='fold-candidate'||ev.type==='seat-change')queueSeatOcr(ev)};
+ const bs=actionBand.sampleActionBands(im.data,analysis.width,analysis.height,localFelt);if(!bandState)bandState=actionBand.createActionBandState(bs);const bo=actionBand.observeActionBands(bandState,bs,now,{threshold:.026,refractoryMs:95,confirmFrames:1});bandState=bo.state;if(!numericReader)for(const ev of bo.events)queueSeatOcr(ev);
  if(!heroPosLocked&&now-lastDealerAt>220){lastDealerAt=now;const d=detectDealerButtonSeat(im.data,analysis.width,analysis.height,localFelt);if(d){if(d.seatId===dealerCandidate)dealerVotes++;else{dealerCandidate=d.seatId;dealerVotes=1}if(dealerVotes>=2&&dealerSeat!==d.seatId){dealerSeat=d.seatId;dealerPredicted=false;log('DEALER '+dealerSeat);updatePosition();render();decide()}}}
 }
 async function scanQuick(force=false){
- const now=Date.now();if(heroTurn||quickBusy||ocrBusy||commitScanBusy||!running||(!force&&now-lastQuickAt<900))return;quickBusy=true;lastQuickAt=now;
+ const now=Date.now(),interval=numericReader?120:900;if(quickBusy||ocrBusy||commitScanBusy||!running||(!force&&now-lastQuickAt<interval))return;quickBusy=true;lastQuickAt=now;
  const testStarted=performance.now();
  try{
-  const jobs=[['pot',capture(.37,.29,.26,.105,360)],['stack',capture(.39,.72,.22,.105,360)]];if(force||now-lastBlindAt>1800){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,720)])}
+  if(numericReader){
+   const potRead=numericReader.readMoneyCanvas(captureNative(640,212,70,25),'pot'),stackRead=numericReader.readMoneyCanvas(captureNative(650,510,85,26),'stack');
+   if(potRead.value!=null)state.pot=potRead.value;if(stackRead.value!=null)state.heroStack=stackRead.value;
+   if(test){test.lastMoney={mediaTime:video.currentTime,pot:potRead.value,stack:stackRead.value,potConfidence:potRead.confidence,stackConfidence:stackRead.confidence,latencyMs:Math.round((potRead.latencyMs+stackRead.latencyMs)*1000)/1000};test.numericMoneyMs=test.lastMoney.latencyMs}
+   // Blinds are metadata, never a source for toCall. Read them sparsely and
+   // never let their OCR block a live commitment scan.
+   if(state.blinds||heroTurn||now-lastBlindAt<10000){inferEconomics();render();decide();return}
+  }
+  const jobs=[];if(!numericReader){jobs.push(['pot',capture(.37,.29,.26,.105,360)],['stack',capture(.39,.72,.22,.105,360)])}if(!heroTurn&&(force||now-lastBlindAt>10000)){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,720)])}
   for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:120});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);
    if(kind==='pot'&&ns.length){let v=ns.at(-1);const m=text.match(/(?:pote|pot)[^0-9]{0,24}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>=0&&v<1000)state.pot=v}
-   if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,10}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000){const committed=seatCommit.hero||0;if(heroStackTotal==null)heroStackTotal=v+committed;const expected=Math.max(0,heroStackTotal-committed);if(Math.abs(v-expected)<=Math.max(.06,expected*.08))state.heroStack=v;else state.heroStack=expected}}
+   if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,10}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000)state.heroStack=v}
    if(kind==='blinds'){const m=text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(?:US\$?\s*)?(\d+(?:[.,]\d+)?)/i);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(a>0&&b>a&&b/a<=10)state.blinds=a+'/'+b}}
   }
   inferEconomics();render();decide()
@@ -375,6 +388,29 @@ const COMMIT_ROI={
  'right-low':[755/1280,325/720,220/1280,75/720],
  'hero':[545/1280,370/720,220/1280,60/720]
 };
+const FIXED_SEATS={
+ hero:{panel:[535,474,240,70],cards:[570,430,140,56]},
+ 'left-low':{panel:[165,350,205,80],cards:[200,318,140,66]},
+ 'left-high':{panel:[195,138,205,72],cards:[235,105,135,62]},
+ top:{panel:[540,75,205,72],cards:[575,45,135,66]},
+ 'right-high':{panel:[880,138,205,72],cards:[915,105,140,65]},
+ 'right-low':{panel:[910,350,205,80],cards:[945,318,140,66]}
+};
+function hsvPixel(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn,s=mx?d*255/mx:0;let h=0;if(d){if(mx===r)h=((g-b)/d)%6;else if(mx===g)h=(b-r)/d+2;else h=(r-g)/d+4;h=(h*30+180)%180}return[h,s,mx]}
+function fixedSample(rect,predicate){const c=captureNative(...rect);if(!c)return 0;const d=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,c.width,c.height).data;let hit=0;for(let i=0;i<d.length;i+=4)if(predicate(...hsvPixel(d[i],d[i+1],d[i+2])))hit++;return hit/(d.length/4)}
+function deterministicPresent(){const out=new Set();for(const [seat,row] of Object.entries(FIXED_SEATS)){const ratio=fixedSample(row.cards,seat==='hero'?((h,s,v)=>s<65&&v>170):((h,s,v)=>(h<10||h>170)&&s>80&&v>50));if(ratio>(seat==='hero'?.18:.12))out.add(seat)}return out}
+function deterministicTurn(){let best=null,bestScore=0;for(const [seat,row] of Object.entries(FIXED_SEATS)){const [x,y,w,h]=row.panel,score=fixedSample([x,y+h-15,w,27],(hh,s,v)=>hh>=20&&hh<=90&&s>100&&v>100);if(score>bestScore){best=seat;bestScore=score}}return bestScore>=.03?best:null}
+function finishLedgerTurn(seat){const info=ledgerTurnInfo;if(!seat||!info||info.seat!==seat)return;const acted=actions.slice(info.actionIndex).some(a=>a.seatId===seat&&a.street===street());if(acted){ledgerUnresolved.delete(seat);return}const current=seatCommit[seat],owed=Math.max(0,(info.tableMax||0)-(info.commit||0));if(current!=null&&info.commit!=null&&current>info.commit+.02)return;if(owed<=.02&&ledgerPresent.has(seat))recordAction(seat,'CHECK',null,.96,'turn-transition');else ledgerUnresolved.add(seat)}
+function observeLedger(){
+ const present=deterministicPresent(),rawTurn=deterministicTurn();for(const seat of present){ledgerActive.add(seat);sessionSlots.add(seat)}ledgerPresent=present;
+ const current={};for(const seat of Object.keys(FIXED_SEATS))current[seat]=folded.has(seat)?(seatCommit[seat]??0):(seatCommit[seat]??null);
+ if(!Object.keys(ledgerPrev).length){ledgerPrev={...current};ledgerTurnCandidate=rawTurn;ledgerTurnVotes=1;return}
+ const prevVals=Object.entries(ledgerPrev).filter(([s,v])=>v!=null&&(!ledgerActive.size||ledgerActive.has(s))).map(([,v])=>v),prevMax=prevVals.length?Math.max(...prevVals):0;
+ if(video.currentTime-handMediaStartedAt>=1.2){const changes=[];for(const seat of Object.keys(current)){const before=ledgerPrev[seat],after=current[seat];if(before!=null&&after!=null&&after>before+.02&&ledgerActive.has(seat))changes.push({seat,before,after})}const groups=new Map();for(const row of changes){const key=Math.round(row.after*100)/100;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}let runningMax=prevMax;for(const amount of [...groups.keys()].sort((a,b)=>a-b)){const group=groups.get(amount);if(amount<=runningMax+.02){for(const row of group)recordAction(row.seat,'CALL',row.after,.98,'commitment-delta')}else{const aggressor=group.some(x=>x.seat===ledgerTurn)?ledgerTurn:group[0].seat,first=street()==='preflop'||runningMax>.02?'RAISE':'BET';for(const row of group)recordAction(row.seat,row.seat===aggressor?first:'CALL',row.after,.98,'commitment-delta');runningMax=Math.max(runningMax,amount)}}}
+ for(const seat of [...ledgerActive]){if(present.has(seat)){ledgerAbsentVotes[seat]=0;continue}if(seat==='hero'&&!heroDecisionSeen){ledgerAbsentVotes[seat]=0;continue}if(video.currentTime-handMediaStartedAt<1.5){ledgerAbsentVotes[seat]=0;continue}ledgerAbsentVotes[seat]=(ledgerAbsentVotes[seat]||0)+1;if(ledgerAbsentVotes[seat]<5)continue;const owed=Math.max(0,prevMax-(ledgerPrev[seat]||0)),wasTurn=ledgerTurnInfo?.seat===seat;if(owed>.02||wasTurn){recordAction(seat,'FOLD',null,.97,'card-disappearance');ledgerActive.delete(seat)}}
+ if(rawTurn===ledgerTurnCandidate)ledgerTurnVotes++;else{ledgerTurnCandidate=rawTurn;ledgerTurnVotes=1}if(ledgerTurnVotes>=2&&rawTurn!==ledgerTurn){const old=ledgerTurn;if(old)finishLedgerTurn(old);ledgerTurn=rawTurn;const vals=Object.values(current).filter(Number.isFinite);ledgerTurnInfo=rawTurn?{seat:rawTurn,commit:current[rawTurn],tableMax:vals.length?Math.max(...vals):0,actionIndex:actions.length}:null}
+ ledgerPrev={...current};
+}
 function commitAmountFromText(text){
  const raw=String(text||'').toUpperCase(),lostZero=raw.match(/US\s*\$?S?[^0-9A-Z]{0,8}[OB]\s*(\d{2})\b/);if(lostZero)return Number(lostZero[1])/100;
  const vals=nums(text).filter(x=>x>0&&x<1000);if(!vals.length)return null;
@@ -383,7 +419,7 @@ function commitAmountFromText(text){
  return Math.min(...vals)
 }
 function resetCommitStreetIfNeeded(){
- const st=street();if(st===commitStreet)return;commitStreet=st;seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitScanEpoch=0;commitReadyEpoch=0;state.toCall=null;log('LEDGER '+st+' reset')
+ const st=street();if(st===commitStreet)return;commitStreet=st;seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitScanEpoch=0;commitReadyEpoch=0;state.toCall=null;ledgerPrev={};ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();log('LEDGER '+st+' reset')
 }
 function commitObservation(text){
  const raw=String(text||''),value=commitAmountFromText(raw);
@@ -433,7 +469,7 @@ function deriveLiveToCall(){
  const rows=commitmentRows(),missing=Object.entries(rows).filter(([,r])=>r.folded!==true&&r.commitment==null).map(([s])=>s),bad=[...new Set([...missing,...commitAmbiguous])];
  if(bad.length){state.toCall=null;return{ok:false,ambiguous:bad,reason:'commitment_ambiguity'}}
  const derived=computeToCallFromCommitments(rows,'hero');if(derived.value==null){state.toCall=null;return{ok:false,ambiguous:['hero'],reason:derived.reason}}
- state.toCall=derived.value;if(street()==='preflop'){const vals=Object.values(seatCommit).filter(Number.isFinite);if(vals.length)state.pot=Math.round(vals.reduce((a,b)=>a+b,0)*100)/100;if(heroStackTotal!=null&&seatCommit.hero!=null)state.heroStack=Math.max(0,Math.round((heroStackTotal-seatCommit.hero)*100)/100)}return{ok:true,derived,ambiguous:[]}
+ state.toCall=derived.value;return{ok:true,derived,ambiguous:[]}
 }
 function actorSeatForPosition(pos){const m=posMap();return Object.keys(m).find(k=>m[k]===pos&&k!=='hero')||null}
 function reconstructPreflopFromCommitments(){
@@ -460,8 +496,8 @@ function reconstructPreflopFromCommitments(){
  }
 }
 async function scanCommitments(force=false){
- const now=Date.now();if(commitScanBusy||ocrBusy||!running||!heroTurn)return;resetCommitStreetIfNeeded();
- if(!force&&now-lastCommitScanAt<520)return;lastCommitScanAt=now;commitScanBusy=true;
+ const now=Date.now();if(commitScanBusy||ocrBusy||!running)return;resetCommitStreetIfNeeded();
+ if(!force&&now-lastCommitScanAt<(numericReader?90:520))return;lastCommitScanAt=now;commitScanBusy=true;
  const testStarted=performance.now();
  try{
    const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
@@ -472,15 +508,15 @@ async function scanCommitments(force=false){
       if(parsed.value==null&&parsed.visible){const tail=numericReader.readCanvas(commitmentPixelCanvas(seat,true));if(tail.value!=null)parsed=tail}
       observeStableCommitment(seat,parsed.value!=null?{kind:'amount',value:parsed.value}:parsed.visible?{kind:'unreadable',value:null}:{kind:'empty',value:0});
     }
-    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+    commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
     if(test)test.numericReaderMs=Math.round(performance.now()-numericStarted);
-    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();return;
+    if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();return;
    }
    const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.rawText||out?.text||'';
    const parts=out?.tsv?commitmentBatchTsv(out.tsv,seats):commitmentBatchParts(out?.rawText||out?.text,seats);
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
-   commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
-   if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
+   commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+   if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();
  }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(heroTurn&&commitReadyEpoch!==heroTurnEpoch)setTimeout(()=>scanCommitments(true),0);else if(!heroTurn&&actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 function preContext(){
@@ -502,7 +538,7 @@ function liveSnapshot(){
   heroButtons:[...state.legalActions],heroTurnConfirmed:heroTurn,buttonsSource:'physical-action-buttons',
   heroPosition:state.heroPosition,positionSource:dealerSeat?'dealer-plus-occupied-seats-only':'pending',
   pot:num(state.pot),heroStack:num(state.heroStack),toCall:num(state.toCall),toCallSource:'commitment-delta',
-  actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitScanBusy&&!commitAmbiguous.size,
+  actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitScanBusy&&!commitAmbiguous.size&&!ledgerUnresolved.size,
   actionLedgerSource:'seat-state-ledger-v1',actionHistory:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount}))
  }
 }
@@ -510,6 +546,7 @@ function liveGate(){
  const snapshot=liveSnapshot(),validation=validatePokerSnapshot(snapshot),errors=[...validation.errors];
  if(commitReadyEpoch!==heroTurnEpoch)errors.push('commitment_scan_pending');
  if(commitAmbiguous.size)errors.push('commitment_ambiguity');
+ if(ledgerUnresolved.size)errors.push('action_history_unresolved');
  return{snapshot,ok:errors.length===0,errors:[...new Set(errors)]}
 }
 function decide(){
@@ -539,7 +576,7 @@ function tick(ts){
  if(!running)return;
  if(ts-lastCardTick>=28){lastCardTick=ts;try{applyCards()}catch(e){log('CARDS '+e.message)}}
  if(ts-lastActionTick>=28){lastActionTick=ts;try{analyzeOpponents(Date.now())}catch(e){log('AÇÕES '+e.message)}}
- void scanButtons();void scanQuick();if(heroTurn)void scanCommitments(false);
+ void scanButtons();void scanQuick();void scanCommitments(false);
  if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)
 }
 function run(){if(running||!window.__SSJ_CAPTURE?.active)return;running=true;lastCardTick=0;lastActionTick=0;log('RUNTIME V34 UNIFIED INICIADO');testEvent('runtime-start',{width:video.videoWidth,height:video.videoHeight,rate:video.playbackRate});video.addEventListener('ended',()=>{if(test){test.done=true;test.endedAt=Date.now();testEvent('replay-ended')}},{once:true});render();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
