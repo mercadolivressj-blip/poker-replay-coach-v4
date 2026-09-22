@@ -22,7 +22,7 @@ Escopo de segurança: **somente replay/simulação/análise pós-jogo**. Não im
 ## 2. Repositório e deploy
 
 - GitHub: `mercadolivressj-blip/poker-replay-coach-v4`
-- Branch principal: `main`
+- Branch obrigatória de desenvolvimento: `vision-v1-brain-integration` (**nunca tocar na `main`**)
 - HEAD no momento deste handoff: `7349136c588e2e8b0f80f020e623293528e3173f`
 - Mensagem do HEAD: `Run runtime contract regression in CI`
 - Vercel team: `team_2Of6NYSDgWvpSjokXrCXFa0A`
@@ -274,7 +274,7 @@ No novo chat, o usuário deve dizer algo como:
 O assistente deve então:
 
 1. Ler este documento.
-2. Verificar HEAD atual da branch `main`.
+2. Verificar HEAD atual da branch `vision-v1-brain-integration`; nunca alterar `main`.
 3. Ver CI recente.
 4. Só então discutir/aplicar a melhoria pedida.
 
@@ -288,3 +288,18 @@ O assistente deve então:
 - Primeira preview teve bug de runtime/lane: **SIM, corrigido**.
 - Feedback mais recente do usuário: **“ta PERFEITO agora, mas tem uma ou outra melhoria”**.
 - Melhor abordagem daqui em diante: preservar núcleo, coletar evidência/print/diagnóstico da melhoria, criar regressão, corrigir cirurgicamente, CI, preview, teste real.
+
+## 17. Atualização crítica — teste 1920×1080 de 22/09/2026
+
+O primeiro teste genuíno de captura de tela em 1920×1080 revelou que mão, board, pote, stack, botões e detecção da vez do Hero funcionavam, mas o leitor de commitments usava coordenadas-fonte fixas de 1280×720. Isso gerou valores zero/nulos, ações monetárias classificadas como CHECK/FOLD e bloqueio seguro de todas as decisões.
+
+A causa, auditoria ação por ação, correções, métricas e limitação de certificação estão documentadas em `docs/LIVE-TEST-2026-09-22.md`.
+
+O conserto de código está no commit `be87b71`:
+
+- commitments escalados pela resolução real e normalizados para a geometria canônica;
+- redução sem suavização para preservar os glifos numéricos;
+- retomada do mesmo turno após oscilação visual curta somente quando o fingerprint completo não mudou;
+- regressões para escala e ciclo de vida do turno.
+
+Validação local após o conserto: suíte pública completa aprovada, certificado congelado de 108 mãos/246 decisões preservado e 9/9 commitments corretos em frames do teste convertidos para 1920×1080. Ainda falta o novo replay/simulação end-to-end no navegador do usuário para certificar a fronteira ao vivo e medir P50/P95.
