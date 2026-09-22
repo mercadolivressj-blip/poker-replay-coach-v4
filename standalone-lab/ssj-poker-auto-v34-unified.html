@@ -497,7 +497,11 @@ function reconstructPreflopFromCommitments(){
  // Existing explicit actions stay sovereign. Contribution inference only fills missing aggression/calls.
  for(let i=0;i<hi;i++){
    const pos=order[i],seat=actorSeatForPosition(pos);if(!seat||lastBySeat[seat])continue;
-   const amt=seatCommit[seat];if(amt==null||amt<=0)continue;
+   const amt=seatCommit[seat];if(amt==null)continue;
+   // Once Hero's physical buttons are visible, every earlier preflop actor has
+   // completed an action. Zero contribution is therefore a fold even when the
+   // PokerStars card-disappearance animation has not finished yet.
+   if(amt<=0){recordAction(seat,'FOLD',null,.99,'turn-order-zero-commitment');continue}
    let action=null;
    if(currentMax<=0)action='CALL';
    else if(amt>currentMax+Math.max(.01,currentMax*.22))action='RAISE';
