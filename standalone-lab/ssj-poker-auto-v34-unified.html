@@ -117,6 +117,7 @@ const LABEL={FOLD:'Desistir',CHECK:'Passar',CALL:'Pagar',BET:'Apostar',RAISE:'Au
 const state={heroCards:[],board:[],pot:null,toCall:null,heroStack:null,blinds:null,legalActions:[],heroPosition:null,players:6,activePlayers:6,actionHistory:[]};
 const TEST_MODE=new URLSearchParams(location.search).has('replay');
 const test=TEST_MODE?(window.__SSJ_TEST={version:'v34-unified',startedAt:Date.now(),events:[],turns:[],decisions:[],ocr:[],done:false}):null;
+const testSink=TEST_MODE?Object.assign(document.createElement('script'),{id:'ssj-test-telemetry',type:'application/json'}):null;if(testSink)document.body.appendChild(testSink);
 let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
 let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
 let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKey='',lastCallReadAt=0,lastQuickAt=0,lastBlindAt=0,lastDealerAt=0,lastActionTick=0,lastCardTick=0;
@@ -126,7 +127,8 @@ let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCa
 const ocr=new ActionTextOcr(); void ocr.prewarm();
 
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
-function testEvent(type,data={}){if(!test)return;test.events.push({type,at:Date.now(),perf:performance.now(),mediaTime:video.currentTime,...data});if(test.events.length>2500)test.events.shift()}
+function syncTest(){if(testSink)testSink.textContent=JSON.stringify(test)}
+function testEvent(type,data={}){if(!test)return;test.events.push({type,at:Date.now(),perf:performance.now(),mediaTime:video.currentTime,...data});if(test.events.length>2500)test.events.shift();syncTest()}
 function testTurn(){return test?.turns.find(x=>x.epoch===heroTurnEpoch)||null}
 function testDecision(decision,engine,reason,gate){
  if(!test||test.decisions.some(x=>x.epoch===heroTurnEpoch))return;
@@ -306,7 +308,7 @@ async function scanButtons(){
  try{
   const now=Date.now(),vf=buttonVisual();let legal=[],tc=state.toCall;
   if(vf?.kind==='fcr')legal=['FOLD','CALL','RAISE'];else if(vf?.kind==='checkAgg')legal=street()==='preflop'?['CHECK','RAISE']:['CHECK','BET'];
-  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn)turn.endedMediaTime=video.currentTime;state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
+  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn){turn.endedMediaTime=video.currentTime;syncTest()}state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
   lastButtonsAt=now;
   const newTurn=!heroTurn;
   if(newTurn){heroTurn=true;heroTurnStartedAt=now;heroTurnEpoch++;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal]};test.turns.push(turn);testEvent('hero-turn',turn)}}
@@ -355,7 +357,7 @@ async function scanQuick(force=false){
    if(kind==='blinds'){const m=text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(?:US\$?\s*)?(\d+(?:[.,]\d+)?)/i);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(a>0&&b>a&&b/a<=10)state.blinds=a+'/'+b}}
   }
   inferEconomics();render();decide()
- }catch(e){ocrBusy=false;log('VALORES erro '+e.message)}finally{if(test)test.ocr.push({kind:'quick',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});quickBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
+ }catch(e){ocrBusy=false;log('VALORES erro '+e.message)}finally{if(test){test.ocr.push({kind:'quick',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});syncTest()}quickBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 
 const COMMIT_ROI={
@@ -434,7 +436,7 @@ async function scanCommitments(force=false){
    }
    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
- }catch(e){log('COMMIT OCR '+e.message)}finally{if(test)test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
+ }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 function preContext(){
  const pre=actions.filter(a=>a.street==='preflop'),ag=pre.filter(a=>a.action==='RAISE'||a.action==='ALLIN'),calls=pre.filter(a=>a.action==='CALL'),m=posMap();
@@ -471,7 +473,7 @@ function decide(){
  const st=street(),age=heroTurnStartedAt?Date.now()-heroTurnStartedAt:0;
  updatePosition();inferEconomics();
  if(visualBoardSeen>=3&&state.board.length<visualBoardSeen){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOARD INCOMPLETO';$('reason').textContent=`Vejo ${visualBoardSeen} cartas na mesa, mas decodifiquei ${state.board.length}. Não vou recomendar com board parcial.`;return}
- const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';const turn=testTurn();if(turn){turn.lastGateErrors=[...gate.errors];turn.lastGateMediaTime=video.currentTime}lastDecisionKey='';return}
+ const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';const turn=testTurn();if(turn){turn.lastGateErrors=[...gate.errors];turn.lastGateMediaTime=video.currentTime;syncTest()}lastDecisionKey='';return}
  if(st==='preflop'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){heroPos='BB';state.heroPosition='BB';heroPosLocked=true;const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
  if(st==='preflop'&&state.legalActions.includes('CALL')&&!historyStrings().some(x=>/RAISE|ALLIN|CALL/.test(String(x)))&&age<1800){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='AÇÕES LOCAIS';$('reason').textContent='Reconstruindo ações anteriores pelas fichas comprometidas; não vou usar fallback cego.';return}
  const hist=historyStrings(),key=[handId,state.heroCards.join(''),state.board.join(''),state.pot,state.toCall,state.heroStack,state.blinds,state.heroPosition,state.legalActions.join('-'),hist.join('>'),Math.floor(age/500)].join('|');if(key===lastDecisionKey)return;lastDecisionKey=key;
