@@ -1,0 +1,175 @@
+name: video6-postblind-audit
+
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - '.github/workflows/video6-postblind-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit-packet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+
+      - name: Install audit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip >/dev/null
+          python3 -m pip install numpy==1.26.4 opencv-python-headless==4.10.0.84 gdown==5.2.0 >/dev/null
+
+      - name: Fetch immutable first-blind artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/raw
+          gh run download 35673563096 -R mercadolivressj-blip/poker-replay-coach-v4 -n video6-blind-first-score -D /tmp/raw
+          test "$(sha256sum /tmp/raw/video6-blind-first-score.json | awk '{print $1}')" = "57e9d75f0c1e0b7b3bc6b019bf84d638b7852e41e150d0d41208996daf3ea55d"
+
+      - name: Download original video 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m gdown --id 1Q5tejtFpbnbNOWMP9RbarFFlVjpvom28 -O /tmp/video6.mkv >/dev/null
+          test "$(stat -c%s /tmp/video6.mkv)" = "209930974"
+
+      - name: Build independent lossless audit packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/audit/decisions /tmp/audit/hands
+          cat > /tmp/build_audit.py <<'PY'
+          import cv2, json, math, hashlib
+          from pathlib import Path
+          import numpy as np
+
+          raw_path=Path('/tmp/raw/video6-blind-first-score.json')
+          video_path='/tmp/video6.mkv'
+          out=Path('/tmp/audit')
+          d=json.loads(raw_path.read_text())
+          fps=30.0
+
+          hand_by_id={h['id']:h for h in d['hands']}
+          target_meta={}
+          decision_event={}
+          for dec in d['decisions']:
+              i=dec['i']; t=float(dec['t'])
+              fi=int(round(t*fps)); target_meta.setdefault(fi,[]).append(('decision',i,t))
+              event=None
+              if dec.get('hand') in hand_by_id:
+                  h=hand_by_id[dec['hand']]
+                  evs=[e for e in h['events'] if e['seat']=='hero' and float(e['t']) >= t-0.05]
+                  if evs: event=evs[0]
+              decision_event[i]=event
+              if event:
+                  et=float(event['t']); efi=int(round(et*fps)); target_meta.setdefault(efi,[]).append(('hero_event',i,et))
+          for h in d['hands']:
+              for j,e in enumerate(h['events']):
+                  et=float(e['t']); efi=int(round(et*fps)); target_meta.setdefault(efi,[]).append(('hand_event',(h['id'],j),et))
+              for kind,t in [('start',float(h['startT'])+0.2),('end',max(0,float(h['endT'])-0.2))]:
+                  fi=int(round(t*fps)); target_meta.setdefault(fi,[]).append((f'hand_{kind}',h['id'],t))
+
+          wanted=set(target_meta)
+          frames={}
+          cap=cv2.VideoCapture(video_path)
+          idx=0
+          while True:
+              ok,frame=cap.read()
+              if not ok: break
+              if idx in wanted:
+                  frames[idx]=frame.copy()
+              idx+=1
+              if idx>max(wanted): break
+          cap.release()
+          missing=sorted(wanted-set(frames))
+          if missing: raise RuntimeError(f'missing target frames: {missing[:10]}')
+
+          def fit(img,w,h):
+              ih,iw=img.shape[:2]
+              s=min(w/iw,h/ih)
+              nw,nh=max(1,int(iw*s)),max(1,int(ih*s))
+              r=cv2.resize(img,(nw,nh),interpolation=cv2.INTER_AREA if s<1 else cv2.INTER_NEAREST)
+              canvas=np.zeros((h,w,3),dtype=np.uint8)
+              y=(h-nh)//2; x=(w-nw)//2
+              canvas[y:y+nh,x:x+nw]=r
+              return canvas
+
+          def crop(frame,x,y,w,h): return frame[y:y+h,x:x+w]
+          def put(canvas,text,x,y,scale=.55,th=1):
+              cv2.putText(canvas,text,(x,y),cv2.FONT_HERSHEY_SIMPLEX,scale,(255,255,255),th,cv2.LINE_AA)
+
+          for dec in d['decisions']:
+              i=dec['i']; t=float(dec['t']); fi=int(round(t*fps)); f=frames[fi]
+              ev=decision_event[i]
+              ef=frames[int(round(float(ev['t'])*fps))] if ev else f
+              panel=np.zeros((1200,2200,3),dtype=np.uint8)
+              panel[70:620,0:1000]=fit(f,1000,550)
+              panel[650:1200,0:1000]=fit(ef,1000,550)
+              table=crop(f,255,135,760,335)
+              hero=crop(f,545,410,220,165)
+              boardpot=crop(f,430,180,380,180)
+              buttons=crop(f,600,585,650,135)
+              panel[70:510,1050:2200]=fit(table,1150,440)
+              panel[530:785,1050:1600]=fit(hero,550,255)
+              panel[530:785,1620:2200]=fit(boardpot,580,255)
+              panel[805:1050,1050:2200]=fit(buttons,1150,245)
+              bg=dec['brainGate']; errs=','.join(bg['errors']) if bg['errors'] else '-'
+              header=(f"D{i:02d} t={t:.1f}s hand={dec.get('hand')} brain={bg['ok']} "
+                      f"cards={dec.get('heroCards')} board={dec.get('board')} pot={dec.get('pot')} "
+                      f"stack={dec.get('heroStack')} toCall={dec.get('toCall')} pos={dec.get('position')}")
+              put(panel,header,10,30,.50,1)
+              put(panel,f"blind action={dec.get('heroAction')} layout={dec.get('buttonLayout')} errors={errs}",10,55,.50,1)
+              put(panel,'DECISION FRAME',10,95,.55,1)
+              if ev: put(panel,f"FIRST HERO EVENT FRAME t={float(ev['t']):.1f} raw={ev['action']} amount={ev.get('amount')}",10,675,.50,1)
+              else: put(panel,'NO MATCHED HERO EVENT',10,675,.50,1)
+              put(panel,'TABLE',1060,95,.55,1); put(panel,'HERO/CARDS',1060,555,.5,1); put(panel,'BOARD/POT',1630,555,.5,1); put(panel,'BUTTONS',1060,830,.5,1)
+              cv2.imwrite(str(out/'decisions'/f'decision_{i:02d}.png'),panel,[cv2.IMWRITE_PNG_COMPRESSION,3])
+
+          for h in d['hands']:
+              items=[]
+              st=float(h['startT'])+0.2; items.append(('START',st,frames[int(round(st*fps))]))
+              for j,e in enumerate(h['events']):
+                  et=float(e['t']); label=f"{j+1:02d} {et:.1f}s {e['seat']} {e['action']} {e.get('amount') if e.get('amount') is not None else ''} street={e['street']}"
+                  items.append((label,et,frames[int(round(et*fps))]))
+              en=max(0,float(h['endT'])-0.2); items.append(('END',en,frames[int(round(en*fps))]))
+              cols=3; cellw=720; cellh=390; rows=math.ceil(len(items)/cols)
+              sheet=np.zeros((rows*cellh,cols*cellw,3),dtype=np.uint8)
+              for k,(label,t,fr) in enumerate(items):
+                  r,c=divmod(k,cols); x=c*cellw; y=r*cellh
+                  tab=fit(crop(fr,245,125,790,365),720,335)
+                  sheet[y:y+335,x:x+720]=tab
+                  put(sheet,label,x+8,y+365,.48,1)
+              cv2.imwrite(str(out/'hands'/f'hand_{h["id"]:02d}.png'),sheet,[cv2.IMWRITE_PNG_COMPRESSION,3])
+
+          index={
+            'rawSha256': hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+            'videoBytes': Path(video_path).stat().st_size,
+            'decodedFrames': idx,
+            'decisionPanels': len(d['decisions']),
+            'handSheets': len(d['hands']),
+            'summary': d['summary'],
+          }
+          (out/'index.json').write_text(json.dumps(index,indent=2))
+          print(json.dumps(index,indent=2))
+          PY
+          python3 /tmp/build_audit.py
+
+      - name: Upload post-blind audit packet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video6-postblind-audit-packet
+          path: /tmp/audit/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
