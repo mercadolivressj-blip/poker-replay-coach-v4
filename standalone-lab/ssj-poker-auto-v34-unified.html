@@ -509,6 +509,7 @@ function reconstructPreflopFromCommitments(){
 }
 async function scanCommitments(force=false){
  const now=Date.now();if(commitScanBusy||(!numericReader&&ocrBusy)||!running)return;resetCommitStreetIfNeeded();
+ if(numericReader&&(state.heroCards.length!==2||betweenHands||fixedSample(FIXED_SEATS.hero.cards,(h,s,v)=>s<65&&v>170)<=.18))return;
  if(!force&&now-lastCommitScanAt<(numericReader?90:520))return;lastCommitScanAt=now;commitScanBusy=true;
  const testStarted=performance.now();
  try{
