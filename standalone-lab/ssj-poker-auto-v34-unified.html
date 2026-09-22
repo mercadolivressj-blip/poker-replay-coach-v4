@@ -58,8 +58,19 @@
 <script>
 (function(){
  const $=id=>document.getElementById(id),video=$('video'),log=$('log');
+ const replay=new URLSearchParams(location.search).get('replay');
  const say=s=>{if(log)log.textContent=new Date().toLocaleTimeString()+' '+s+'\n'+log.textContent.slice(0,7000)};
- window.__SSJ_CAPTURE={stream:null,active:false};
+ window.__SSJ_CAPTURE={stream:null,active:false,mode:'screen'};
+ async function startReplay(){
+   if(!replay||window.__SSJ_CAPTURE.active)return;
+   try{
+     window.__SSJ_CAPTURE.active=true;window.__SSJ_CAPTURE.mode='replay';video.muted=true;video.preload='auto';video.src=replay;
+     await new Promise((resolve,reject)=>{if(video.readyState>=2)return resolve();video.addEventListener('loadeddata',resolve,{once:true});video.addEventListener('error',()=>reject(new Error('vídeo de replay não carregou')),{once:true})});
+     const rate=Number(new URLSearchParams(location.search).get('rate')||1);video.playbackRate=Number.isFinite(rate)&&rate>0?rate:1;await video.play();
+     $('engine').textContent='REPLAY DE TESTE';$('reason').textContent='Vídeo local reproduzindo no mesmo pipeline da captura.';say('REPLAY OK '+video.videoWidth+'x'+video.videoHeight+' @'+video.playbackRate+'x');
+     window.dispatchEvent(new CustomEvent('ssj-capture-ready',{detail:{replay:true}}));
+   }catch(e){window.__SSJ_CAPTURE.active=false;say('REPLAY ERRO '+(e?.message||e));}
+ }
  async function share(){
    if(window.__SSJ_CAPTURE.active){say('Compartilhamento já ativo');return}
    try{
@@ -75,7 +86,7 @@
    }
  }
  function stop(){
-   const c=window.__SSJ_CAPTURE;c.active=false;c.stream?.getTracks?.().forEach(t=>t.stop());c.stream=null;video.srcObject=null;
+   const c=window.__SSJ_CAPTURE;c.active=false;c.stream?.getTracks?.().forEach(t=>t.stop());c.stream=null;video.pause();video.srcObject=null;if(c.mode==='replay')video.removeAttribute('src');
    $('engine').textContent='PARADO';$('reason').textContent='Captura parada.';say('Captura parada');window.dispatchEvent(new Event('ssj-capture-stopped'));
  }
  $('start').addEventListener('click',share);$('stop').addEventListener('click',stop);$('reset').addEventListener('click',()=>window.dispatchEvent(new Event('ssj-reset')));
@@ -83,6 +94,7 @@
  window.addEventListener('unhandledrejection',e=>say('PROMISE '+(e.reason?.message||e.reason||'erro')));
  window.__SSJ_SHARE=share;window.__SSJ_STOP=stop;
  say('BOOTSTRAP captura pronto');
+ if(replay)void startReplay();
 })();
 </script>
 
@@ -103,6 +115,8 @@ const $=id=>document.getElementById(id),video=$('video'),analysis=$('analysis'),
 const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
 const LABEL={FOLD:'Desistir',CHECK:'Passar',CALL:'Pagar',BET:'Apostar',RAISE:'Aumentar',ALLIN:'All-in'};
 const state={heroCards:[],board:[],pot:null,toCall:null,heroStack:null,blinds:null,legalActions:[],heroPosition:null,players:6,activePlayers:6,actionHistory:[]};
+const TEST_MODE=new URLSearchParams(location.search).has('replay');
+const test=TEST_MODE?(window.__SSJ_TEST={version:'v34-unified',startedAt:Date.now(),events:[],turns:[],decisions:[],ocr:[],done:false}):null;
 let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
 let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
 let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKey='',lastCallReadAt=0,lastQuickAt=0,lastBlindAt=0,lastDealerAt=0,lastActionTick=0,lastCardTick=0;
@@ -112,6 +126,13 @@ let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCa
 const ocr=new ActionTextOcr(); void ocr.prewarm();
 
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
+function testEvent(type,data={}){if(!test)return;test.events.push({type,at:Date.now(),perf:performance.now(),mediaTime:video.currentTime,...data});if(test.events.length>2500)test.events.shift()}
+function testTurn(){return test?.turns.find(x=>x.epoch===heroTurnEpoch)||null}
+function testDecision(decision,engine,reason,gate){
+ if(!test||test.decisions.some(x=>x.epoch===heroTurnEpoch))return;
+ const turn=testTurn(),row={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,decision,engine,reason,latencyMs:turn?Math.round(performance.now()-turn.perfAt):null,snapshot:gate?.snapshot||liveSnapshot()};
+ test.decisions.push(row);if(turn){turn.decision=decision;turn.decisionMediaTime=row.mediaTime;turn.latencyMs=row.latencyMs}testEvent('decision',row)
+}
 function num(v){if(v==null)return null;const a=String(v).match(/\d+(?:[.,]\d+)?/g);if(!a?.length)return null;const n=Number(a.at(-1).replace(',','.'));return Number.isFinite(n)?n:null}
 function nums(v){return (String(v||'').match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>Number(x.replace(',','.'))).filter(Number.isFinite)}
 function money(v){const n=num(v);return n==null?'—':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
@@ -285,10 +306,10 @@ async function scanButtons(){
  try{
   const now=Date.now(),vf=buttonVisual();let legal=[],tc=state.toCall;
   if(vf?.kind==='fcr')legal=['FOLD','CALL','RAISE'];else if(vf?.kind==='checkAgg')legal=street()==='preflop'?['CHECK','RAISE']:['CHECK','BET'];
-  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
+  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn)turn.endedMediaTime=video.currentTime;state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
   lastButtonsAt=now;
   const newTurn=!heroTurn;
-  if(newTurn){heroTurn=true;heroTurnStartedAt=now;heroTurnEpoch++;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos')}
+  if(newTurn){heroTurn=true;heroTurnStartedAt=now;heroTurnEpoch++;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal]};test.turns.push(turn);testEvent('hero-turn',turn)}}
   // O texto do botão confirma somente a ação legal. O valor de CALL nunca vem
   // do botão/time-bank: V34 deriva exclusivamente do ledger de compromissos.
   if(!legal.includes('CALL'))state.toCall=0;else tc=state.toCall;
@@ -325,6 +346,7 @@ function analyzeOpponents(now){
 }
 async function scanQuick(force=false){
  const now=Date.now();if(quickBusy||ocrBusy||!running||(!force&&now-lastQuickAt<360))return;quickBusy=true;lastQuickAt=now;
+ const testStarted=performance.now();
  try{
   const jobs=[['pot',capture(.37,.29,.26,.105,760)],['stack',capture(.39,.72,.22,.105,760)]];if(force||now-lastBlindAt>1800){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,1500)])}
   for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:120});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);
@@ -333,7 +355,7 @@ async function scanQuick(force=false){
    if(kind==='blinds'){const m=text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(?:US\$?\s*)?(\d+(?:[.,]\d+)?)/i);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(a>0&&b>a&&b/a<=10)state.blinds=a+'/'+b}}
   }
   inferEconomics();render();decide()
- }catch(e){ocrBusy=false;log('VALORES erro '+e.message)}finally{quickBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
+ }catch(e){ocrBusy=false;log('VALORES erro '+e.message)}finally{if(test)test.ocr.push({kind:'quick',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});quickBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 
 const COMMIT_ROI={
@@ -402,6 +424,7 @@ function reconstructPreflopFromCommitments(){
 async function scanCommitments(force=false){
  const now=Date.now();if(commitScanBusy||ocrBusy||!running||!heroTurn)return;resetCommitStreetIfNeeded();
  if(!force&&now-lastCommitScanAt<520)return;lastCommitScanAt=now;commitScanBusy=true;
+ const testStarted=performance.now();
  try{
    const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
    for(const seat of seats){
@@ -411,7 +434,7 @@ async function scanCommitments(force=false){
    }
    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
- }catch(e){log('COMMIT OCR '+e.message)}finally{ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
+ }catch(e){log('COMMIT OCR '+e.message)}finally{if(test)test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 function preContext(){
  const pre=actions.filter(a=>a.street==='preflop'),ag=pre.filter(a=>a.action==='RAISE'||a.action==='ALLIN'),calls=pre.filter(a=>a.action==='CALL'),m=posMap();
@@ -448,8 +471,8 @@ function decide(){
  const st=street(),age=heroTurnStartedAt?Date.now()-heroTurnStartedAt:0;
  updatePosition();inferEconomics();
  if(visualBoardSeen>=3&&state.board.length<visualBoardSeen){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOARD INCOMPLETO';$('reason').textContent=`Vejo ${visualBoardSeen} cartas na mesa, mas decodifiquei ${state.board.length}. Não vou recomendar com board parcial.`;return}
- const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';lastDecisionKey='';return}
- if(st==='preflop'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){heroPos='BB';state.heroPosition='BB';heroPosLocked=true;const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;return}
+ const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';const turn=testTurn();if(turn){turn.lastGateErrors=[...gate.errors];turn.lastGateMediaTime=video.currentTime}lastDecisionKey='';return}
+ if(st==='preflop'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){heroPos='BB';state.heroPosition='BB';heroPosLocked=true;const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
  if(st==='preflop'&&state.legalActions.includes('CALL')&&!historyStrings().some(x=>/RAISE|ALLIN|CALL/.test(String(x)))&&age<1800){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='AÇÕES LOCAIS';$('reason').textContent='Reconstruindo ações anteriores pelas fichas comprometidas; não vou usar fallback cego.';return}
  const hist=historyStrings(),key=[handId,state.heroCards.join(''),state.board.join(''),state.pot,state.toCall,state.heroStack,state.blinds,state.heroPosition,state.legalActions.join('-'),hist.join('>'),Math.floor(age/500)].join('|');if(key===lastDecisionKey)return;lastDecisionKey=key;
  try{
@@ -463,7 +486,7 @@ function decide(){
   }
   const code=decisionCode(d?.decision);
   if(!d?.decision||!code||!state.legalActions.includes(code)){$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO INCOMPLETO';$('reason').textContent='Falta contexto confirmado. Não vou inventar fold/call/raise.';return}
-  $('decision').textContent=d.decision;$('engine').textContent=d.engine||'LOCAL';$('reason').textContent=d.reason||'Decisão local.'
+  $('decision').textContent=d.decision;$('engine').textContent=d.engine||'LOCAL';$('reason').textContent=d.reason||'Decisão local.';testDecision(d.decision,$('engine').textContent,$('reason').textContent,gate)
  }catch(e){lastDecisionKey='';$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ERRO BLOQUEADO';$('reason').textContent=e.message;log('STRATEGY '+e.message)}
 }
 function tick(ts){
@@ -473,7 +496,7 @@ function tick(ts){
  void scanButtons();void scanQuick();if(heroTurn)void scanCommitments(false);
  if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)
 }
-function run(){if(running||!window.__SSJ_CAPTURE?.active)return;running=true;lastCardTick=0;lastActionTick=0;log('RUNTIME V34 UNIFIED INICIADO');render();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
+function run(){if(running||!window.__SSJ_CAPTURE?.active)return;running=true;lastCardTick=0;lastActionTick=0;log('RUNTIME V34 UNIFIED INICIADO');testEvent('runtime-start',{width:video.videoWidth,height:video.videoHeight,rate:video.playbackRate});video.addEventListener('ended',()=>{if(test){test.done=true;test.endedAt=Date.now();testEvent('replay-ended')}},{once:true});render();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
 function stopRuntime(){running=false;if(video.cancelVideoFrameCallback&&frameHandle)try{video.cancelVideoFrameCallback(frameHandle)}catch{}else if(frameHandle)cancelAnimationFrame(frameHandle);frameHandle=null;render()}
 window.addEventListener('ssj-capture-ready',run);window.addEventListener('ssj-capture-stopped',stopRuntime);window.addEventListener('ssj-reset',()=>resetHand('RESET MANUAL'));
 render();log('MÓDULOS V34 carregados');if(window.__SSJ_CAPTURE?.active)run();
