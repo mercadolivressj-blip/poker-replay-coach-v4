@@ -101,7 +101,7 @@ export class ActionTextOcr{
     this.busy=true;
     try{
       await worker.setParameters({tessedit_pageseg_mode:'6'});
-      const image=contrast(source,{invert:true,threshold:146,scale:1.7});
+      const image=contrast(source,{invert:true,threshold:105,scale:1.7});
       return await recognize(worker,image,true);
     }catch{return {text:'',confidence:0,parsed:null,error:true};}
     finally{try{await worker.setParameters({tessedit_pageseg_mode:'7'});}catch{}this.busy=false;}
