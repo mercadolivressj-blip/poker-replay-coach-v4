@@ -31,7 +31,7 @@
  <div class="main">
   <div class="toolbar">
    <div class="left"><span class="brand">SSJ POKER · AUTO V34 UNIFIED</span><span class="badge">CAPTURA ROBUSTA</span><span class="badge">AÇÕES AUTO</span><span class="badge">SEM VISION REMOTA</span><span class="badge">~35 FPS</span></div>
-   <div class="right"><label for="replay-file" class="btn" role="button">Abrir replay</label><input id="replay-file" type="file" accept="video/mp4,video/webm" hidden><button id="start" class="btn primary">Compartilhar mesa</button><button id="reset" class="btn">RESETAR MÃO</button><button id="stop" class="btn danger">Parar</button></div>
+   <div class="right"><label for="replay-file" class="btn" role="button">Abrir replay</label><input id="replay-file" type="file" accept="video/mp4,video/webm" hidden><button id="start" class="btn primary">Compartilhar mesa</button><button id="reset" class="btn">RESETAR MÃO</button><button id="export-json" class="btn">Baixar JSON</button><button id="stop" class="btn danger">Parar</button></div>
   </div>
   <div class="stage-wrap"><div class="stage">
    <video id="video" muted playsinline></video><canvas id="overlay"></canvas>
@@ -121,7 +121,7 @@ const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'
 const LABEL={FOLD:'Desistir',CHECK:'Passar',CALL:'Pagar',BET:'Apostar',RAISE:'Aumentar',ALLIN:'All-in'};
 const state={heroCards:[],board:[],pot:null,toCall:null,heroStack:null,blinds:null,legalActions:[],heroPosition:null,players:6,activePlayers:6,actionHistory:[]};
 const TEST_MODE=new URLSearchParams(location.search).has('replay')||new URLSearchParams(location.search).has('cert');
-const test=TEST_MODE?(window.__SSJ_TEST={version:'v34-unified',startedAt:Date.now(),events:[],turns:[],decisions:[],ocr:[],done:false}):null;
+const test=window.__SSJ_TEST={version:'v34-unified',mode:TEST_MODE?'certification':'capture',startedAt:Date.now(),events:[],turns:[],decisions:[],ocr:[],done:false};
 const testSink=TEST_MODE?Object.assign(document.createElement('script'),{id:'ssj-test-telemetry',type:'application/json'}):null;if(testSink)document.body.appendChild(testSink);
 let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
 let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
@@ -129,7 +129,7 @@ let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKe
 let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0,heroTurnCommitStartEpoch=0;
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',lastDecisionStreet=null,newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
-let recentHeroTurnClose=null;
+let recentHeroTurnClose=null,telemetryExported=false;
 let heroStackTotal=null;
 let ledgerPrev={},ledgerActive=new Set(),ledgerPresent=new Set(),ledgerTurn=null,ledgerTurnCandidate=null,ledgerTurnVotes=0,ledgerTurnInfo=null,ledgerUnresolved=new Set(),ledgerAbsentVotes={},heroDecisionSeen=false,handMediaStartedAt=0;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
@@ -152,6 +152,13 @@ function testDecision(decision,engine,reason,gate){
  if(!test||test.decisions.some(x=>x.handId===handId&&x.epoch===heroTurnEpoch))return;
  const turn=testTurn(),row={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,decision,engine,reason,latencyMs:turn?Math.round(performance.now()-turn.perfAt):null,snapshot:gate?.snapshot||liveSnapshot()};
  test.decisions.push(row);if(turn){turn.decision=decision;turn.decisionMediaTime=row.mediaTime;turn.latencyMs=row.latencyMs}testEvent('decision',row)
+}
+function telemetryPayload(reason='manual'){
+ return{...test,exportedAt:Date.now(),exportReason:reason,done:reason==='capture-stopped'||test.done,final:{handId,heroTurnEpoch,street:street(),state:{...state,heroCards:[...state.heroCards],board:[...state.board],legalActions:[...state.legalActions],actionHistory:[...state.actionHistory]},actions:actions.map(a=>({...a})),commitments:{...seatCommit},ambiguousSeats:[...commitAmbiguous],unresolvedSeats:[...ledgerUnresolved],dealerSeat,heroTurn,log:$('log').textContent}}
+}
+function downloadTelemetry(reason='manual'){
+ const payload=telemetryPayload(reason),stamp=new Date().toISOString().replace(/[:.]/g,'-'),blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download=`SSJ_Poker_telemetria_${stamp}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);test.lastExportedAt=payload.exportedAt;test.lastExportReason=reason;syncTest();log('JSON exportado · '+reason)
 }
 function num(v){if(v==null)return null;const a=String(v).match(/\d+(?:[.,]\d+)?/g);if(!a?.length)return null;const n=Number(a.at(-1).replace(',','.'));return Number.isFinite(n)?n:null}
 function nums(v){return (String(v||'').match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>Number(x.replace(',','.'))).filter(Number.isFinite)}
@@ -240,7 +247,7 @@ function render(){
 }
 function invalidate(reason='Atualizando estado local.'){lastDecisionKey='';$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO LOCAL';$('reason').textContent=reason}
 function resetHand(reason='RESET'){
- const advance=/NOVAS CARTAS|MESA LIMPA|TRANSIÇÃO/i.test(reason);const prevDealer=dealerSeat;
+ const advance=/NOVAS CARTAS|MESA LIMPA|TRANSIÇÃO/i.test(reason);const prevDealer=dealerSeat,previousHandId=handId;
  if(test&&advance){const pending=test.turns.at(-1);if(pending?.handId===handId&&!pending.decision&&video.currentTime-pending.mediaTime<2){test.turns.pop();testEvent('hero-turn-cancelled',{handId,epoch:pending.epoch,reason:'hand-transition',startedMediaTime:pending.mediaTime})}}
  actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;lastDecisionStreet=null;recentHeroTurnClose=null;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
@@ -248,7 +255,7 @@ function resetHand(reason='RESET'){
  ledgerPrev={};ledgerActive=new Set();ledgerPresent=new Set();ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();ledgerAbsentVotes={};heroDecisionSeen=false;handMediaStartedAt=video.currentTime||0;
  if(advance&&prevDealer){dealerSeat=nextOccupiedSeat(prevDealer)||prevDealer;dealerPredicted=true;log('DEALER PREDITO '+dealerSeat)}else if(!prevDealer){dealerSeat=null;dealerPredicted=false}
  Object.assign(state,{heroCards:[],board:[],pot:null,toCall:null,heroStack:null,legalActions:[],heroPosition:null,actionHistory:[]});
- handId++;lastDecisionKey='';invalidate('Nova mão. Aguardando cartas.');log(reason+' · mão #'+handId);render()
+ handId++;testEvent('hand-reset',{reason,previousHandId,handId});lastDecisionKey='';invalidate('Nova mão. Aguardando cartas.');log(reason+' · mão #'+handId);render()
 }
 function boardProbe(){
  const c=capture(.34,.28,.28,.18,420);if(!c)return{canvas:null,boxes:[]};const ctx=c.getContext('2d',{willReadFrequently:true}),im=ctx.getImageData(0,0,c.width,c.height),d=im.data,W=c.width,H=c.height,m=new Uint8Array(W*H);
@@ -368,7 +375,7 @@ function recordAction(seatId,action,amount=null,confidence=.8,source='local'){
  const sameStreet=actions.filter(a=>a.seatId===seatId&&a.street===st);if(action==='CHECK'&&sameStreet.some(a=>a.action==='CHECK')){ledgerUnresolved.delete(seatId);return}
  if((action==='CALL'||action==='BET'||action==='RAISE'||action==='ALLIN')&&sameStreet.some(a=>a.action==='CHECK'))actions=actions.filter(a=>!(a.seatId===seatId&&a.street===st&&a.action==='CHECK'));
  const prev=lastBySeat[seatId];if(prev&&prev.action===action&&prev.street===st&&Date.now()-prev.at<900){const a=num(amount),b=num(prev.amount);if(a==null||b==null||Math.abs(a-b)<.01){ledgerUnresolved.delete(seatId);return}}
- if(action==='FOLD')folded.add(seatId);ledgerUnresolved.delete(seatId);const row={id:actions.length+1,seatId,action,amount:num(amount),street:st,at:Date.now(),mediaTime:video.currentTime,confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));if(test)testEvent('action',row);
+ if(action==='FOLD')folded.add(seatId);ledgerUnresolved.delete(seatId);const row={id:actions.length+1,handId,seatId,action,amount:num(amount),street:st,at:Date.now(),mediaTime:video.currentTime,confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));if(test)testEvent('action',row);
  invalidate('Ação adversária atualizada.');render();setTimeout(decide,70)
 }
 function queueSeatOcr(ev){
@@ -631,9 +638,10 @@ function tick(ts){
  void scanButtons();void scanQuick();void scanCommitments(false);
  if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)
 }
-function run(){if(running||!window.__SSJ_CAPTURE?.active)return;running=true;lastCardTick=0;lastActionTick=0;log('RUNTIME V34 UNIFIED INICIADO');testEvent('runtime-start',{width:video.videoWidth,height:video.videoHeight,rate:video.playbackRate});video.addEventListener('ended',()=>{if(test){test.done=true;test.endedAt=Date.now();testEvent('replay-ended')}},{once:true});render();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
-function stopRuntime(){running=false;if(video.cancelVideoFrameCallback&&frameHandle)try{video.cancelVideoFrameCallback(frameHandle)}catch{}else if(frameHandle)cancelAnimationFrame(frameHandle);frameHandle=null;render()}
+function run(){if(running||!window.__SSJ_CAPTURE?.active)return;running=true;telemetryExported=false;test.done=false;lastCardTick=0;lastActionTick=0;log('RUNTIME V34 UNIFIED INICIADO');testEvent('runtime-start',{width:video.videoWidth,height:video.videoHeight,rate:video.playbackRate});video.addEventListener('ended',()=>{if(test){test.done=true;test.endedAt=Date.now();testEvent('replay-ended')}},{once:true});render();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
+function stopRuntime(){const wasRunning=running;running=false;if(video.cancelVideoFrameCallback&&frameHandle)try{video.cancelVideoFrameCallback(frameHandle)}catch{}else if(frameHandle)cancelAnimationFrame(frameHandle);frameHandle=null;test.done=true;test.endedAt=Date.now();testEvent('capture-stopped',{handId,wasRunning});render();if(wasRunning&&!telemetryExported){telemetryExported=true;downloadTelemetry('capture-stopped')}}
 window.addEventListener('ssj-capture-ready',run);window.addEventListener('ssj-capture-stopped',stopRuntime);window.addEventListener('ssj-reset',()=>resetHand('RESET MANUAL'));
+window.__SSJ_EXPORT_TELEMETRY=downloadTelemetry;$('export-json').addEventListener('click',()=>downloadTelemetry('manual'));
 render();log('MÓDULOS V34 carregados');if(window.__SSJ_CAPTURE?.active)run();
 </script>
 </body></html>
