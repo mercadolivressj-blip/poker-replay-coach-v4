@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSJ Poker · Patch V20 → V21</title>
+<style>body{font-family:system-ui;background:#03100a;color:#eafff2;max-width:860px;margin:40px auto;padding:20px}.box{background:#081810;border:1px solid #24533a;border-radius:14px;padding:18px}button,input{font:inherit}.btn{background:#17633f;color:#fff;border:1px solid #3e9b69;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}.log{white-space:pre-wrap;background:#020906;border-radius:9px;padding:12px;margin-top:14px;color:#9fceb7;min-height:120px}.warn{color:#ffe58a}</style></head>
+<body><div class="box"><h1>SSJ Poker · V20 → V21</h1><p>Selecione o seu <b>SSJ_Poker_Manual_V20.html</b>. O patch roda 100% no navegador e baixa a V21 pronta.</p><input id="f" type="file" accept=".html,text/html"> <button class="btn" id="go">Gerar V21</button><div id="log" class="log">aguardando arquivo…</div></div>
+<script>
+const $=id=>document.getElementById(id);const out=$('log');
+function say(s){out.textContent+=`\n${s}`}
+function replaceOnce(src,a,b,label){if(!src.includes(a))throw new Error('Trecho não encontrado: '+label);return src.replace(a,b)}
+function replaceFunction(src,name,replacement){const needle='function '+name+'(';const start=src.indexOf(needle);if(start<0)throw new Error('Função não encontrada: '+name);const brace=src.indexOf('{',start);if(brace<0)throw new Error('Corpo não encontrado: '+name);let depth=0,quote=null,esc=false,lineComment=false,blockComment=false;for(let i=brace;i<src.length;i++){const c=src[i],n=src[i+1];if(lineComment){if(c==='\n')lineComment=false;continue}if(blockComment){if(c==='*'&&n==='/'){blockComment=false;i++}continue}if(quote){if(esc){esc=false;continue}if(c==='\\'){esc=true;continue}if(c===quote){quote=null;continue}continue}if(c==='/'&&n==='/'){lineComment=true;i++;continue}if(c==='/'&&n==='*'){blockComment=true;i++;continue}if(c==='"'||c==="'"||c==='`'){quote=c;continue}if(c==='{')depth++;else if(c==='}'){depth--;if(depth===0)return src.slice(0,start)+replacement+src.slice(i+1)}}}throw new Error('Fim de função não encontrado: '+name)}
+
+const LOCAL_ACTION_FUNCS=`function localButtonsPresence(){
+  const r=localHeroActionBarRead();return !!r?.present;
+}
+function localHeroActionBarRead(){
+  const snap=captureLocalRoi(.39,.785,.47,.145,460);if(!snap)return {present:false,confident:false,actions:[]};
+  let blue=0,green=0,orange=0,red=0,total=snap.width*snap.height;
+  for(let i=0;i<snap.data.length;i+=4){const r=snap.data[i],g=snap.data[i+1],b=snap.data[i+2];
+    if(b>92&&b>r*1.12&&b>g*1.02)blue++;
+    if(g>92&&g>r*1.10&&g>b*1.10)green++;
+    if(r>130&&g>55&&g<190&&b<115&&r>g*1.08)orange++;
+    if(r>125&&g<105&&b<105&&r>g*1.22)red++;
+  }
+  const rb=blue/total,rg=green/total,ro=orange/total,rr=red/total;let actions=[];
+  if(rb>.0045){actions=['CHECK'];if(ro>.004)actions.push(currentStreet()==='preflop'?'RAISE':'BET')}
+  else if(rg>.0045){actions=['FOLD','CALL'];if(ro>.004)actions.push('RAISE')}
+  else if(rr>.006){actions=['FOLD','CALL']}
+  const present=rb>.0025||rg>.0025||ro>.003||rr>.004;
+  return {present,confident:actions.length>0,actions,ratios:{blue:rb,green:rg,orange:ro,red:rr}};
+}
+function applyLocalHeroActionBar(read){
+  const now=Date.now();if(!read)return;
+  localButtonsLikely=!!read.present;if(read.present)lastLocalButtonsAt=now;
+  if(read.confident){
+    const key=read.actions.join('|');localNoButtonsVotes=0;
+    if(key===localLegalCandidateKey)localLegalCandidateVotes++;else{localLegalCandidateKey=key;localLegalCandidateVotes=1}
+    if(localLegalCandidateVotes<2)return;
+    const old=(state.legalActions||[]).map(x=>String(x).toUpperCase()).join('|');
+    localHeroLegalActions=[...read.actions];lastLocalLegalAt=now;legalActionsAt=now;actionsEmptyVotes=0;
+    state.legalActions=[...read.actions];
+    if(read.actions.includes('CHECK')&&!read.actions.includes('CALL'))clearToCall('barra-local-check');
+    if(!heroTurnActive)beginHeroTurn(now,'botões-locais');else updateHeroTurnPresence(true,now,'botões-locais');
+    if(old!==key){invalidateDecision('ações legais locais mudaram: '+(old||'—')+' → '+key);log('BOTÕES LOCAIS '+key)}
+    return;
+  }
+  localLegalCandidateKey='';localLegalCandidateVotes=0;
+  if(!read.present){
+    localNoButtonsVotes++;
+    if(localNoButtonsVotes>=3){
+      localHeroLegalActions=[];lastLocalLegalAt=0;
+      if(heroTurnActive)endHeroTurn(now);
+      if(state.legalActions.length){state.legalActions=[];legalActionsAt=0;clearToCall('barra-local-sumiu');invalidateDecision('barra do Hero sumiu')}
+    }
+  }else localNoButtonsVotes=0;
+}`;
+
+const NEW_LOCAL_TICK=`function localVideoTick(){
+  if(!running)return;
+  try{
+    applyLocalHero(localHeroRead());applyLocalBoard(localBoardRead());
+    const bar=localHeroActionBarRead();applyLocalHeroActionBar(bar);
+    const now=Date.now();
+    if(bar?.present&&!bar?.confident)kickHeroTurnScan();
+    if(bar?.confident&&state.legalActions.length){
+      if($('decision').textContent==='AGUARDANDO'&&now-lastBrainForceAt>260){lastBrainForceAt=now;void brainSoon()}else scheduleBrain(70);
+    }
+  }catch(e){log('local vision erro '+e.message)}
+}`;
+
+const NEW_END_TURN=`function endHeroTurn(at=Date.now()){
+  if(!heroTurnActive)return;
+  const snap=heroTurnSnapshot;heroTurnActive=false;heroButtonsAbsentVotes=0;heroTurnSnapshot=null;
+  if(snap){
+    snap.actionId=++actionSeq;
+    if(snap.street==='preflop'&&!heroPreflopActionCommitted){
+      inferHeroPositionFromManualTurn(true);heroPositionLocked=true;
+      snap.contribution=heroContributionForStreet('preflop');
+      heroPreflopActionCommitted=true;heroFirstPreflopTurnId=snap.actionId;handTableSize=tableSizeNow();heroPositionSource='ordem manual · turno confirmado';
+      rebuildManualSeatPositions();
+    }
+    clearTimeout(pendingHeroFinalizeTimer);
+    pendingHeroFinalizeTimer=setTimeout(()=>finalizeHeroAction(snap,0),260);
+  }
+  state.legalActions=[];legalActionsAt=0;localHeroLegalActions=[];lastLocalLegalAt=0;clearToCall('fim-turno');
+  invalidateDecision('fim da sua vez');
+}`;
+
+const NEW_MANUAL_CONTEXT=`function manualPreflopContext(){
+  const map=seatMap();
+  const heroPre=heroActions.filter(a=>a.street==='preflop').sort((a,b)=>a.id-b.id);
+  const heroHadTurn=heroPreflopActionCommitted||heroPre.length>0;
+  const lastHeroId=heroPre.length?heroPre[heroPre.length-1].id:(heroFirstPreflopTurnId??-Infinity);
+  const facing=manualActions.filter(a=>a.street==='preflop'&&a.id>lastHeroId).sort((a,b)=>a.id-b.id);
+  let raises=[],calls=0;
+  for(const a of facing){const pos=map[a.seatId]||null;if(a.action==='RAISE'||a.action==='ALLIN')raises.push({pos,action:a.action,amount:a.amount,id:a.id});else if(a.action==='CALL')calls++;}
+  if(heroHadTurn)return{node:null,versus:raises.at(-1)?.pos||null,multiway:true,raises,calls,heroActed:true,source:'manual-continuation'};
+  const preRows=manualActions.filter(a=>a.street==='preflop');
+  const missing=preRows.length===0?unrecordedPreflopEvidence():null;
+  if(missing)return{node:null,versus:null,multiway:false,raises,calls,heroActed:false,pendingManual:true,reason:missing,source:'manual-pending'};
+  if(raises.length===0&&calls===0)return{node:'rfi',versus:null,multiway:false,raises,calls,heroActed:false,source:'manual-map'};
+  if(raises.length===1&&calls===0&&raises[0].pos)return{node:'vs_open',versus:raises[0].pos,multiway:false,raises,calls,heroActed:false,source:'manual-map'};
+  return{node:null,versus:raises.at(-1)?.pos||null,multiway:calls>0||raises.length>1,raises,calls,heroActed:false,source:'manual-complex'};
+}`;
+
+const NEW_COMPLEX=`function complexPreflopSafetyDecision(effective,pre){
+  const legal=new Set((effective.legalActions||[]).map(x=>String(x).toUpperCase()));
+  const hc=localHandCode(effective.heroCards);if(!hc)return null;
+  const raises=pre?.raises?.length||0,calls=pre?.calls||0;
+  const premiums=new Set(['QQ','KK','AA','AKs','AKo']);
+  const strongCall=new Set(['TT','JJ','QQ','KK','AA','AQs','AKs','AKo']);
+  if(raises>=2){
+    if(premiums.has(hc)&&(legal.has('RAISE')||legal.has('ALLIN')))return {decision:legal.has('RAISE')?'AUMENTAR':'ALL-IN',engine:'PREFLOP COMPLEXO · HEURÍSTICA PREMIUM',confidence:55,reason:hc+' enfrenta múltiplas agressões; apenas faixa premium recebe ação automática neste node não certificado.'};
+    if(strongCall.has(hc)&&legal.has('CALL'))return {decision:'PAGAR',engine:'PREFLOP COMPLEXO · HEURÍSTICA PREMIUM',confidence:48,reason:hc+' pode continuar, mas o node ainda não possui chart exato; decisão conservadora sem inventar fold.'};
+    return null;
+  }
+  if(raises===1&&calls>0){
+    if(premiums.has(hc)&&legal.has('RAISE'))return {decision:'AUMENTAR',engine:'PREFLOP MULTIWAY · HEURÍSTICA PREMIUM',confidence:52,reason:hc+' é premium contra raise + call(s); squeeze/valor é a única automação permitida neste node.'};
+    if(strongCall.has(hc)&&legal.has('CALL'))return {decision:'PAGAR',engine:'PREFLOP MULTIWAY · HEURÍSTICA PREMIUM',confidence:46,reason:hc+' mantém força para continuar; node não certificado, sem fold automático.'};
+    return null;
+  }
+  if(raises===0&&calls>0){
+    if(legal.has('CHECK')&&effectivePosition()==='BB')return {decision:'PASSAR',engine:'PREFLOP · BB COM LIMP(S)',confidence:65,reason:'Check grátis confirmado localmente no BB; não é fallback genérico.'};
+    return null;
+  }
+  return null;
+}`;
+
+const NEW_POST_FALLBACK=`function finalPostflopEmergencyDecision(effective,reason='policy sem decisão'){
+  return null;
+}`;
+
+const NEW_GATE=`function gate(){
+  if(manualResetRequired)return 'RESETAR MÃO';
+  if(localHeroIsAuthoritative())state.heroPresence='present';
+  if(state.heroPresence!=='present'||state.heroCards.length!==2)return 'sua mão';
+  const localFresh=localHeroLegalActions.length&&Date.now()-lastLocalLegalAt<900;
+  if(localFresh){state.legalActions=[...localHeroLegalActions];legalActionsAt=Date.now();}
+  const legalFresh=state.legalActions.length&&Date.now()-legalActionsAt<1400;
+  if(legalFresh&&!heroTurnActive)beginHeroTurn(Date.now(),'gate-botões-confirmados');
+  if(!legalFresh){kickHeroTurnScan();return 'sua vez / botões disponíveis';}
+  if(currentStreet()==='preflop'&&!heroPreflopActionCommitted){
+    preflopButtonPositionOverride();
+    const now=Date.now();if(!heroTurnDetectedAt)heroTurnDetectedAt=now;
+    const quietFrom=Math.max(heroTurnDetectedAt,lastManualActionAt||0);
+    if(now-quietFrom<MANUAL_SEQUENCE_SETTLE_MS){scheduleBrain(MANUAL_SEQUENCE_SETTLE_MS+70-(now-quietFrom));return 'finalizar a sequência manual dos adversários';}
+    const evidence=unrecordedPreflopEvidence();
+    if(evidence&&!manualActions.some(a=>a.street==='preflop'))return 'registrar ações anteriores · '+evidence;
+    const unresolved=unresolvedAggressions().filter(a=>a.street==='preflop');
+    if(unresolved.length)return 'valor do aumento/all-in anterior';
+    inferHeroPositionFromManualTurn(true);reconcileManualPreflopTruth({mutateLegal:true,logChanges:false});
+  }
+  if(!state.blinds){kickHeroTurnScan();return 'blinds';}
+  let legal=new Set(state.legalActions.map(a=>String(a).toUpperCase()));
+  if(currentStreet()==='preflop'){reconcileManualPreflopTruth({mutateLegal:true,logChanges:false});legal=new Set(state.legalActions.map(a=>String(a).toUpperCase()));}
+  if(legal.has('CALL'))deriveHeroToCallFromManual();
+  if(legal.has('CALL')&&num(state.toCall)==null)return 'valor para pagar';
+  if(state.board.length&&state.pot==null)return 'pote';
+  return null;
+}`;
+
+function patch(src){
+  if(!src.includes('SSJ POKER · MANUAL V20'))throw new Error('Esse arquivo não parece ser a V20 esperada.');
+  src=src.replaceAll('MANUAL V20','MANUAL V21').replace('<title>SSJ Poker · Modo Manual V14</title>','<title>SSJ Poker · Modo Manual V21</title>');
+  src=replaceOnce(src,"let localButtonsLikely=false,lastLocalButtonsAt=0,remoteVisionBlockedUntil=0,remoteVisionNoCredits=false,remoteVisionBlockLogged=false;","let localButtonsLikely=false,lastLocalButtonsAt=0,remoteVisionBlockedUntil=0,remoteVisionNoCredits=false,remoteVisionBlockLogged=false;\nlet localHeroLegalActions=[],lastLocalLegalAt=0,localLegalCandidateKey='',localLegalCandidateVotes=0,localNoButtonsVotes=0,stateVersion=0,lastInvalidateReason='';",'vars locais V21');
+  src=replaceOnce(src,"function log(msg){$('log').textContent=new Date().toLocaleTimeString()+' '+msg+'\\n'+$('log').textContent.slice(0,5000)}","function log(msg){$('log').textContent=new Date().toLocaleTimeString()+' '+msg+'\\n'+$('log').textContent.slice(0,5000)}\nfunction invalidateDecision(reason='estado mudou'){stateVersion++;lastBrainKey='';lastInvalidateReason=reason;try{brainController?.abort()}catch{}brainController=null;if(!['RESETAR MÃO'].includes($('decision').textContent)){$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO ATUALIZADO';$('reason').textContent='Recalculando: '+reason+'.';}}\nfunction unrecordedPreflopEvidence(){if(currentStreet()!=='preflop'||manualActions.some(a=>a.street==='preflop'))return null;const bb=bigBlind(),pot=num(state.pot),tc=num(state.toCall),legal=new Set((state.legalActions||[]).map(x=>String(x).toUpperCase()));if(bb!=null&&pot!=null&&pot>bb*1.80+0.0001)return 'pote '+money(pot)+' indica ação antes do Hero';if(bb!=null&&tc!=null&&tc>bb*1.05+0.0001)return 'para pagar '+money(tc)+' indica agressão anterior';if(legal.has('CALL')&&effectivePosition()==='UTG'&&bb!=null&&pot!=null&&pot>bb*1.60)return 'CALL + pote alterado incompatível com unopened';return null;}\nfunction decisionCode(v){const x=String(v||'').toUpperCase();return ({'DESISTIR':'FOLD','FOLD':'FOLD','PASSAR':'CHECK','CHECK':'CHECK','PAGAR':'CALL','CALL':'CALL','APOSTAR':'BET','BET':'BET','AUMENTAR':'RAISE','RAISE':'RAISE','ALL-IN':'ALLIN','ALLIN':'ALLIN'})[x]||null;}\nfunction decisionIsLegal(d,effective){const code=decisionCode(d?.decision);if(!code)return true;return new Set((effective.legalActions||[]).map(x=>String(x).toUpperCase())).has(code);}",'helpers V21');
+  src=replaceFunction(src,'localButtonsPresence',LOCAL_ACTION_FUNCS);
+  src=replaceFunction(src,'localVideoTick',NEW_LOCAL_TICK);
+  src=replaceFunction(src,'endHeroTurn',NEW_END_TURN);
+  src=replaceFunction(src,'manualPreflopContext',NEW_MANUAL_CONTEXT);
+  src=replaceFunction(src,'complexPreflopSafetyDecision',NEW_COMPLEX);
+  src=replaceFunction(src,'finalPostflopEmergencyDecision',NEW_POST_FALLBACK);
+  src=replaceFunction(src,'gate',NEW_GATE);
+  src=replaceOnce(src,"const incoming=Array.isArray(x.legalActions)?x.legalActions:[];","let incoming=Array.isArray(x.legalActions)?x.legalActions:[];\n    if(localHeroLegalActions.length&&Date.now()-lastLocalLegalAt<900)incoming=[...localHeroLegalActions];",'actions local soberano');
+  src=replaceOnce(src,"if(Array.isArray(x.legalActions)&&x.legalActions.length&&(at-lastActionsScopeAt>900||heroTurnActive)){","if(Array.isArray(x.legalActions)&&x.legalActions.length&&Date.now()-lastLocalLegalAt>900&&(at-lastActionsScopeAt>900||heroTurnActive)){",'quick/meta não pisa local');
+  src=replaceOnce(src,"brainBusy=true;const requestSeq=++brainRequestSeq,requestEpoch=handEpoch;","brainBusy=true;const requestSeq=++brainRequestSeq,requestEpoch=handEpoch,requestStateVersion=stateVersion;",'brain state version');
+  src=replaceOnce(src,"if(requestEpoch!==handEpoch||requestSeq!==brainRequestSeq){log('DROP decisão Brain da mão/estado anterior');return;}","if(requestEpoch!==handEpoch||requestSeq!==brainRequestSeq||requestStateVersion!==stateVersion){log('DROP decisão Brain da mão/estado anterior');return;}\n    if(d?.decision&&!decisionIsLegal(d,effective)){log('DROP decisão ILEGAL '+d.decision+' · ações atuais '+effective.legalActions.join('/'));d={decision:null,engine:'INTEGRIDADE V21',reason:'A recomendação anterior não existe entre os botões atuais. Estado invalidado; aguardando nova leitura.',confidence:0};}",'drop decisão ilegal');
+  src=replaceOnce(src,"if(requestEpoch!==handEpoch||requestSeq!==brainRequestSeq||e?.name==='AbortError')return;","if(requestEpoch!==handEpoch||requestSeq!==brainRequestSeq||requestStateVersion!==stateVersion||e?.name==='AbortError')return;",'catch state version');
+  src=replaceOnce(src,"if(localButtonsLikely&&!remoteVisionUnavailable())await lane('actions',()=>crop(.38,.55,.61,.44,1.45,.76));","if(localButtonsLikely&&Date.now()-lastLocalLegalAt>850&&!remoteVisionUnavailable())await lane('actions',()=>crop(.38,.55,.61,.44,1.45,.76));",'actions remoto apenas fallback');
+  src=replaceOnce(src,"log('Replay iniciado V20 · HISTÓRICO MANUAL SOBERANO · STATE GUARDS');","log('Replay iniciado V21 · BOTÕES LOCAIS SOBERANOS · SEM FALLBACK ILEGAL · STATE VERSION');",'log V21');
+  src=replaceOnce(src,"$('decision').textContent=d?.decision||'SEM DICA';","$('decision').textContent=d?.decision||'SEM DICA';",'sanity decision');
+  return src;
+}
+
+$('go').onclick=async()=>{out.textContent='iniciando…';try{const f=$('f').files[0];if(!f)throw new Error('Selecione a V20 primeiro.');let src=await f.text();say('V20 lida: '+Math.round(src.length/1024)+' KB');src=patch(src);say('Patches aplicados.');const blob=new Blob([src],{type:'text/html;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='SSJ_Poker_Manual_V21.html';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);say('V21 gerada e baixada.');say('Principais travas: botões locais exatos, sem PASSAR fantasma, sem RFI quando o pote prova ação anterior, sem decisão com raise pendente, sem fallback pós-flop cego, decisão remota stale descartada.');}catch(e){say('ERRO: '+e.message);console.error(e)}};
+</script></body></html>

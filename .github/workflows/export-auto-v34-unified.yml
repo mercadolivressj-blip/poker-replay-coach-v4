@@ -1,0 +1,45 @@
+name: Export AUTO V34 Unified
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - standalone-lab/ssj-poker-auto-v34-unified.html
+      - tests/auto-v34-unified.test.mjs
+      - tools/holdout/pokerstars_v11_scanner.py
+      - tools/holdout/certify_v11_suite.py
+      - standalone-lab/calibration/six-video-v11-certification.json
+      - .github/workflows/export-auto-v34-unified.yml
+
+jobs:
+  validate-and-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate unified runtime and scanner
+        run: |
+          node tests/auto-v34-unified.test.mjs
+          python3 -m py_compile tools/holdout/pokerstars_v11_scanner.py tools/holdout/certify_v11_suite.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, re
+          html=Path('standalone-lab/ssj-poker-auto-v34-unified.html').read_text(encoding='utf-8')
+          module=re.search(r'<script type="module">(.*?)</script>',html,re.S)
+          assert module, 'module runtime missing'
+          Path('/tmp/ssj-auto-v34.mjs').write_text(module.group(1),encoding='utf-8')
+          cert=json.loads(Path('standalone-lab/calibration/six-video-v11-certification.json').read_text())
+          assert cert['totals']['hands']==108
+          assert cert['totals']['heroDecisions']==246
+          PY
+          node --check /tmp/ssj-auto-v34.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SSJ-Poker-AUTO-V34-UNIFIED
+          path: standalone-lab/ssj-poker-auto-v34-unified.html
+          retention-days: 14

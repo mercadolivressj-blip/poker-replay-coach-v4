@@ -1,0 +1,23 @@
+name: Test AUTO V22
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+  workflow_dispatch:
+jobs:
+  auto-v22:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Automatic action runtime integrity
+        run: node tests/action-auto-v22.test.mjs
+      - name: Existing local action shadow regressions
+        run: |
+          node tests/action-capture-v1.test.mjs
+          node tests/action-band-v1.test.mjs
+          node tests/action-seat-state-v1.test.mjs
+          node tests/action-ocr-gate-v1.test.mjs
+          node tests/action-inference-v1.test.mjs
+          node tests/action-event-bridge-v1.test.mjs

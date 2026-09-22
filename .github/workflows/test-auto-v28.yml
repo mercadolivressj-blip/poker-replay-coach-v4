@@ -1,0 +1,59 @@
+name: Test AUTO V28
+
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate direct V28 HTML syntax
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('standalone-lab/ssj-poker-auto-v28-local.html').read_text(encoding='utf-8')
+          assert 'V28 DIRETA carregada · sem wrapper' in s
+          assert 'BOARD RECOVERY' in s
+          assert '/api/vision/read' not in s.replace('Sem /api/vision/read.','')
+          m=re.search(r'<script type="module">(.*?)</script>',s,re.S)
+          assert m, 'module script missing'
+          Path('/tmp/v28.mjs').write_text(m.group(1),encoding='utf-8')
+          print('V28 direct guards OK')
+          PY
+          node --check /tmp/v28.mjs
+          node --check src/brain/postflop-policy-v4-browser-safe.js
+      - name: Import module graph
+        run: |
+          node --input-type=module - <<'JS'
+          const roots=[
+            './src/core/pokerstars-local-cards.js',
+            './src/core/geometry.js',
+            './src/core/action-capture.js',
+            './src/core/action-band.js',
+            './src/core/action-ocr.js',
+            './src/core/dealer-button.js',
+            './src/brain/preflop.js',
+            './src/brain/postflop-policy-v4-browser-safe.js',
+          ];
+          for(const p of roots){await import(p);console.log('OK',p)}
+          JS
+      - name: Test postflop regression spots
+        run: |
+          node --input-type=module - <<'JS'
+          import {postflopPolicyV4Decision} from './src/brain/postflop-policy-v4-browser-safe.js';
+          const a5=postflopPolicyV4Decision({heroCards:['Ad','5d'],board:['3d','9h','5s'],pot:.24,toCall:.10,legalActions:['FOLD','CALL','RAISE']});
+          if(a5.decision!=='PAGAR') throw new Error('A5 flop regression: '+JSON.stringify(a5));
+          const deuces=postflopPolicyV4Decision({heroCards:['2s','2h'],board:['5h','4c','Ks','3s','Ts'],pot:2.86,toCall:1.43,legalActions:['FOLD','CALL','RAISE']});
+          if(deuces.decision!=='DESISTIR') throw new Error('22 river regression: '+JSON.stringify(deuces));
+          console.log('A5 flop =>',a5.decision);
+          console.log('22 river =>',deuces.decision);
+          JS

@@ -1,0 +1,4563 @@
+[
+  {
+    "n": "flop SRP c-bet top pair",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop SRP overpair dry",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop nut flush draw",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "nut flush draw",
+      "backdoor straight",
+      "1 overcard"
+    ],
+    "rawOuts": 9,
+    "cleanOuts": 8.5,
+    "requiredEquity": 25,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop combo draw",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "flush draw",
+      "gutshot",
+      "2 overcards",
+      "combo draw"
+    ],
+    "rawOuts": 12,
+    "cleanOuts": 11.5,
+    "requiredEquity": 33.3,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop OESD sem par",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "OESD"
+    ],
+    "rawOuts": 8,
+    "cleanOuts": 8,
+    "requiredEquity": 25,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop gutshot puro",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "2 overcards"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop set em board seco",
+    "street": "flop",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop dois pares",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop top pair kicker fraco",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop monotone sem naipe",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop monotone com flush",
+    "street": "flop",
+    "category": "flush",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop paired board trips",
+    "street": "flop",
+    "category": "trinca",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop underpair",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 40,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop backdoor tudo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush",
+      "backdoor straight",
+      "1 overcard"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop ar total",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 3bet pot overpair",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 3bet pot AK whiff",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop straight feita",
+    "street": "flop",
+    "category": "sequência",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop flush feito",
+    "street": "flop",
+    "category": "flush",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop full house",
+    "street": "flop",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop segundo par",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop terceiro par",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop overcards apenas",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop gutshot com overcard",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "1 overcard"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop trinca no board",
+    "street": "flop",
+    "category": "trinca",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop wet OOP sem iniciativa",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "OESD",
+      "2 overcards"
+    ],
+    "rawOuts": 8,
+    "cleanOuts": 8,
+    "requiredEquity": 40,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop IP com iniciativa em board baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop set em board molhado",
+    "street": "flop",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "backdoor flush",
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop top two",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop bottom pair com backdoor",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor flush",
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn double gutter vivo (6 ou A)",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "double gutter"
+    ],
+    "rawOuts": 8,
+    "cleanOuts": 8,
+    "requiredEquity": 33.3,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn nut flush draw vivo",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "nut flush draw",
+      "gutshot",
+      "1 overcard",
+      "combo draw"
+    ],
+    "rawOuts": 12,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn flush draw morreu",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "1 overcard"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn top pair enfrentando barrel",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 41.7,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn overpair em board conectado",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "OESD"
+    ],
+    "rawOuts": 22,
+    "cleanOuts": 22,
+    "requiredEquity": 41.7,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn set com board de flush",
+    "street": "turn",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn straight feita",
+    "street": "turn",
+    "category": "sequência",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn nut flush draw + overcards",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "nut flush draw",
+      "1 overcard"
+    ],
+    "rawOuts": 9,
+    "cleanOuts": 8,
+    "requiredEquity": 39.1,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn gutshot barato",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 22.2,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn board pareado no turn",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn dois pares em board molhado",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 46.2,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn bluff catcher fraco",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 41.7,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn combo draw perdeu metade",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "2 overcards"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn overcard assustadora",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 41.7,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn trips com kicker",
+    "street": "turn",
+    "category": "trinca",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn full house",
+    "street": "turn",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn nuts straight",
+    "street": "turn",
+    "category": "sequência",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn segundo par enfrentando pote",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn air com backdoor morto",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn flush draw contra board pareado",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "flush draw"
+    ],
+    "rawOuts": 20,
+    "cleanOuts": 19.5,
+    "requiredEquity": 33.3,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn overpair vs board de sequência",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 50,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn top pair top kicker IP",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn gutshot vivo com K",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn nut flush draw + gutshot",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "nut flush draw",
+      "2 overcards"
+    ],
+    "rawOuts": 9,
+    "cleanOuts": 8,
+    "requiredEquity": 41.7,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn set em board monotone",
+    "street": "turn",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn showdown value médio",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 26.3,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn equity denial",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn sequência já no board",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "1 overcard"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn quadra",
+    "street": "turn",
+    "category": "quadra",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn overcards sem draw",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river OESD morreu (caso B/C)",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 21.1,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river flush completado",
+    "street": "river",
+    "category": "flush",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river missed flush draw vira blefe",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "1 overcard",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river top pair enfrentando shove",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": true
+  },
+  {
+    "n": "river bluff catcher contra 1/3",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river bluff catcher contra overbet",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river nuts straight",
+    "street": "river",
+    "category": "sequência",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river full house",
+    "street": "river",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river playing the board",
+    "street": "river",
+    "category": "sequência",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river thin value top pair",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river dois pares em board de flush",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river set em board de sequência",
+    "street": "river",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river ás alto sem par",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river blocker do flush máximo",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "1 overcard",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river board quadruplo pareado",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river straight no board",
+    "street": "river",
+    "category": "sequência",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river trips fraco",
+    "street": "river",
+    "category": "trinca",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 40,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river overpair enfrentando pote",
+    "street": "river",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river segundo par barato",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 18.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river quadra",
+    "street": "river",
+    "category": "quadra",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river flush menor",
+    "street": "river",
+    "category": "flush",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river straight flush",
+    "street": "river",
+    "category": "straight flush",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river par do board sem mão",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river top two",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river underpair",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 28.6,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river missed straight draw",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river ás bloqueador em board seco",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "1 overcard",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river trinca de bolso",
+    "street": "river",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river board monotone sem naipe",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river flush máximo",
+    "street": "river",
+    "category": "flush",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river shove enorme contra dois pares",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 75,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": true
+  },
+  {
+    "n": "river check grátis com lixo (caso I)",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river top pair vs 1/4 de pote",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 20,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river sequência baixa",
+    "street": "river",
+    "category": "sequência",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river full house do board",
+    "street": "river",
+    "category": "full house",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river par médio em board alto",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 40,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river nut flush blocker sem mão",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "1 overcard",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river value fino com top pair fraco",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river dois pares usando carta baixa",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 45.5,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river straight com blocker",
+    "street": "river",
+    "category": "sequência",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "multiway flop top pair 4-way",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "showdown value",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "multiway flop flush draw 3-way",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "flush draw",
+      "backdoor straight"
+    ],
+    "rawOuts": 9,
+    "cleanOuts": 8.5,
+    "requiredEquity": 33.3,
+    "status": "semi-bluff",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "multiway flop set 4-way",
+    "street": "flop",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "multiway turn top pair perde força",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 33.3,
+    "status": "showdown value",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "multiway river bluff catcher",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "showdown value",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "multiway river nut flush",
+    "street": "river",
+    "category": "flush",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "multiway flop blefe sem fold equity",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": true,
+    "allIn": false
+  },
+  {
+    "n": "especial: street inconsistente",
+    "street": "analisando",
+    "category": null,
+    "strength": null,
+    "draws": null,
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "indeterminado",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: sem histórico lido",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: sem posição lida",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: sem pote lido",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: botões só CHECK/BET",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: call pequeno não é all-in (caso D)",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 2.4,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: all-in real no river",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": true
+  },
+  {
+    "n": "especial: A7o não é lixo automático",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: T2s joga o flop",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "backdoor flush"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: JTo vs JTs mesma board (offsuit)",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "OESD",
+      "backdoor flush",
+      "2 overcards"
+    ],
+    "rawOuts": 8,
+    "cleanOuts": 8,
+    "requiredEquity": null,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: JTs mesma board (suited)",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "flush draw",
+      "OESD",
+      "2 overcards",
+      "combo draw"
+    ],
+    "rawOuts": 15,
+    "cleanOuts": 14.5,
+    "requiredEquity": null,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: SPR baixo compromete stack",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "especial: SPR alto pede controle",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 31: AKs em A72r seco",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 32: AKo em KQ9 duas cores",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 33: JTs em 984 two-tone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "flush draw",
+      "OESD",
+      "2 overcards",
+      "combo draw"
+    ],
+    "rawOuts": 15,
+    "cleanOuts": 14.5,
+    "requiredEquity": 33.3,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 34: JTo em T72 monotone",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 10.5,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 35: 77 em QQ5 pareado alto",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 36: QQ em 652 baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 37: A7o em JT8 conectado",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "1 overcard"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 38: T2s em AK4 broadway",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 39: 42o em 883 pareado baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 40: 53s em 742 disperso",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "double gutter"
+    ],
+    "rawOuts": 8,
+    "cleanOuts": 8,
+    "requiredEquity": 25,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 41: 98s em A72r seco",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 42: KQo em KQ9 duas cores",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.9,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 43: AKo em 984 two-tone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 44: JTs em T72 monotone",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 10.5,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 45: JTo em QQ5 pareado alto",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 46: 77 em 652 baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 47: QQ em JT8 conectado",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 15,
+    "cleanOuts": 15,
+    "requiredEquity": 33.3,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 48: A7o em AK4 broadway",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 42.9,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 49: T2s em 883 pareado baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 50: 53s em A72r seco",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "backdoor flush"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 51: 98s em KQ9 duas cores",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor flush",
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 52: KQo em 984 two-tone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 53: AKs em 984 two-tone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 54: AKo em T72 monotone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 55: JTs em QQ5 pareado alto",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush",
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 56: JTo em 652 baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 57: 77 em JT8 conectado",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 15,
+    "cleanOuts": 15,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 58: QQ em AK4 broadway",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 59: A7o em 883 pareado baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 60: T2s em 742 disperso",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 61: 42o em A72r seco",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 62: 53s em KQ9 duas cores",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 63: 98s em 984 two-tone",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "backdoor flush"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 64: KQo em T72 monotone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 65: AKs em T72 monotone",
+    "street": "flop",
+    "category": "flush",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.9,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 66: AKo em QQ5 pareado alto",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 67: JTs em 652 baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor flush",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 68: JTo em JT8 conectado",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 69: 77 em AK4 broadway",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 70: QQ em 883 pareado baixo",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 71: A7o em 742 disperso",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 72: 42o em KQ9 duas cores",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 73: 53s em 984 two-tone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 74: 98s em T72 monotone",
+    "street": "flop",
+    "category": "flush",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 75: AKs em QQ5 pareado alto",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 76: AKo em 652 baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 77: JTs em JT8 conectado",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "backdoor flush",
+      "backdoor straight"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 78: JTo em AK4 broadway",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 79: 77 em 883 pareado baixo",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 80: QQ em 742 disperso",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 25,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 81: T2s em KQ9 duas cores",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "backdoor flush"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 82: 42o em 984 two-tone",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "backdoor flush"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 83: 53s em T72 monotone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 84: 98s em QQ5 pareado alto",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 85: KQo em 652 baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 86: AKs em 652 baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 87: AKo em JT8 conectado",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "2 overcards"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 88: JTs em AK4 broadway",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "backdoor flush"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 89: JTo em 883 pareado baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 90: QQ em A72r seco",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 91: A7o em KQ9 duas cores",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "1 overcard"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 92: T2s em 984 two-tone",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "1 overcard"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 93: 42o em T72 monotone",
+    "street": "flop",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 10.5,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 94: 98s em 652 baixo",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "2 overcards"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 95: KQo em JT8 conectado",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "OESD",
+      "2 overcards"
+    ],
+    "rawOuts": 8,
+    "cleanOuts": 8,
+    "requiredEquity": null,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 96: AKs em JT8 conectado",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "2 overcards"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 97: AKo em AK4 broadway",
+    "street": "flop",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.9,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 98: JTs em 883 pareado baixo",
+    "street": "flop",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 99: JTo em 742 disperso",
+    "street": "flop",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "backdoor straight",
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "flop 100: 77 em A72r seco",
+    "street": "flop",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 31: AKs em A72r seco + 2d",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 32: JTs em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "flush draw",
+      "OESD",
+      "combo draw"
+    ],
+    "rawOuts": 28,
+    "cleanOuts": 27.5,
+    "requiredEquity": 42.9,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 33: JTo em T72 monotone + Ah",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 13,
+    "cleanOuts": 13,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 34: 77 em QQ5 pareado alto + 5h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 35: QQ em 652 baixo + Td",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 33.3,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 36: A7o em JT8 conectado + 3c",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot",
+      "1 overcard"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 37: T2s em AK4 broadway + Js",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 4,
+    "cleanOuts": 4,
+    "requiredEquity": 20,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 38: 42o em 883 pareado baixo + 6h",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 15,
+    "cleanOuts": 15,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 39: 53s em 742 disperso + 4s",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "double gutter"
+    ],
+    "rawOuts": 19,
+    "cleanOuts": 19,
+    "requiredEquity": 33.3,
+    "status": "semi-bluff",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 40: 98s em A72r seco + 2d",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 41: KQo em KQ9 duas cores + Kc",
+    "street": "turn",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 20,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 42: AKo em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 43: JTs em T72 monotone + Ah",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 13,
+    "cleanOuts": 13,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 44: JTo em QQ5 pareado alto + 5h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 45: 77 em 652 baixo + Td",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 46: QQ em JT8 conectado + 3c",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão forte",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 18,
+    "cleanOuts": 18,
+    "requiredEquity": 42.9,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 47: A7o em AK4 broadway + Js",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 20,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 48: T2s em 883 pareado baixo + 6h",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 49: 53s em A72r seco + 2d",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 10,
+    "cleanOuts": 10,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 50: 98s em KQ9 duas cores + Kc",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 51: KQo em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 52: AKs em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 42.9,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 53: AKo em T72 monotone + Ah",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 13,
+    "cleanOuts": 13,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 54: JTs em QQ5 pareado alto + 5h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 55: 77 em JT8 conectado + 3c",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 18,
+    "cleanOuts": 18,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 56: QQ em AK4 broadway + Js",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 18,
+    "cleanOuts": 18,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 57: A7o em 883 pareado baixo + 6h",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 58: T2s em 742 disperso + 4s",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 59: 53s em KQ9 duas cores + Kc",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 6,
+    "cleanOuts": 6,
+    "requiredEquity": 20,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 60: 98s em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 61: KQo em T72 monotone + Ah",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 3,
+    "cleanOuts": 3,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 62: AKo em QQ5 pareado alto + 5h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 63: JTs em 652 baixo + Td",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 33.3,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 64: JTo em JT8 conectado + 3c",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.9,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 65: 77 em AK4 broadway + Js",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 14,
+    "cleanOuts": 14,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 66: QQ em 883 pareado baixo + 6h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 67: A7o em 742 disperso + 4s",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 68: 42o em KQ9 duas cores + Kc",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 6,
+    "cleanOuts": 6,
+    "requiredEquity": 20,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 69: 53s em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": 11,
+    "cleanOuts": 11,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 70: 98s em T72 monotone + Ah",
+    "street": "turn",
+    "category": "flush",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 71: AKs em QQ5 pareado alto + 5h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 72: AKo em 652 baixo + Td",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards"
+    ],
+    "rawOuts": 0,
+    "cleanOuts": 0,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 73: JTs em JT8 conectado + 3c",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "flush draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.9,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 74: JTo em AK4 broadway + Js",
+    "street": "turn",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 18,
+    "cleanOuts": 18,
+    "requiredEquity": 20,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 75: 77 em 883 pareado baixo + 6h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 76: QQ em 742 disperso + 4s",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 33.3,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 77: T2s em KQ9 duas cores + Kc",
+    "street": "turn",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 15,
+    "cleanOuts": 15,
+    "requiredEquity": 20,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 78: 42o em 984 two-tone + 9s",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 79: 53s em T72 monotone + Ah",
+    "street": "turn",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "gutshot"
+    ],
+    "rawOuts": 3,
+    "cleanOuts": 3,
+    "requiredEquity": 33.3,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "turn 80: 98s em QQ5 pareado alto + 5h",
+    "street": "turn",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "sem draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 42.9,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 41: AKs em A72r seco + 2d 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 42: JTs em 984 two-tone + 9s 8s",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 43: 77 em QQ5 pareado alto + 5h Kd",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 44: QQ em 652 baixo + Td Th",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 45: T2s em AK4 broadway + Js 5d",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 46: 42o em 883 pareado baixo + 6h Ac",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 47: 53s em 742 disperso + 4s 9d",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 48: 98s em A72r seco + 2d 3d",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 49: KQo em KQ9 duas cores + Kc Qc",
+    "street": "river",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 50: AKo em 984 two-tone + 9s Kd",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 51: JTo em QQ5 pareado alto + 5h 7c",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 52: QQ em JT8 conectado + 3c Ac",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 53: A7o em AK4 broadway + Js 9d",
+    "street": "river",
+    "category": "par",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 54: T2s em 883 pareado baixo + 6h 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 55: 53s em A72r seco + 2d 8s",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 56: 98s em KQ9 duas cores + Kc 2h",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 57: KQo em 984 two-tone + 9s Kd",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 58: AKs em 984 two-tone + 9s 7c",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 59: AKo em T72 monotone + Ah 5d",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 60: JTs em QQ5 pareado alto + 5h Ac",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 61: 77 em JT8 conectado + 3c 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 62: QQ em AK4 broadway + Js Qc",
+    "street": "river",
+    "category": "trinca",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 63: A7o em 883 pareado baixo + 6h 8s",
+    "street": "river",
+    "category": "trinca",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 64: 53s em KQ9 duas cores + Kc Th",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 65: 98s em 984 two-tone + 9s 7c",
+    "street": "river",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 66: KQo em T72 monotone + Ah 5d",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 67: AKo em QQ5 pareado alto + 5h 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 68: JTs em 652 baixo + Td Qc",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 69: JTo em JT8 conectado + 3c 8s",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 70: 77 em AK4 broadway + Js 2h",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 71: QQ em 883 pareado baixo + 6h Kd",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 72: A7o em 742 disperso + 4s Th",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 73: 42o em KQ9 duas cores + Kc 5d",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 74: 53s em 984 two-tone + 9s Ac",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 75: 98s em T72 monotone + Ah 9d",
+    "street": "river",
+    "category": "flush",
+    "strength": "mão média / showdown value",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "thin value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 76: AKs em QQ5 pareado alto + 5h 8s",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 77: AKo em 652 baixo + Td 2h",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 78: JTs em JT8 conectado + 3c Kd",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 79: JTo em AK4 broadway + Js Th",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 80: 77 em 883 pareado baixo + 6h 7c",
+    "street": "river",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 81: QQ em 742 disperso + 4s 5d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 82: 42o em 984 two-tone + 9s 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 83: 53s em T72 monotone + Ah Qc",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 84: 98s em QQ5 pareado alto + 5h 8s",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 85: KQo em 652 baixo + Td 2h",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 86: AKs em 652 baixo + Td Th",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 87: AKo em JT8 conectado + 3c 7c",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 88: JTs em AK4 broadway + Js 5d",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 89: JTo em 883 pareado baixo + 6h Ac",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 90: QQ em A72r seco + 2d 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 91: A7o em KQ9 duas cores + Kc Qc",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 92: T2s em 984 two-tone + 9s 8s",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 93: 98s em 652 baixo + Td Th",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 94: KQo em JT8 conectado + 3c 7c",
+    "street": "river",
+    "category": "carta alta",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "2 overcards",
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 95: AKs em JT8 conectado + 3c Ac",
+    "street": "river",
+    "category": "par",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 96: AKo em AK4 broadway + Js 9d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "mão forte",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 60,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 97: JTs em 883 pareado baixo + 6h 3d",
+    "street": "river",
+    "category": "dois pares",
+    "strength": "bluff catcher",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff catcher",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 98: JTo em 742 disperso + 4s Qc",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 25,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 99: 77 em A72r seco + 2d 8s",
+    "street": "river",
+    "category": "full house",
+    "strength": "nuts ou quase nuts",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": 50,
+    "status": "strong value",
+    "multiway": false,
+    "allIn": false
+  },
+  {
+    "n": "river 100: A7o em 984 two-tone + 9s Kd",
+    "street": "river",
+    "category": "par",
+    "strength": "mão fraca / sem showdown",
+    "draws": [
+      "river: não existe mais draw"
+    ],
+    "rawOuts": null,
+    "cleanOuts": null,
+    "requiredEquity": null,
+    "status": "bluff puro",
+    "multiway": false,
+    "allIn": false
+  }
+]

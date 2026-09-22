@@ -12,4 +12,38 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: npm test
+      - run: python3 -m py_compile tests/offline_video*.py tools/offline_vision/*.py
       - run: node tests/runtime-contract.test.mjs
+      - run: node tests/brain-v1.test.mjs
+      - run: node tests/brain-api-policy-status.test.mjs
+      - run: node tests/hand-transition-v1.test.mjs
+      - run: node tests/metadata-trigger-v1.test.mjs
+      - run: node tests/action-capture-v1.test.mjs
+      - run: node tests/action-band-v1.test.mjs
+      - run: node tests/action-seat-state-v1.test.mjs
+      - run: node tests/action-ocr-gate-v1.test.mjs
+      - run: node tests/action-event-bridge-v1.test.mjs
+      - run: node tests/observed-ledger-v1.test.mjs
+      - run: node tests/metadata-finance-v1.test.mjs
+      - run: node tests/seat-identity-v1.test.mjs
+      - run: node tests/action-inference-v1.test.mjs
+      - run: node tests/action-text-v1.test.mjs
+      - run: node tests/action-ledger-v1.test.mjs
+      - run: node tests/real-replay-action-parser-v1.test.mjs
+      - run: node tests/real-replay-runtime-v1.test.mjs
+      - run: node tests/action-source-v1.test.mjs
+      - run: node tests/study-session-v1.test.mjs
+      - run: node tests/study-runtime-v1.test.mjs
+      - run: node tests/study-sizing-v1.test.mjs
+      - run: node tests/study-lab-v1.smoke.mjs
+      - run: node tests/study-public-runtime-v1.test.mjs
+      - run: node tests/player-model-v1.test.mjs
+      - run: node tests/brain-knowledge-v1.test.mjs
+      - run: node tests/strategy-v1-preflop.test.mjs
+      - run: node tests/replay-preflop-context.test.mjs
+      - run: node tests/mtt-icm-audit.test.mjs
+      - run: node tests/strategy-v1-policy-artifact.test.mjs
+      - run: node tests/strategy-v1-frozen-source-integrity.test.mjs
+      - run: node tests/strategy-v1-policy-port.test.mjs
+      - run: node tests/strategy-v1-policy-adapter.test.mjs
+      - run: node tests/strategy-v1-postflop-gate.test.mjs

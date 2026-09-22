@@ -1,0 +1,116 @@
+/**
+ * Classificação determinística da textura do board.
+ * Só descreve o que as cartas comunitárias são — não decide nada sozinha.
+ */
+import { rankChar, type Card } from "./cards";
+
+export type BoardTexture = {
+  street: "flop" | "turn" | "river";
+  /** rainbow | two-tone | monotone */
+  suitPattern: "rainbow" | "two-tone" | "monotone";
+  paired: boolean;
+  doublePaired: boolean;
+  trips: boolean;
+  connected: boolean;
+  disconnected: boolean;
+  /** Possibilidade de flush já completo no board (4+ do mesmo naipe). */
+  flushPossible: boolean;
+  straightPossible: boolean;
+  /** dry/wet a partir de quantos draws o board oferece. */
+  wetness: "dry" | "semi-wet" | "wet";
+  /** static = pouca chance de a melhor mão mudar; dynamic = muda com frequência. */
+  dynamism: "static" | "dynamic";
+  highCard: number;
+  profile: "high-card" | "low-card" | "broadway-heavy" | "misto";
+  labels: string[];
+  text: string;
+};
+
+const combos = <T>(arr: T[], k: number): T[][] => {
+  if (k === 0) return [[]];
+  const out: T[][] = [];
+  arr.forEach((v, i) => combos(arr.slice(i + 1), k - 1).forEach((rest) => out.push([v, ...rest])));
+  return out;
+};
+
+/** Existe alguma mão de 2 cartas que forma sequência com este board? */
+const straightAvailable = (ranks: number[]): boolean => {
+  const set = new Set(ranks);
+  if (set.has(14)) set.add(1);
+  for (let low = 1; low <= 10; low++) {
+    const window = [low, low + 1, low + 2, low + 3, low + 4];
+    if (window.filter((r) => set.has(r)).length >= 3) return true;
+  }
+  return false;
+};
+
+export const classifyBoard = (board: Card[]): BoardTexture | null => {
+  const n = board.length;
+  if (n !== 3 && n !== 4 && n !== 5) return null;
+  const street = n === 3 ? "flop" : n === 4 ? "turn" : "river";
+  const ranks = board.map((c) => c.rank);
+  const suits = board.map((c) => c.suit);
+
+  const suitCounts = new Map<string, number>();
+  for (const s of suits) suitCounts.set(s, (suitCounts.get(s) ?? 0) + 1);
+  const maxSuit = Math.max(...suitCounts.values());
+  const suitPattern = maxSuit >= n ? "monotone" : maxSuit >= 2 ? "two-tone" : "rainbow";
+  const flushPossible = maxSuit >= 4;
+
+  const rankCounts = new Map<number, number>();
+  for (const r of ranks) rankCounts.set(r, (rankCounts.get(r) ?? 0) + 1);
+  const pairsOnBoard = [...rankCounts.values()].filter((c) => c === 2).length;
+  const trips = [...rankCounts.values()].some((c) => c >= 3);
+  const paired = pairsOnBoard >= 1 || trips;
+  const doublePaired = pairsOnBoard >= 2;
+
+  const sorted = [...new Set(ranks)].sort((a, b) => a - b);
+  let tightGaps = 0;
+  for (let i = 1; i < sorted.length; i++) if (sorted[i]! - sorted[i - 1]! <= 2) tightGaps++;
+  const connected = tightGaps >= 2 || (sorted.length >= 2 && sorted.some((r, i) => i > 0 && r - sorted[i - 1]! === 1 && tightGaps >= 1));
+  const straightPossible = straightAvailable(ranks);
+
+  let drawScore = 0;
+  if (suitPattern === "two-tone") drawScore += maxSuit >= 3 ? 2 : 1;
+  if (suitPattern === "monotone") drawScore += 2;
+  if (straightPossible) drawScore += 1;
+  if (connected) drawScore += 1;
+  if (paired) drawScore -= 1;
+  const wetness = drawScore >= 3 ? "wet" : drawScore >= 1 ? "semi-wet" : "dry";
+  // No river não há carta futura: a mão feita não muda mais.
+  const dynamism = street === "river" ? "static" : wetness === "dry" ? "static" : "dynamic";
+
+  const highCard = Math.max(...ranks);
+  const broadway = ranks.filter((r) => r >= 10).length;
+  const profile =
+    broadway >= 2 ? "broadway-heavy" : highCard >= 12 ? "high-card" : highCard <= 9 ? "low-card" : "misto";
+
+  const labels = [
+    suitPattern,
+    paired ? (doublePaired ? "double-paired" : trips ? "trips no board" : "paired") : "unpaired",
+    connected ? "connected" : "disconnected",
+    wetness,
+    dynamism,
+    profile,
+  ];
+  if (flushPossible) labels.push("flush possível no board");
+  if (straightPossible) labels.push("sequência possível");
+
+  return {
+    street,
+    suitPattern,
+    paired,
+    doublePaired,
+    trips,
+    connected,
+    disconnected: !connected,
+    flushPossible,
+    straightPossible,
+    wetness,
+    dynamism,
+    highCard,
+    profile,
+    labels,
+    text: `${board.map((c) => `${rankChar(c.rank)}${c.suit}`).join(" ")} — ${labels.join(", ")}.`,
+  };
+};

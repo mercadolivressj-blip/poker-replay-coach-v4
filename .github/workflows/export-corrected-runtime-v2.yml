@@ -1,0 +1,24 @@
+name: export corrected study runtime v2
+on:
+  workflow_dispatch:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - .github/workflows/export-corrected-runtime-v2.yml
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - name: Prepare V2 HTML
+        run: |
+          cp standalone-lab/study-runtime-public-v1.html SSJ_Poker_Study_Runtime_CORRIGIDO_V2.html
+          grep -q "posição derivada.*dealer local" SSJ_Poker_Study_Runtime_CORRIGIDO_V2.html
+          grep -q "detectDealerButtonSeat" SSJ_Poker_Study_Runtime_CORRIGIDO_V2.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssj-study-runtime-corrigido-v2
+          path: SSJ_Poker_Study_Runtime_CORRIGIDO_V2.html
+          retention-days: 7

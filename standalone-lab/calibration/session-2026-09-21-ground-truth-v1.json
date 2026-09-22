@@ -1,0 +1,72 @@
+{
+  "version": "ssj-poker-session-ground-truth-2026-09-21-v1",
+  "video": "2026-09-21 11-49-44.mkv",
+  "durationSeconds": 553.0333333333333,
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "purpose": "independent-session-generalization-after-blind-pass",
+  "handCount": 14,
+  "decisionCount": 31,
+  "hands": [
+    {"hand":1,"start":51.4,"end":91.9,"heroCards":["Qh","3h"],"dealer":"top","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"UTG"},
+    {"hand":2,"start":94.8,"end":113.7,"heroCards":["Ac","Tc"],"dealer":"rt","dealtSeats":["hero","lb","top","rt","rb"],"heroPosition":"BB"},
+    {"hand":3,"start":116.4,"end":138.9,"heroCards":["9c","6h"],"dealer":"rb","dealtSeats":["hero","lb","top","rt","rb"],"heroPosition":"SB"},
+    {"hand":4,"start":145.3,"end":152.6,"heroCards":["6h","2c"],"dealer":"hero","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"BTN"},
+    {"hand":5,"start":161.1,"end":205.5,"heroCards":["Ts","6h"],"dealer":"lb","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"CO"},
+    {"hand":6,"start":211.2,"end":213.7,"heroCards":["Th","6c"],"dealer":"lt","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"HJ"},
+    {"hand":7,"start":227.7,"end":231.5,"heroCards":["9h","6c"],"dealer":"top","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"UTG"},
+    {"hand":8,"start":258.1,"end":288.9,"heroCards":["Qs","5h"],"dealer":"rt","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"BB"},
+    {"hand":9,"start":294.9,"end":340.5,"heroCards":["Ac","6c"],"dealer":"rb","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"SB"},
+    {"hand":10,"start":342.0,"end":393.0,"heroCards":["Jd","Tc"],"dealer":"hero","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"BTN"},
+    {"hand":11,"start":394.6,"end":404.7,"heroCards":["7s","2c"],"dealer":"lb","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"CO"},
+    {"hand":12,"start":435.5,"end":442.1,"heroCards":["Th","5d"],"dealer":"lt","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"HJ"},
+    {"hand":13,"start":470.6,"end":511.7,"heroCards":["Jd","Ts"],"dealer":"top","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"UTG"},
+    {"hand":14,"start":513.3,"end":550.1,"heroCards":["4c","2c"],"dealer":"rt","dealtSeats":["hero","lb","lt","top","rt","rb"],"heroPosition":"BB"}
+  ],
+  "decisions": [
+    {"i":1,"hand":1,"start":51.9,"end":52.9,"best_t":51.9,"layout":"check-bet","heroCards":["Qh","3h"],"board":[],"pot":0.05,"heroStack":1.98,"toCall":0},
+    {"i":2,"hand":1,"start":80.2,"end":81.8,"best_t":80.4,"layout":"check-bet","heroCards":["Qh","3h"],"board":["3c","Qc","8c"],"pot":0.07,"heroStack":1.98,"toCall":0},
+    {"i":3,"hand":3,"start":137.2,"end":138.6,"best_t":137.9,"layout":"fold-call-raise","heroCards":["9c","6h"],"board":[],"pot":0.07,"heroStack":2.05,"toCall":0.03},
+    {"i":4,"hand":4,"start":151.2,"end":152.1,"best_t":151.2,"layout":"fold-call-raise","heroCards":["6h","2c"],"board":[],"pot":0.03,"heroStack":2.05,"toCall":0.02},
+    {"i":5,"hand":5,"start":171.8,"end":172.7,"best_t":172.7,"layout":"fold-call-raise","heroCards":["Ts","6h"],"board":[],"pot":0.03,"heroStack":2.05,"toCall":0.02},
+    {"i":6,"hand":5,"start":179.9,"end":181.4,"best_t":181.4,"layout":"fold-call-raise","heroCards":["Ts","6h"],"board":[],"pot":0.13,"heroStack":2.03,"toCall":0.03},
+    {"i":7,"hand":5,"start":186.7,"end":187.5,"best_t":187.5,"layout":"check-bet","heroCards":["Ts","6h"],"board":["4d","6s","7d"],"pot":0.15,"heroStack":2,"toCall":0},
+    {"i":8,"hand":5,"start":193.9,"end":195.1,"best_t":195.1,"layout":"check-bet","heroCards":["Ts","6h"],"board":["4d","6s","7d","9d"],"pot":0.15,"heroStack":2,"toCall":0},
+    {"i":9,"hand":5,"start":200.7,"end":201.6,"best_t":201.6,"layout":"check-bet","heroCards":["Ts","6h"],"board":["4d","6s","7d","9d","Jd"],"pot":0.15,"heroStack":2,"toCall":0},
+    {"i":10,"hand":6,"start":211.8,"end":213.4,"best_t":212.5,"layout":"fold-call-raise","heroCards":["Th","6c"],"board":[],"pot":0.03,"heroStack":2,"toCall":0.02},
+    {"i":11,"hand":7,"start":228.3,"end":231.0,"best_t":228.4,"layout":"fold-call-raise","heroCards":["9h","6c"],"board":[],"pot":0.03,"heroStack":2,"toCall":0.02},
+    {"i":12,"hand":8,"start":278.7,"end":279.7,"best_t":279.7,"layout":"fold-call-raise","heroCards":["Qs","5h"],"board":[],"pot":0.08,"heroStack":1.98,"toCall":0.04},
+    {"i":13,"hand":8,"start":285.2,"end":288.6,"best_t":285.9,"layout":"fold-call-raise","heroCards":["Qs","5h"],"board":["Jd","3h","7d"],"pot":0.17,"heroStack":1.94,"toCall":0.06},
+    {"i":14,"hand":9,"start":310.9,"end":311.6,"best_t":311.6,"layout":"fold-call-raise","heroCards":["Ac","6c"],"board":[],"pot":0.05,"heroStack":1.93,"toCall":0.01},
+    {"i":15,"hand":9,"start":315.3,"end":316.3,"best_t":316.3,"layout":"check-bet","heroCards":["Ac","6c"],"board":["7d","Tc","5s"],"pot":0.06,"heroStack":1.92,"toCall":0},
+    {"i":16,"hand":9,"start":321.1,"end":321.8,"best_t":321.8,"layout":"check-bet","heroCards":["Ac","6c"],"board":["7d","Tc","5s","Th"],"pot":0.06,"heroStack":1.92,"toCall":0},
+    {"i":17,"hand":9,"start":326.7,"end":327.4,"best_t":327.4,"layout":"fold-call-raise","heroCards":["Ac","6c"],"board":["7d","Tc","5s","Th"],"pot":0.08,"heroStack":1.92,"toCall":0.02},
+    {"i":18,"hand":9,"start":330.4,"end":331.0,"best_t":331.0,"layout":"check-bet","heroCards":["Ac","6c"],"board":["7d","Tc","5s","Th","3d"],"pot":0.1,"heroStack":1.9,"toCall":0},
+    {"i":19,"hand":10,"start":353.1,"end":353.9,"best_t":353.7,"layout":"fold-call-raise","heroCards":["Jd","Tc"],"board":[],"pot":0.05,"heroStack":2,"toCall":0.02},
+    {"i":20,"hand":10,"start":359.5,"end":360.3,"best_t":360.3,"layout":"fold-call-raise","heroCards":["Jd","Tc"],"board":[],"pot":0.14,"heroStack":1.98,"toCall":0.03},
+    {"i":21,"hand":10,"start":366.8,"end":368.5,"best_t":368.4,"layout":"fold-call-raise","heroCards":["Jd","Tc"],"board":["Td","Jc","3c"],"pot":0.28,"heroStack":1.95,"toCall":0.06},
+    {"i":22,"hand":10,"start":376.8,"end":378.0,"best_t":376.9,"layout":"check-bet","heroCards":["Jd","Tc"],"board":["Td","Jc","3c","4d"],"pot":0.45,"heroStack":1.83,"toCall":0},
+    {"i":23,"hand":10,"start":384.5,"end":385.6,"best_t":384.6,"layout":"check-bet","heroCards":["Jd","Tc"],"board":["Td","Jc","3c","4d","4h"],"pot":0.48,"heroStack":1.81,"toCall":0},
+    {"i":24,"hand":11,"start":402.6,"end":404.5,"best_t":402.6,"layout":"fold-call-raise","heroCards":["7s","2c"],"board":[],"pot":0.03,"heroStack":2.31,"toCall":0.02},
+    {"i":25,"hand":12,"start":440.6,"end":441.8,"best_t":440.6,"layout":"fold-call-raise","heroCards":["Th","5d"],"board":[],"pot":0.03,"heroStack":2.31,"toCall":0.02},
+    {"i":26,"hand":13,"start":471.2,"end":473.0,"best_t":473.0,"layout":"fold-call-raise","heroCards":["Jd","Ts"],"board":[],"pot":0.03,"heroStack":2.31,"toCall":0.02},
+    {"i":27,"hand":13,"start":482.1,"end":485.0,"best_t":482.2,"layout":"fold-call-raise","heroCards":["Jd","Ts"],"board":[],"pot":0.15,"heroStack":2.29,"toCall":0.03},
+    {"i":28,"hand":13,"start":486.8,"end":488.5,"best_t":486.8,"layout":"check-bet","heroCards":["Jd","Ts"],"board":["7c","Ks","8d"],"pot":0.17,"heroStack":2.26,"toCall":0},
+    {"i":29,"hand":13,"start":495.6,"end":496.3,"best_t":495.6,"layout":"check-bet","heroCards":["Jd","Ts"],"board":["7c","Ks","8d","3c"],"pot":0.17,"heroStack":2.26,"toCall":0},
+    {"i":30,"hand":13,"start":500.7,"end":503.5,"best_t":502.0,"layout":"check-bet","heroCards":["Jd","Ts"],"board":["7c","Ks","8d","3c","5s"],"pot":0.17,"heroStack":2.26,"toCall":0},
+    {"i":31,"hand":14,"start":531.6,"end":532.8,"best_t":532.2,"layout":"fold-call-raise","heroCards":["4c","2c"],"board":[],"pot":0.44,"heroStack":2.24,"toCall":0.28}
+  ],
+  "calibrationPolicy": {
+    "blindPass": "no video-2 labels used before first evaluation",
+    "postBlindCalibration": [
+      {"kind":"hero-card","decision":3,"card":"6h","reason":"rank 6 absent from video-1 Hero templates"},
+      {"kind":"pot","decision":12,"value":0.08,"reason":"pot-font digit 8 calibration"}
+    ]
+  },
+  "notes": [
+    "Manual truth was created only after the blind run.",
+    "Board Q rank is transferred from video-1 Hero normalized glyph; no video-2 board labels are needed in regression v2.",
+    "toCall is read from table state, with ledger/stack-delta fallback for ambiguous fixed-ROI commitments; button OCR is never used."
+  ]
+}

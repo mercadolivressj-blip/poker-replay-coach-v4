@@ -1,0 +1,22 @@
+name: Test V21 integrity
+
+on:
+  push:
+    branches:
+      - vision-v1-brain-integration
+    paths:
+      - 'standalone-lab/tests/v21-integrity.spec.mjs'
+      - 'standalone-lab/patchers/ssj-v20-to-v21-local-integrity.html'
+      - '.github/workflows/test-v21-integrity.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run V21 integrity regression suite
+        run: node standalone-lab/tests/v21-integrity.spec.mjs

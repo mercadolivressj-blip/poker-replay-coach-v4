@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSJ Poker · AUTO V27 LOCAL</title>
+<style>
+html,body{margin:0;width:100%;height:100%;background:#020906;color:#ecfff5;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}#boot{height:100%;display:grid;place-items:center}.box{max-width:760px;margin:24px;padding:24px;border:1px solid #214b34;border-radius:14px;background:#081810}.title{font-weight:950;font-size:24px;margin-bottom:8px}.muted{color:#91b7a5}.err{color:#ffaaaa;white-space:pre-wrap;font:12px ui-monospace,monospace;margin-top:14px}</style>
+</head>
+<body>
+<div id="boot"><div class="box"><div class="title">SSJ POKER · AUTO V27 LOCAL</div><div id="msg" class="muted">Carregando runtime local corrigido…</div><div id="err" class="err"></div></div></div>
+<script>
+(async()=>{
+  const msg=document.getElementById('msg'),err=document.getElementById('err');
+  try{
+    const r=await fetch('./ssj-poker-auto-v24-local.html',{cache:'no-store'});
+    if(!r.ok) throw new Error('Falha ao carregar runtime base: HTTP '+r.status);
+    let s=await r.text();
+    const replacements=[
+      ["AUTO V24 LOCAL","AUTO V27 LOCAL"],
+      ["V24 pronta","V27 pronta"],
+      ["BOTÕES V24 ATIVOS","BOTÕES V27 ATIVOS"],
+      ["import(base+'f864741599e11c241601d1d1b7da823e8b965629/src/core/pokerstars-local-cards.js')","import('../src/core/pokerstars-local-cards.js')"],
+      ["import(base+'1048d60dd7f9bb58f23daadec9f60060ad39e68f/src/core/geometry.js')","import('../src/core/geometry.js')"],
+      ["import(base+'1048d60dd7f9bb58f23daadec9f60060ad39e68f/src/core/action-capture.js')","import('../src/core/action-capture.js')"],
+      ["import(base+'1048d60dd7f9bb58f23daadec9f60060ad39e68f/src/core/action-band.js')","import('../src/core/action-band.js')"],
+      ["import(base+'1048d60dd7f9bb58f23daadec9f60060ad39e68f/src/core/action-ocr.js')","import('../src/core/action-ocr.js')"],
+      ["import(base+'e17c637c4364569d516bdf8626eeb801aafb13ac/src/core/dealer-button.js')","import('../src/core/dealer-button.js')"],
+      ["import(base+'bddca3a834ef7551ed264f8b81fc8a452ff30949/src/brain/preflop.js')","import('../src/brain/preflop.js')"],
+      ["import(base+'f864741599e11c241601d1d1b7da823e8b965629/src/brain/postflop-policy-v4.js')","import('../src/brain/postflop-policy-v4-browser-safe.js')"]
+    ];
+    let changed=0;
+    for(const [a,b] of replacements){if(s.includes(a)){s=s.replaceAll(a,b);changed++;}}
+    s=s.replace("const base='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@';","const base='';");
+
+    const oldInvalidate="function invalidateDecision(){lastDecisionKey='';if(heroTurn){$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO LOCAL';$('reason').textContent='Atualizando estado da mesa.'}}";
+    const newInvalidate="function invalidateDecision(){lastDecisionKey='';$('decision').textContent='AGUARDANDO';if(state.heroCards.length===2){$('engine').textContent=heroTurn?'ESTADO LOCAL':'CARTAS LIDAS';$('reason').textContent=heroTurn?'Atualizando estado da mesa.':'Cartas lidas. Confirmando sua vez e os botões.'}else{$('engine').textContent='NOVA MÃO';$('reason').textContent='Aguardando cartas.'}}";
+    if(!s.includes(oldInvalidate))throw new Error('Patch V27: invalidateDecision não encontrado.');
+    s=s.replace(oldInvalidate,newInvalidate);
+
+    const activeNeedle="function activeSlots(){return VISUAL_ORDER.filter(x=>lockedSlots.includes(x))}";
+    const visualFallback=`function visualHeroButtons(){
+ const c=capture(.37,.73,.63,.27,300);if(!c)return null;
+ const ctx=c.getContext('2d',{willReadFrequently:true}),im=ctx.getImageData(0,0,c.width,c.height),d=im.data,w=c.width,h=c.height;
+ const frac=(x0,x1,y0,y1,pred)=>{let hit=0,n=0;const ax=Math.floor(w*x0),bx=Math.ceil(w*x1),ay=Math.floor(h*y0),by=Math.ceil(h*y1);for(let y=ay;y<by;y+=2)for(let x=ax;x<bx;x+=2){const i=(y*w+x)*4,r=d[i],g=d[i+1],b=d[i+2];n++;if(pred(r,g,b))hit++;}return n?hit/n:0};
+ const grey=frac(.18,.45,.38,.88,(r,g,b)=>Math.abs(r-g)<24&&Math.abs(g-b)<24&&r>52&&r<175);
+ const green=frac(.45,.71,.38,.88,(r,g,b)=>g>78&&g>r*1.10&&g>b*1.08);
+ const orange=frac(.70,.98,.38,.88,(r,g,b)=>r>120&&g>45&&g<175&&b<105&&r>g*1.13);
+ if(green>.045&&orange>.035&&grey>.025)return{legal:['FOLD','CALL','RAISE'],confidence:Math.min(.98,.72+green+orange)};
+ return null;
+}
+${activeNeedle}`;
+    if(!s.includes(activeNeedle))throw new Error('Patch V27: ponto visualHeroButtons não encontrado.');
+    s=s.replace(activeNeedle,visualFallback);
+
+    const oldScan="async function scanHeroButtons(){if(!mods||buttonsBusy||!running)return;const hot=buttonHot();if(!hot){if(Date.now()-lastButtonsAt>260&&state.legalActions.length){endHeroTurn();state.legalActions=[];state.toCall=null;invalidateDecision();render()}return}lastButtonsAt=Date.now();if(Date.now()-lastButtonsAt<0)return;buttonsBusy=true;try{const c=capture(.37,.73,.63,.27,620);if(!c)return;ocrBusy=true;render();const r=await ocr.readFast(c,{cacheMs:90});ocrBusy=false;const q=textLegal(r.text||'');if(q.legal.length){const old=state.legalActions.join('|')+'|'+state.toCall,newk=q.legal.join('|')+'|'+q.toCall;state.legalActions=q.legal;state.toCall=q.legal.includes('CHECK')&&!q.legal.includes('CALL')?null:q.toCall;if(!heroTurn){heroTurn=true;heroTurnStarted=Date.now();heroTurnSnap={stack:num(state.heroStack),toCall:num(state.toCall),legal:[...state.legalActions],street:street()};updatePosition();log('SUA VEZ · '+state.legalActions.join('/')+(state.toCall!=null?' · call '+state.toCall:''))}if(old!==newk){invalidateDecision();render();decide()}}}catch(e){ocrBusy=false;log('botões local erro '+e.message)}finally{buttonsBusy=false;render()}}";
+    const newScan="async function scanHeroButtons(){if(!mods||buttonsBusy||!running)return;const hot=buttonHot();if(!hot){if(Date.now()-lastButtonsAt>260&&state.legalActions.length){endHeroTurn();state.legalActions=[];state.toCall=null;invalidateDecision();render()}return}lastButtonsAt=Date.now();buttonsBusy=true;try{const c=capture(.37,.73,.63,.27,620);if(!c)return;ocrBusy=true;render();const r=await ocr.readFast(c,{cacheMs:90});ocrBusy=false;const q=textLegal(r.text||''),vf=visualHeroButtons(),legal=q.legal.length?q.legal:(vf?.legal||[]);if(legal.length){const old=state.legalActions.join('|')+'|'+state.toCall,newk=legal.join('|')+'|'+q.toCall;state.legalActions=legal;state.toCall=legal.includes('CHECK')&&!legal.includes('CALL')?null:q.toCall;if(!q.legal.length&&vf)log('BOTÕES VISUAIS → '+legal.join('/')+' · '+Math.round((vf.confidence||0)*100)+'%');if(!heroTurn){heroTurn=true;heroTurnStarted=Date.now();heroTurnSnap={stack:num(state.heroStack),toCall:num(state.toCall),legal:[...state.legalActions],street:street()};updatePosition();log('SUA VEZ · '+state.legalActions.join('/')+(state.toCall!=null?' · call '+state.toCall:''))}if(old!==newk){invalidateDecision();render();decide()}}else if(state.heroCards.length===2){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOTÕES LOCAIS';$('reason').textContent='Cartas lidas; confirmando os botões da sua vez.'}}catch(e){ocrBusy=false;log('botões local erro '+e.message)}finally{buttonsBusy=false;render()}}";
+    if(!s.includes(oldScan))throw new Error('Patch V27: scanHeroButtons não encontrado.');
+    s=s.replace(oldScan,newScan);
+
+    const oldDecide="function decide(){if(!mods||!heroTurn||state.heroCards.length!==2||!state.legalActions.length)return;updatePosition();if(!state.heroPosition){$('decision').textContent='AGUARDANDO';$('engine').textContent='POSIÇÃO LOCAL';$('reason').textContent='Confirmando posição pela ordem/dealer.';return}";
+    const newDecide="function decide(){if(!mods||state.heroCards.length!==2)return;if(!heroTurn||!state.legalActions.length){$('decision').textContent='AGUARDANDO';$('engine').textContent='CARTAS LIDAS';$('reason').textContent='Sua mão já foi lida. Confirmando sua vez e os botões.';return}updatePosition();if(!state.heroPosition){$('decision').textContent='AGUARDANDO';$('engine').textContent='POSIÇÃO LOCAL';$('reason').textContent='Confirmando posição pela ordem/dealer.';return}if(street()==='preflop'&&state.legalActions.includes('CALL')){const priorNonFold=actions.some(a=>a.street==='preflop'&&a.action!=='FOLD');if(!priorNonFold&&state.heroPosition!=='SB'){$('decision').textContent='AGUARDANDO';$('engine').textContent='POSIÇÃO/HISTÓRICO';$('reason').textContent='Há botão de pagar sem ação agressiva registrada; recalibrando posição/ações antes de recomendar.';return}}";
+    if(!s.includes(oldDecide))throw new Error('Patch V27: decide gate não encontrado.');
+    s=s.replace(oldDecide,newDecide);
+
+    if(changed<11)throw new Error('Patch incompleto: '+changed+'/11 substituições de módulos feitas.');
+    if(/postflop-policy-v4\.js/.test(s))throw new Error('Guard de segurança: ainda restou referência ao módulo pós-flop quebrado.');
+    msg.textContent='Runtime V27 corrigido carregado. Inicializando…';
+    document.open();document.write(s);document.close();
+  }catch(e){msg.textContent='Falha ao inicializar V27.';err.textContent=e?.stack||String(e);}
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+name: video5-blind-inspect
+
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths: ['.github/workflows/video5-blind-inspect.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect-first-score:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download immutable first blind artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: video5-blind-first-score
+          path: /tmp/blind
+          github-token: ${{ github.token }}
+          repository: mercadolivressj-blip/poker-replay-coach-v4
+          run-id: 35659346135
+      - name: Print hand ledger diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, glob
+          p=glob.glob('/tmp/blind/*.json')[0]
+          x=json.load(open(p))
+          print('SUMMARY',json.dumps(x['summary'],separators=(',',':')))
+          for h in x['hands']:
+              print('HAND',json.dumps({
+                  'id':h['id'],'startT':h['startT'],'endT':h['endT'],'heroCards':h['heroCards'],
+                  'dealer':h['dealer'],'dealtSeats':h['dealtSeats'],'position':h['position'],
+                  'boardTransitions':h['boardTransitions'],'decisionIds':h['decisionIds'],
+                  'continuityOk':h['continuityOk'],'unresolved':h['unresolved'],'events':h['events']
+              },separators=(',',':')))
+          PY

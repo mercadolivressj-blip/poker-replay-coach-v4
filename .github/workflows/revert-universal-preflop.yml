@@ -1,0 +1,23 @@
+name: revert-universal-preflop
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths: ['.github/workflows/revert-universal-preflop.yml']
+permissions:
+  contents: write
+jobs:
+  revert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+          fetch-depth: 0
+      - name: Restore strict preflop barrier
+        run: |
+          git checkout 47919b86a39a6712b5e0ec2eb971cc3a9a2623f6 -- src/brain/preflop.js tests/strategy-v1-preflop.test.mjs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/brain/preflop.js tests/strategy-v1-preflop.test.mjs
+          git commit -m "revert: keep strict preflop context barrier"
+          git push origin HEAD:vision-v1-brain-integration

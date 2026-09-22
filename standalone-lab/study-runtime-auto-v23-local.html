@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSJ Poker · AUTO V23 LOCAL</title>
+<style>:root{font-family:Inter,system-ui,sans-serif;color:#eafff2;background:#03100a}body{margin:0;display:grid;place-items:center;min-height:100vh}.box{max-width:760px;padding:24px;border:1px solid #24533a;border-radius:14px;background:#081810}.muted{color:#9fceb7}.err{color:#ff9999}</style>
+</head>
+<body><div class="box" id="boot"><h2 style="margin-top:0">SSJ Poker · AUTO V23 LOCAL</h2><div class="muted">Carregando runtime 100% local…</div></div>
+<script>
+(async()=>{
+ const boot=document.getElementById('boot');
+ const BASE='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@1048d60dd7f9bb58f23daadec9f60060ad39e68f/standalone-lab/study-runtime-public-v1.html';
+ const FAST='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@1048d60dd7f9bb58f23daadec9f60060ad39e68f/src/core/action-ocr.js';
+ const OLD='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f6ad1a9ed61e7a03538acba3059e6bb79d6da387/src/core/action-ocr.js';
+ const LOCALCARDS='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f864741599e11c241601d1d1b7da823e8b965629/src/core/pokerstars-local-cards.js';
+ const POST='https://cdn.jsdelivr.net/gh/mercadolivressj-blip/poker-replay-coach-v4@f864741599e11c241601d1d1b7da823e8b965629/src/brain/postflop-policy-v4.js';
+ function need(src,a,b,label){if(!src.includes(a))throw new Error('Patch ausente: '+label);return src.replace(a,b)}
+ try{
+  let html=await fetch(BASE,{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('base '+r.status);return r.text()});
+  html=html.replace('<title>SSJ Poker Study Runtime</title>','<title>SSJ Poker · AUTO V23 LOCAL</title>');
+  html=html.replace('SSJ STUDY RUNTIME V1 · BUILD V4','SSJ POKER · AUTO V23 · 100% LOCAL');
+  html=html.replace('<span class="badge">VISION R3 FAST</span>','<span class="badge">LOCAL 35 FPS</span>');
+  html=html.replace('<span class="badge">POLICY V4 LIVE</span>','<span class="badge">POLICY V4 LOCAL</span>');
+  html=html.replace('<div class="assist">','<div class="assist" style="display:none">');
+  html=html.replace(OLD,FAST);
+  html=html.replace("import { ActionTextOcr } from '"+FAST+"';", "import { ActionTextOcr } from '"+FAST+"';\nimport { readHeroLocal, readBoardLocal } from '"+LOCALCARDS+"';\nimport { postflopPolicyV4Decision } from '"+POST+"';");
+  html=need(html,"const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();","const actionOctx=actionOverlay.getContext('2d'),actionActx=actionAnalysis.getContext('2d',{willReadFrequently:true}),actionOcr=new ActionTextOcr();void actionOcr.prewarm();",'prewarm');
+
+  const HELPER=`
+let ssjHeroKey='',ssjHeroVotes=0,ssjBoardKey='',ssjBoardVotes=0,ssjPosLocked=null,ssjQuickCache={},ssjQuickAt=0;
+function ssjCrop(nx,ny,nw,nh,w=420){if(!video.videoWidth)return null;const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.max(1,Math.round(video.videoWidth*nw)),sh=Math.max(1,Math.round(video.videoHeight*nh)),c=document.createElement('canvas');c.width=w;c.height=Math.max(32,Math.round(w*sh/sw));c.getContext('2d',{willReadFrequently:true}).drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);return c}
+function ssjNums(t){return String(t||'').match(/\\d+(?:[.,]\\d+)?/g)?.map(x=>Number(x.replace(',','.'))).filter(Number.isFinite)||[]}
+async function ssjOcr(nx,ny,nw,nh,w=420){const c=ssjCrop(nx,ny,nw,nh,w);if(!c)return {text:'',parsed:null,confidence:0};return await actionOcr.readFast(c,{cacheMs:260})}
+function ssjButtonHot(){const c=ssjCrop(.49,.84,.50,.155,320);if(!c)return false;const d=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,c.width,c.height).data;let hot=0;for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];if((r>120&&g>45&&g<165&&b<105&&r>g*1.12)||(g>80&&g>r*1.08&&g>b*1.05)||(r>70&&g>55&&b>35&&Math.max(r,g,b)-Math.min(r,g,b)>22))hot++}return hot/(d.length/4)>.018}
+function ssjPositionFromCount(){if(ssjPosLocked)return ssjPosLocked;const local=captureSeatMap?.()||{};if(local.hero){ssjPosLocked=local.hero;return ssjPosLocked}const slots=activeVisualSlots?.()||[];const n=slots.length>=2?slots.length:6;const pre=(localConfirmedActions||[]).filter(a=>a.street==='preflop'&&a.seatId!=='hero').sort((a,b)=>a.at-b.at);const seen=new Set();for(const a of pre)seen.add(a.seatId);const count=seen.size;const orders=n>=6?['UTG','HJ','CO','BTN','SB','BB']:n===5?['HJ','CO','BTN','SB','BB']:n===4?['CO','BTN','SB','BB']:n===3?['BTN','SB','BB']:['SB','BB'];if(count<orders.length)ssjPosLocked=orders[count];return ssjPosLocked}
+async function ssjReadActions(){if(!ssjButtonHot())return {legalActions:[],toCall:null};const regions=[[.49,.84,.17,.155],[.65,.84,.18,.155],[.82,.84,.17,.155]],legal=[],raw=[];let tc=null;for(const r of regions){const o=await ssjOcr(...r,300);raw.push(o.text||'');const p=o.parsed;if(p?.action&&!legal.includes(p.action)){legal.push(p.action);if(p.action==='CALL'&&p.amount!=null)tc=p.amount}}if(!legal.length){const joined=raw.join(' ').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();if(/desist|fold/.test(joined))legal.push('FOLD');if(/pass|check/.test(joined))legal.push('CHECK');if(/pag|call/.test(joined))legal.push('CALL');if(/apost|\\bbet/.test(joined))legal.push('BET');if(/aument|raise/.test(joined))legal.push('RAISE');if(/all.?in|shove/.test(joined))legal.push('ALLIN');if(legal.includes('CALL')){const ns=ssjNums(joined);if(ns.length)tc=ns[ns.length-1]}}if(legal.length&&state.board.length===0)ssjPositionFromCount();return {legalActions:legal,toCall:legal.includes('CHECK')&&!legal.includes('CALL')?null:tc}}
+async function ssjReadQuick(){const now=Date.now();if(now-ssjQuickAt<330&&Object.keys(ssjQuickCache).length)return {...ssjQuickCache};ssjQuickAt=now;const out={};const pot=await ssjOcr(.37,.31,.27,.11,360);let n=ssjNums(pot.text);if(n.length)out.pot=n[n.length-1];const stack=await ssjOcr(.39,.72,.23,.105,360);n=ssjNums(stack.text);if(n.length)out.heroStack=n[n.length-1];const title=await ssjOcr(.02,.00,.72,.055,620);const txt=String(title.text||'');const m=txt.match(/(\\d+[.,]\\d+)\\s*\\/?[^0-9]{0,12}(\\d+[.,]\\d+)/);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(Number.isFinite(a)&&Number.isFinite(b)&&b>a)out.blinds=a+'/'+b}const pos=ssjPosLocked||captureSeatMap?.().hero||null;if(pos)out.heroPosition=pos;out.players=(activeVisualSlots?.().length||6);out.activePlayers=Math.max(2,out.players-(localConfirmedActions||[]).filter(a=>a.street==='preflop'&&a.action==='FOLD').length);out.actionHistory=[];ssjQuickCache={...ssjQuickCache,...out};return {...ssjQuickCache}}
+async function ssjLocalRead(scope,epoch){const t=performance.now(),at=Date.now();if(scope==='hero'){const r=readHeroLocal(video);if(!r)return {data:{heroPresence:null},ms:0,at,epoch};if(!r.pairSeen)return {data:{heroPresence:'absent'},ms:Math.round(r.ms||0),at,epoch};if(!r.cards)return {data:{heroPresence:'uncertain'},ms:Math.round(r.ms||0),at,epoch};const k=r.cards.join(' ');ssjHeroVotes=k===ssjHeroKey?ssjHeroVotes+1:1;ssjHeroKey=k;if(ssjHeroVotes<2)return {data:{heroPresence:'uncertain'},ms:Math.round(r.ms||0),at,epoch};return {data:{heroPresence:'present',heroCards:r.cards,readerModel:'local-template-v20'},ms:Math.round(r.ms||0),at,epoch}}
+ if(scope==='board'){const r=readBoardLocal(video);if(!r)return {data:{boardPresence:null},ms:0,at,epoch};if(r.count===0){ssjBoardKey='';ssjBoardVotes=0;return {data:{boardPresence:'absent',board:[]},ms:Math.round(r.ms||0),at,epoch}}if(!r.cards)return {data:{boardPresence:'uncertain'},ms:Math.round(r.ms||0),at,epoch};const k=r.cards.join(' ');ssjBoardVotes=k===ssjBoardKey?ssjBoardVotes+1:1;ssjBoardKey=k;if(ssjBoardVotes<2)return {data:{boardPresence:'uncertain'},ms:Math.round(r.ms||0),at,epoch};return {data:{boardPresence:'present',board:r.cards},ms:Math.round(r.ms||0),at,epoch}}
+ if(scope==='actions'){const d=await ssjReadActions();return {data:d,ms:Math.round(performance.now()-t),at,epoch}}
+ if(scope==='quick'||scope==='meta'||scope==='full'){const d=await ssjReadQuick();return {data:d,ms:Math.round(performance.now()-t),at,epoch}}
+ return {data:{},ms:Math.round(performance.now()-t),at,epoch}}
+`;
+  html=need(html,"function historyText(a){return typeof a==='string'?a:JSON.stringify(a)}","function historyText(a){return typeof a==='string'?a:JSON.stringify(a)}\n"+HELPER,'local helper insert');
+  html=html.replace(/async function read\(scope,image\)\{[\s\S]*?\n\}/,`async function read(scope,image){const epoch=handEpoch;return await ssjLocalRead(scope,epoch)}`);
+
+  // Local opponent history wins. No remote action history is allowed to override it.
+  html=need(html,"state.actionHistory=remoteStrategic>0?remote:(localStrategic>0?rows:(remote.length?remote:rows));","state.actionHistory=localStrategic>0?rows:(rows.length?rows:remote);",'local history priority');
+
+  // 35fps action capture, fresh OCR only.
+  html=need(html,"if(!running)return;requestAnimationFrame(actionTick);if(ts-localActionLastTick<78)return;","if(!running)return;requestAnimationFrame(actionTick);if(ts-localActionLastTick<28)return;",'35fps');
+  html=need(html,"localOcrQueue.push({e,crops:[localCrop(band.region,.03),localCrop(band.region,.10)]});if(localOcrQueue.length>8)localOcrQueue=localOcrQueue.slice(-8);void drainLocalOcr();","localOcrQueue=localOcrQueue.filter(x=>x?.e?.seatId!==e.seatId);localOcrQueue.push({e,crops:[localCrop(band.region,.03)]});if(localOcrQueue.length>3)localOcrQueue=localOcrQueue.slice(-3);void drainLocalOcr();",'fresh queue');
+  html=need(html,"for(const crop of job.crops){const r=await actionOcr.read(crop,{timeoutMs:1200});if(r?.parsed)hits.push(r);}","for(const crop of job.crops){const r=await actionOcr.readFast(crop);if(r?.parsed)hits.push(r);}",'fast opponent OCR');
+  html=need(html,"if(same.length>=2||first.conf>=.82)confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf)});","if(same.length>=2||first.conf>=(first.p.action==='ALLIN'?.80:.68))confirmLocalAction({seatId:job.e.seatId,action:first.p.action,amount:first.p.amount,at:job.e.at,confidence:Math.max(...same.map(x=>x.conf),first.conf),source:'local-action-text-fast'});",'fast confirm');
+  html=html.replace("refractoryMs:180,confirmFrames:1","refractoryMs:95,confirmFrames:1");
+  html=html.replace("now-localSweepAt<320","now-localSweepAt<180");
+
+  // Faster local state loops. No network lanes.
+  html=html.replace("loop('hero',320,()=>crop(.36,.52,.28,.24));","loop('hero',70,()=>null);");
+  html=html.replace("loop('meta',180,metaFrame);","loop('meta',620,()=>null);");
+  html=html.replace("loop('actions',320,()=>crop(.38,.55,.61,.44,1.5,.76));","loop('actions',125,()=>null);");
+  html=html.replace("loop('quick',520,()=>full(900,.64));","loop('quick',420,()=>null);");
+  html=html.replace("loop('board',520,()=>crop(.26,.30,.48,.16));","loop('board',85,()=>null);");
+
+  // Local postflop policy: eliminate the second failing Vercel dependency too.
+  html=html.replace(/const r=await fetch\(BRAIN,[\s\S]*?d=j\.result\|\|\{\};/,"d=postflopPolicyV4Decision(effectiveState,{heroActor:effectiveState.heroPosition||null,preflopNode:node,versus,potType:null})||{};");
+  html=html.replace(/\(async\(\)=>\{try\{const r=await fetch\(BRAIN\)[\s\S]*?render\(\)\}\)\(\);/,"$('backend').textContent='100% LOCAL · cartas + ações + valores + preflop + postflop';render();");
+
+  html=html.replace('Compartilhe somente replay/gravação para estudo. O sistema não clica nem executa ações.','Compartilhe a mesa. Hero, board e ações dos adversários são lidos localmente; nenhum endpoint de visão é chamado.');
+  html=html.replace('Fallback manual (só se o automático demorar)','Fallback manual oculto');
+  document.open();document.write(html);document.close();
+ }catch(e){boot.innerHTML='<h2>Falha ao carregar AUTO V23</h2><div class="err">'+String(e.message||e)+'</div>'}
+})();
+</script></body></html>

@@ -1,0 +1,87 @@
+# refresh public Brain after runtime/preflop stability V3 fixes
+name: build-brain-v4-bundle
+on:
+  push:
+    branches: [vision-v1-brain-integration]
+    paths:
+      - '.github/workflows/build-brain-v4-bundle.yml'
+      - 'api/brain.js'
+      - 'src/brain/**'
+      - 'src/strategy-v1/**'
+      - 'scripts/generate-policy-v4-runtime.mjs'
+permissions:
+  contents: write
+jobs:
+  bundle:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: vision-v1-brain-integration
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install
+      - run: npx --yes esbuild@0.25.9 api/brain.js --bundle --platform=node --format=esm --target=node22 --minify --outfile=dist/brain-v4-bundle.mjs
+      - name: Build compressed loader
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import zlib from 'node:zlib';
+          const code=fs.readFileSync('dist/brain-v4-bundle.mjs');
+          const br=zlib.brotliCompressSync(code,{params:{[zlib.constants.BROTLI_PARAM_QUALITY]:11,[zlib.constants.BROTLI_PARAM_MODE]:zlib.constants.BROTLI_MODE_TEXT}});
+          const b64=br.toString('base64');
+          const loader=`import { gunzipSync } from 'node:zlib';
+          import { Buffer } from 'node:buffer';
+          let modulePromise;
+          async function loadBrain(){
+            if(!modulePromise){
+              const source=gunzipSync(Buffer.from('${b64}','base64'));
+              const data='data:text/javascript;base64,'+source.toString('base64');
+              modulePromise=import(data);
+            }
+            return modulePromise;
+          }
+          export default async function handler(req,res){
+            const mod=await loadBrain();
+            return mod.default(req,res);
+          }`;
+          fs.writeFileSync('dist/brain-v4-loader.mjs',loader);
+          fs.rmSync('dist/brain-v4-deploy',{recursive:true,force:true});
+          fs.mkdirSync('dist/brain-v4-deploy',{recursive:true});
+          const chunkSize=420000;
+          const parts=[];
+          for(let i=0;i<b64.length;i+=chunkSize) parts.push(b64.slice(i,i+chunkSize));
+          parts.forEach((part,i)=>fs.writeFileSync(`dist/brain-v4-deploy/chunk-${String(i).padStart(3,'0')}.js`,`export default ${JSON.stringify(part)};\n`));
+          const imports=parts.map((_,i)=>`import c${i} from './chunk-${String(i).padStart(3,'0')}.js';`).join('\n');
+          const joined=parts.map((_,i)=>`c${i}`).join(',');
+          const deployLoader=`${imports}
+          import { brotliDecompressSync } from 'node:zlib';
+          import { Buffer } from 'node:buffer';
+          let modulePromise;
+          async function loadBrain(){
+            if(!modulePromise){
+              const packed=[${joined}].join('');
+              const source=brotliDecompressSync(Buffer.from(packed,'base64'));
+              modulePromise=import('data:text/javascript;base64,'+source.toString('base64'));
+            }
+            return modulePromise;
+          }
+          export default async function handler(req,res){
+            const mod=await loadBrain();
+            return mod.default(req,res);
+          };`;
+          fs.writeFileSync('dist/brain-v4-deploy/brain.js',deployLoader);
+          console.log('bundle bytes',code.length,'brotli bytes',br.length,'loader bytes',Buffer.byteLength(loader),'deploy chunks',parts.length);
+          NODE
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f dist/brain-v4-bundle.mjs dist/brain-v4-loader.mjs dist/brain-v4-deploy
+          if git diff --cached --quiet; then
+            echo "bundle unchanged"
+            exit 0
+          fi
+          git commit -m "build: refresh compressed Brain V4 deploy bundle"
+          git push origin HEAD:vision-v1-brain-integration

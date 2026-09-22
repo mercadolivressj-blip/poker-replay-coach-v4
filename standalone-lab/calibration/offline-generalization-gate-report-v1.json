@@ -1,0 +1,59 @@
+{
+  "version": "ssj-poker-offline-generalization-gate-v1",
+  "baselineSession": {
+    "video": "2026-09-20 22-25-57.mkv",
+    "hands": 23,
+    "heroDecisions": 47,
+    "heroCards": "47/47",
+    "buttons": "47/47",
+    "positions": "23/23",
+    "stackHoldout": "47/47",
+    "potHoldout": "3/3",
+    "toCall": "47/47",
+    "actionLedger": "85 actions / 0 UNKNOWN / 47 complete decisions"
+  },
+  "generalizationSession": {
+    "video": "2026-09-21 11-49-44.mkv",
+    "hands": "14/14",
+    "heroDecisions": "31/31",
+    "buttons": "31/31",
+    "positions": "14/14",
+    "heroCardsHoldout": "30/30",
+    "boardCardsHoldout": "58/58",
+    "boardWrong": 0,
+    "boardAbstain": 0,
+    "heroStack": "31/31",
+    "potHoldout": "30/30",
+    "toCall": "31/31",
+    "toCallDirect": 29,
+    "toCallStateResolved": 2,
+    "actionComplete": "31/31"
+  },
+  "calibrationBoundary": {
+    "blindPassCompletedBeforeManualLabels": true,
+    "postBlindCalibrations": [
+      {"kind":"hero-rank","decision":3,"label":"6h","excludedFromHoldout":true},
+      {"kind":"pot-font","decision":12,"value":0.08,"excludedFromHoldout":true}
+    ],
+    "video2CommitmentLabelsUsedToTrainReader": 0,
+    "video2BoardLabelsUsedToTrainReader": 0
+  },
+  "stateResolution": {
+    "toCallFromButtonOCR": false,
+    "sources": ["fixed-roi-numeric","seat-ledger-persisted","street-stack-delta"],
+    "brainRequiresCompleteSeatStateLedger": true
+  },
+  "dealerDetection": {
+    "signature": "PokerStars white dealer disc with red star; fixed size/color occupancy",
+    "session2Corrections": [
+      {"hand":6,"dealer":"lt","heroPosition":"HJ"},
+      {"hand":12,"dealer":"lt","heroPosition":"HJ"}
+    ]
+  },
+  "releaseCommands": [
+    "python3 tests/offline_video_regression.py <session1.mkv>",
+    "python3 tests/offline_video_generalization.py <session1.mkv> <session2.mkv>",
+    "npm test"
+  ],
+  "status": "green-on-two-recorded-sessions; not a claim of universal perfection"
+}

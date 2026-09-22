@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SSJ Poker · AUTO V30 LOCAL</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#ecfff5;background:#020906;--panel:#081810;--panel2:#0b2117;--line:#214b34;--green:#56e493;--yellow:#ffe25b;--danger:#ff8b8b}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#020906}button{font:inherit}
+#app{min-height:100vh;display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:10px;padding:10px}
+.main{min-width:0;display:flex;flex-direction:column;gap:8px}.toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:8px 10px;flex-wrap:wrap}
+.toolbar .left,.toolbar .right{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.brand{font-weight:950}
+.badge{border:1px solid #2b8f60;border-radius:999px;padding:5px 8px;color:#76ffae;background:#0a2719;font-size:11px;font-weight:900}
+.btn{border:1px solid #386d53;background:#143626;color:#fff;border-radius:8px;padding:8px 11px;font-weight:850;cursor:pointer}.btn.primary{background:#9d7607;border-color:#c79612}.btn.danger{background:#542222;border-color:#8e4141}
+.stage-wrap{position:relative;flex:1;min-height:560px;border:1px solid #1b412e;border-radius:14px;overflow:hidden;background:#000}.stage{position:absolute;inset:0;background:#000}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.stage canvas{pointer-events:none}
+.corner{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.76);border:1px solid #244934;border-radius:8px;padding:6px 9px;color:#a8c8b8;font-size:11px;z-index:3}
+.side{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;overflow:auto}.side h3{margin:0 0 4px;font-size:13px;color:#95c3ab;text-transform:uppercase;letter-spacing:.08em}
+.decision{font-size:40px;font-weight:1000;color:var(--yellow);line-height:1;margin:7px 0}.engine{font-size:11px;color:#91b7a5;font-weight:800}.reason{font-size:13px;line-height:1.35;color:#d8eee3;margin:8px 0 12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.kv{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px}.k{font-size:9px;color:#7ea28e;text-transform:uppercase;letter-spacing:.06em}.v{font:850 13px ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:3px;word-break:break-word}
+.status{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.pill{font-size:10px;border:1px solid #315f45;background:#0b2317;border-radius:999px;padding:4px 7px}.pill.warn{border-color:#7a6826;color:#ffe284;background:#2b240d}
+.section{margin-top:10px;padding-top:10px;border-top:1px solid #173a28}.history{max-height:240px;overflow:auto;background:#03100a;border-radius:9px;padding:7px}.hist{font-size:11px;padding:5px 4px;border-bottom:1px solid #123121;display:flex;justify-content:space-between;gap:8px}
+.log{height:200px;overflow:auto;white-space:pre-wrap;font:10px ui-monospace,monospace;background:#020b06;border-radius:8px;padding:7px;color:#8fb5a2}
+.auto-chip{position:absolute;z-index:4;background:rgba(4,17,11,.90);border:1px solid #2f6b4d;border-radius:8px;padding:3px 6px;color:#bde9d2;font-size:10px;pointer-events:none}
+.c-top{left:50%;top:17%}.c-lh{left:16%;top:36%}.c-ll{left:19%;top:66%}.c-rh{right:12%;top:36%}.c-rl{right:15%;top:66%}
+@media(max-width:1050px){#app{grid-template-columns:1fr}.stage-wrap{min-height:460px}}
+</style>
+</head>
+<body>
+<div id="app">
+ <div class="main">
+  <div class="toolbar">
+   <div class="left"><span class="brand">SSJ POKER · AUTO V30 LOCAL</span><span class="badge">CAPTURA ROBUSTA</span><span class="badge">AÇÕES AUTO</span><span class="badge">SEM VISION REMOTA</span><span class="badge">~35 FPS</span></div>
+   <div class="right"><button id="start" class="btn primary">Compartilhar mesa</button><button id="reset" class="btn">RESETAR MÃO</button><button id="stop" class="btn danger">Parar</button></div>
+  </div>
+  <div class="stage-wrap"><div class="stage">
+   <video id="video" muted playsinline></video><canvas id="overlay"></canvas>
+   <div class="auto-chip c-top" id="s-top">TOP</div><div class="auto-chip c-lh" id="s-left-high">L2</div><div class="auto-chip c-ll" id="s-left-low">L1</div><div class="auto-chip c-rh" id="s-right-high">R2</div><div class="auto-chip c-rl" id="s-right-low">R1</div>
+   <div class="corner">V30 DIRETA · compartilhar funciona mesmo se um módulo de leitura falhar.</div>
+  </div></div>
+ </div>
+ <aside class="side">
+  <h3>Ação recomendada</h3><div id="decision" class="decision">—</div><div id="engine" class="engine">aguardando mesa</div><div id="reason" class="reason">Clique em Compartilhar mesa.</div>
+  <div class="grid">
+   <div class="kv"><div class="k">Sua mão</div><div id="hero" class="v">—</div></div><div class="kv"><div class="k">Mesa</div><div id="board" class="v">—</div></div>
+   <div class="kv"><div class="k">Pote</div><div id="pot" class="v">—</div></div><div class="kv"><div class="k">Para pagar</div><div id="tocall" class="v">—</div></div>
+   <div class="kv"><div class="k">Stack</div><div id="stack" class="v">—</div></div><div class="kv"><div class="k">Blinds</div><div id="blinds" class="v">—</div></div>
+   <div class="kv"><div class="k">Posição</div><div id="position" class="v">—</div></div><div class="kv"><div class="k">Ações legais</div><div id="legal" class="v">—</div></div>
+  </div>
+  <div id="status" class="status"><span class="pill">BOOT</span></div>
+  <div class="section"><h3>Histórico automático</h3><div id="history" class="history"><div class="hist">Nenhuma ação ainda.</div></div></div>
+  <div class="section"><h3>Log</h3><div id="log" class="log">V30 boot.</div></div>
+ </aside>
+</div>
+<canvas id="analysis" width="320" height="180" style="display:none"></canvas>
+<script>
+(function(){
+ const $=id=>document.getElementById(id),video=$('video'),log=$('log');
+ const say=s=>{if(log)log.textContent=new Date().toLocaleTimeString()+' '+s+'\n'+log.textContent.slice(0,7000)};
+ window.__SSJ_CAPTURE={stream:null,active:false};
+ async function share(){
+   if(window.__SSJ_CAPTURE.active){say('Compartilhamento já ativo');return}
+   try{
+     $('engine').textContent='CAPTURA';$('reason').textContent='Abrindo seletor de compartilhamento…';say('CLICK compartilhar recebido');
+     if(!navigator.mediaDevices?.getDisplayMedia)throw new Error('getDisplayMedia indisponível neste navegador/contexto');
+     const stream=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:30,max:60}},audio:false});
+     window.__SSJ_CAPTURE.stream=stream;window.__SSJ_CAPTURE.active=true;video.srcObject=stream;await video.play();
+     $('engine').textContent='CAPTURA ATIVA';$('reason').textContent='Mesa compartilhada. Inicializando leitores locais…';say('CAPTURA OK '+video.videoWidth+'x'+video.videoHeight);
+     const track=stream.getVideoTracks()[0];if(track)track.addEventListener('ended',stop,{once:true});
+     window.dispatchEvent(new CustomEvent('ssj-capture-ready',{detail:{stream}}));
+   }catch(e){
+     window.__SSJ_CAPTURE.active=false;$('engine').textContent='CAPTURA';$('reason').textContent='Compartilhamento não iniciado: '+(e?.message||e);say('CAPTURA ERRO '+(e?.message||e));
+   }
+ }
+ function stop(){
+   const c=window.__SSJ_CAPTURE;c.active=false;c.stream?.getTracks?.().forEach(t=>t.stop());c.stream=null;video.srcObject=null;
+   $('engine').textContent='PARADO';$('reason').textContent='Captura parada.';say('Captura parada');window.dispatchEvent(new Event('ssj-capture-stopped'));
+ }
+ $('start').addEventListener('click',share);$('stop').addEventListener('click',stop);$('reset').addEventListener('click',()=>window.dispatchEvent(new Event('ssj-reset')));
+ window.addEventListener('error',e=>say('JS '+(e.message||e.error||'erro')));
+ window.addEventListener('unhandledrejection',e=>say('PROMISE '+(e.reason?.message||e.reason||'erro')));
+ window.__SSJ_SHARE=share;window.__SSJ_STOP=stop;
+ say('BOOTSTRAP captura pronto');
+})();
+</script>
+<script type="module">
+import * as cards from '../src/core/pokerstars-local-cards.js';
+import * as geometry from '../src/core/geometry.js';
+import * as actionCapture from '../src/core/action-capture.js';
+import * as actionBand from '../src/core/action-band.js';
+import {ActionTextOcr} from '../src/core/action-ocr.js';
+import {positionsFromDealer,detectDealerButtonSeat} from '../src/core/dealer-button.js';
+import {preflopDecision} from '../src/brain/preflop.js';
+import {postflopPolicyV4Decision} from '../src/brain/postflop-policy-v4-browser-safe.js';
+const $=id=>document.getElementById(id),video=$('video'),analysis=$('analysis'),actx=analysis.getContext('2d',{willReadFrequently:true});
+const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
+const LABEL={FOLD:'Desistir',CHECK:'Passar',CALL:'Pagar',BET:'Apostar',RAISE:'Aumentar',ALLIN:'All-in'};
+const state={heroCards:[],board:[],pot:null,toCall:null,heroStack:null,blinds:null,legalActions:[],heroPosition:null,players:6,activePlayers:6,actionHistory:[]};
+let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
+let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
+let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKey='',lastCallReadAt=0,lastQuickAt=0,lastBlindAt=0,lastDealerAt=0,lastActionTick=0,lastCardTick=0;
+let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
+let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0;
+const ocr=new ActionTextOcr();void ocr.prewarm();
+function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
+function num(v){if(v==null)return null;const a=String(v).match(/\d+(?:[.,]\d+)?/g);if(!a?.length)return null;const n=Number(a.at(-1).replace(',','.'));return Number.isFinite(n)?n:null}
+function nums(v){return (String(v||'').match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>Number(x.replace(',','.'))).filter(Number.isFinite)}
+function money(v){const n=num(v);return n==null?'—':n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function street(){const n=Math.max(state.board.length,visualBoardSeen);return n>=5?'river':n===4?'turn':n>=3?'flop':'preflop'}
+function capture(nx,ny,nw,nh,w=420){if(!video.videoWidth)return null;const sx=Math.round(video.videoWidth*nx),sy=Math.round(video.videoHeight*ny),sw=Math.max(1,Math.round(video.videoWidth*nw)),sh=Math.max(1,Math.round(video.videoHeight*nh)),c=document.createElement('canvas');c.width=w;c.height=Math.max(40,Math.round(w*sh/sw));c.getContext('2d',{willReadFrequently:true}).drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);return c}
+function cropRect(rect,w=380){return rect?capture(rect.x,rect.y,rect.w,rect.h,w):null}
+function activeSlots(){const x=VISUAL_ORDER.filter(s=>sessionSlots.has(s));return x.length>=5?x:[...VISUAL_ORDER]}
+function posMap(){
+ const slots=activeSlots();
+ if(dealerSeat&&slots.length>=2){const m=positionsFromDealer(slots,dealerSeat)||{};if(heroPosLocked&&heroPos)m.hero=heroPos;return m}
+ const m={},order=slots.length>=6?['UTG','HJ','CO','BTN','SB','BB']:slots.length===5?['HJ','CO','BTN','SB','BB']:slots.length===4?['CO','BTN','SB','BB']:['BTN','SB','BB'];
+ const pre=actions.filter(a=>a.street==='preflop').sort((a,b)=>a.at-b.at),first=[];for(const a of pre)if(!first.includes(a.seatId))first.push(a.seatId);let i=0;for(const seat of first)if(i<order.length)m[seat]=order[i++];
+ if(heroPosLocked&&heroPos){m.hero=heroPos;return m}if(heroTurn&&i<order.length){heroPos=order[i];state.heroPosition=heroPos}if(heroPos)m.hero=heroPos;return m
+}
+function updatePosition(){const m=posMap();if(m.hero){heroPos=m.hero;state.heroPosition=heroPos;if(heroTurn)heroPosLocked=true}return m}
+function historyStrings(){const m=posMap(),out=[];let last='';for(const a of [...actions].sort((x,y)=>x.at-y.at)){if(a.street!==last){out.push(a.street.toUpperCase());last=a.street}out.push((m[a.seatId]||a.seatId.toUpperCase())+' '+a.action+(a.amount!=null?' '+a.amount:''))}return out}
+function render(){
+ updatePosition();state.actionHistory=historyStrings();
+ $('hero').textContent=state.heroCards.join(' ')||'—';$('board').textContent=state.board.join(' ')||'—';$('pot').textContent=money(state.pot);$('tocall').textContent=money(state.toCall);$('stack').textContent=money(state.heroStack);$('blinds').textContent=state.blinds||'—';$('position').textContent=state.heroPosition||'—';$('legal').textContent=state.legalActions.map(x=>LABEL[x]||x).join(' · ')||'—';
+ const m=posMap(),chips={top:$('s-top'),'left-high':$('s-left-high'),'left-low':$('s-left-low'),'right-high':$('s-right-high'),'right-low':$('s-right-low')};
+ for(const [seat,el] of Object.entries(chips)){const last=lastBySeat[seat];el.textContent=(m[seat]||seat)+(last?' '+(LABEL[last.action]||last.action)+(last.amount!=null?' '+money(last.amount):''):'')}
+ if(!actions.length)$('history').innerHTML='<div class="hist">Nenhuma ação ainda.</div>';else $('history').innerHTML=[...actions].sort((a,b)=>a.at-b.at).map(a=>'<div class="hist"><span><b>'+(m[a.seatId]||a.seatId)+'</b> · '+(LABEL[a.action]||a.action)+(a.amount!=null?' · '+money(a.amount):'')+'</span><span>'+a.street+'</span></div>').join('');
+ $('status').innerHTML='<span class="pill">'+(running?'CAPTURA ATIVA':'PARADO')+'</span><span class="pill">MÓDULOS LOCAIS OK</span><span class="pill">board '+visualBoardSeen+'</span><span class="pill">seats '+activeSlots().length+'</span><span class="pill">ações '+actions.length+'</span>'+(dealerSeat?'<span class="pill">D '+dealerSeat+'</span>':'')+(ocrBusy?'<span class="pill warn">OCR…</span>':'');
+}
+function invalidate(reason='Atualizando estado local.'){lastDecisionKey='';$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO LOCAL';$('reason').textContent=reason}
+function resetHand(reason='RESET'){actions=[];lastBySeat={};folded=new Set();dealerSeat=null;dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;newHandCandidate='';newHandVotes=0;Object.assign(state,{heroCards:[],board:[],pot:null,toCall:null,heroStack:null,legalActions:[],heroPosition:null,actionHistory:[]});handId++;lastDecisionKey='';invalidate('Nova mão. Aguardando cartas.');log(reason+' · mão #'+handId);render()}
+function applyCards(){
+ const h=cards.readHeroLocal(video),b=cards.readBoardLocal(video);visualBoardSeen=b?.count||0;
+ if(h){if(!h.pairSeen){heroAbsent++;heroVotes=0}else{heroAbsent=0;if(h.cards){const k=h.cards.join(' ');heroVotes=k===heroKey?heroVotes+1:1;heroKey=k;if(heroVotes>=2&&k!==state.heroCards.join(' ')){
+  if(!state.heroCards.length){state.heroCards=[...h.cards];log('HERO '+k+' '+Math.round(h.ms||0)+'ms');invalidate('Cartas lidas. Confirmando sua vez.')}
+  else if(k!==state.heroCards.join(' ')){newHandVotes=k===newHandCandidate?newHandVotes+1:1;newHandCandidate=k;if(newHandVotes>=8&&visualBoardSeen===0){resetHand('NOVAS CARTAS');state.heroCards=[...h.cards];heroKey=k;heroVotes=2;log('HERO NOVO '+k)}}render();decide()
+ }}}}
+ if(!b||b.count===0){boardAbsent++;boardVotes=0;if(boardAbsent>=24&&state.board.length){state.board=[];invalidate('Board saiu. Confirmando nova mão.');render()}}
+ else{boardAbsent=0;if(b.cards){const k=b.cards.join(' ');boardVotes=k===boardKey?boardVotes+1:1;boardKey=k;if(boardVotes>=2&&k!==state.board.join(' ')){state.board=[...b.cards];log('BOARD '+k);invalidate('Board atualizado.');render();decide()}}}
+ if(heroAbsent>=42&&boardAbsent>=30&&state.heroCards.length&&!heroTurn)resetHand('MESA LIMPA')
+}
+function textLegal(text){const t=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(),a=[];if(/desist|fold/.test(t))a.push('FOLD');if(/pass|check/.test(t))a.push('CHECK');if(/pag|call|igual/.test(t))a.push('CALL');if(/apost|\bbet/.test(t))a.push('BET');if(/aument|raise|3-?bet/.test(t))a.push('RAISE');if(/all.?in|shove/.test(t))a.push('ALLIN');let tc=null;const m=t.match(/(?:pago|pagar|call|igualo|igualar)[^0-9]{0,14}(\d+(?:[.,]\d+)?)/);if(m)tc=Number(m[1].replace(',','.'));return{legal:[...new Set(a)],toCall:tc}}
+function buttonVisual(){
+ const c=capture(.36,.80,.64,.19,360);if(!c)return null;const ctx=c.getContext('2d',{willReadFrequently:true}),d=ctx.getImageData(0,0,c.width,c.height).data,w=c.width,h=c.height;
+ const frac=(x0,x1,y0,y1,p)=>{let hit=0,n=0;for(let y=Math.floor(h*y0);y<Math.ceil(h*y1);y+=2)for(let x=Math.floor(w*x0);x<Math.ceil(w*x1);x+=2){const i=(y*w+x)*4;n++;if(p(d[i],d[i+1],d[i+2]))hit++}return n?hit/n:0};
+ const grey=frac(.04,.39,.30,.96,(r,g,b)=>Math.abs(r-g)<30&&Math.abs(g-b)<30&&r>48&&r<185),green=frac(.34,.70,.30,.96,(r,g,b)=>g>72&&g>r*1.10&&g>b*1.06),orange=frac(.65,.995,.30,.96,(r,g,b)=>r>120&&g>55&&g<205&&b<125&&r>g*1.05),blue=frac(.20,.60,.28,.98,(r,g,b)=>b>82&&b>r*1.18&&b>g*1.04&&g>38),yellow=frac(.52,.995,.28,.98,(r,g,b)=>r>125&&g>72&&b<125&&r>g*1.01);
+ if(grey>.018&&green>.032&&orange>.022)return{legal:['FOLD','CALL','RAISE'],confidence:.98};if(blue>.024&&yellow>.022)return{legal:['CHECK','BET'],confidence:.98};return null
+}
+async function scanButtons(){
+ if(buttonsBusy||!running)return;buttonsBusy=true;try{
+  const now=Date.now(),vf=buttonVisual();let legal=vf?.legal||[],tc=null;
+  if(!ocrBusy){ocrBusy=true;const c=capture(.36,.81,.64,.18,720),r=c?await ocr.readFast(c,{cacheMs:70}):null;ocrBusy=false;const q=textLegal(r?.text||'');if(q.legal.length>=2)legal=q.legal;if(q.toCall!=null)tc=q.toCall}
+  if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){state.legalActions=[];state.toCall=null;heroTurn=false;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
+  lastButtonsAt=now;if(legal.includes('CALL')&&tc==null&&now-lastCallReadAt>55&&!ocrBusy){lastCallReadAt=now;ocrBusy=true;const cc=capture(.49,.84,.23,.12,620),r2=cc?await ocr.readFast(cc,{cacheMs:50}):null;ocrBusy=false;const raw=String(r2?.text||''),m=raw.match(/(?:pago|pagar|call)?[^0-9]{0,12}(\d+(?:[.,]\d+)?)/i);if(m)tc=Number(m[1].replace(',','.'))}
+  const hs=num(state.heroStack);if(tc!=null&&hs!=null&&hs>0&&tc>hs*1.02)tc=null;const key=legal.join('/')+'|'+(tc??'');if(key!==lastButtonKey){lastButtonKey=key;log('BOTÕES '+legal.join('/')+(tc!=null?' call '+tc:''))}
+  const old=state.legalActions.join('|')+'|'+state.toCall;state.legalActions=[...new Set(legal)];state.toCall=legal.includes('CHECK')&&!legal.includes('CALL')?null:tc;if(!heroTurn){heroTurn=true;updatePosition();log('SUA VEZ')}
+  if(old!==state.legalActions.join('|')+'|'+state.toCall){invalidate('Sua vez confirmada. Fechando estado.');render();decide()}
+ }catch(e){ocrBusy=false;log('BOTÕES erro '+e.message)}finally{buttonsBusy=false}
+}
+function recordAction(seatId,action,amount=null,confidence=.8,source='local'){
+ if(!seatId||seatId==='hero'||!action)return;if(folded.has(seatId)&&action!=='FOLD')return;const st=street();if(st==='preflop'&&action==='BET')action='RAISE';const prev=lastBySeat[seatId];if(prev&&prev.action===action&&prev.street===st&&Date.now()-prev.at<900){const a=num(amount),b=num(prev.amount);if(a==null||b==null||Math.abs(a-b)<.01)return}
+ if(action==='FOLD')folded.add(seatId);const row={id:actions.length+1,seatId,action,amount:num(amount),street:st,at:Date.now(),confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));invalidate('Ação adversária atualizada.');render();setTimeout(decide,70)
+}
+function queueSeatOcr(ev){if(ocrBusy||!localFelt)return;const band=actionBand.actionBandRegionsFromFelt(localFelt).find(x=>x.id===ev.seatId),c=band?cropRect(band.region,420):null;if(!c)return;ocrBusy=true;ocr.readFast(c,{cacheMs:70}).then(r=>{const p=r?.parsed;if(p?.action)recordAction(ev.seatId,p.action,p.amount,Math.max(.70,(r.confidence||0)/100),'action-text')}).catch(()=>{}).finally(()=>{ocrBusy=false})}
+function analyzeOpponents(now){
+ if(!video.videoWidth)return;actx.drawImage(video,0,0,analysis.width,analysis.height);const im=actx.getImageData(0,0,analysis.width,analysis.height),felt=geometry.detectFeltPixels(im.data,analysis.width,analysis.height);if(!felt)return;localFelt=localFelt?geometry.stabilizeFelt(localFelt,felt):felt;const samples=actionCapture.sampleSeats(im.data,analysis.width,analysis.height,localFelt);if(!seatState)seatState=actionCapture.createActionCaptureState(samples);
+ const o=actionCapture.observeSeatSamples(seatState,samples,now,{refractoryMs:95,confirmFrames:2});seatState=o.state;for(const sm of samples)if(sm.id==='hero'||seatState.seats?.[sm.id]?.cardPresent===true)sessionSlots.add(sm.id);for(const ev of o.events)if(ev.type==='fold-candidate')recordAction(ev.seatId,'FOLD',null,ev.confidence,'card-back');const bs=actionBand.sampleActionBands(im.data,analysis.width,analysis.height,localFelt);if(!bandState)bandState=actionBand.createActionBandState(bs);const bo=actionBand.observeActionBands(bandState,bs,now,{threshold:.026,refractoryMs:95,confirmFrames:1});bandState=bo.state;for(const ev of bo.events)queueSeatOcr(ev);
+ if(!heroPosLocked&&now-lastDealerAt>220){lastDealerAt=now;const d=detectDealerButtonSeat(im.data,analysis.width,analysis.height,localFelt);if(d){if(d.seatId===dealerCandidate)dealerVotes++;else{dealerCandidate=d.seatId;dealerVotes=1}if(dealerVotes>=2&&dealerSeat!==d.seatId){dealerSeat=d.seatId;log('DEALER '+dealerSeat);updatePosition();render();decide()}}}
+}
+async function scanQuick(){
+ const now=Date.now();if(quickBusy||ocrBusy||!running||now-lastQuickAt<520)return;quickBusy=true;lastQuickAt=now;try{
+  const jobs=[['pot',capture(.37,.265,.26,.105,700)],['stack',capture(.38,.645,.24,.115,700)]];if(now-lastBlindAt>2200){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.82,.055,1400)])}
+  for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:150});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);if(kind==='pot'&&ns.length){let v=ns.at(-1);const m=text.match(/(?:pote|pot)[^0-9]{0,22}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>=0&&v<1000)state.pot=v}if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,8}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000)state.heroStack=v}if(kind==='blinds'){const m=text.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(?:US\$?\s*)?(\d+(?:[.,]\d+)?)/i);if(m){const a=Number(m[1].replace(',','.')),b=Number(m[2].replace(',','.'));if(a>0&&b>a&&b/a<=10)state.blinds=a+'/'+b}}}
+  if(state.toCall!=null&&state.heroStack!=null&&state.toCall>state.heroStack*1.02)state.toCall=null;render();decide()
+ }catch(e){ocrBusy=false;log('VALORES erro '+e.message)}finally{quickBusy=false}
+}
+function preContext(){const pre=actions.filter(a=>a.street==='preflop'),ag=pre.filter(a=>a.action==='RAISE'||a.action==='ALLIN'),calls=pre.filter(a=>a.action==='CALL'),m=posMap();if(!ag.length&&!calls.length)return{node:'rfi',versus:null,multiway:false};if(ag.length===1&&!calls.length)return{node:'vs_open',versus:m[ag[0].seatId]||null,multiway:false};return{node:null,versus:ag.length?m[ag.at(-1).seatId]||null:null,multiway:true}}
+function decisionCode(d){const x=String(d||'').toUpperCase();if(/DESIST|FOLD/.test(x))return'FOLD';if(/PASS|CHECK/.test(x))return'CHECK';if(/PAG|CALL/.test(x))return'CALL';if(/APOST|\bBET/.test(x))return'BET';if(/AUMENT|RAISE/.test(x))return'RAISE';if(/ALL/.test(x))return'ALLIN';return null}
+function decide(){
+ if(state.heroCards.length!==2)return;if(!heroTurn||!state.legalActions.length){$('decision').textContent='AGUARDANDO';$('engine').textContent='CARTAS LIDAS';$('reason').textContent='Aguardando sua vez.';return}updatePosition();if(!state.heroPosition){$('decision').textContent='AGUARDANDO';$('engine').textContent='POSIÇÃO LOCAL';$('reason').textContent='Confirmando dealer/ordem.';return}if(visualBoardSeen>=3&&state.board.length<3){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOARD LOCAL';$('reason').textContent='Board encontrado; confirmando rank/naipe.';return}if(state.legalActions.includes('CALL')&&state.toCall==null){$('decision').textContent='AGUARDANDO';$('engine').textContent='VALOR LOCAL';$('reason').textContent='Botão PAGAR detectado; lendo o valor.';return}
+ const st=street(),hist=historyStrings();if(st==='preflop'&&state.legalActions.includes('CALL')){const prior=actions.some(a=>a.street==='preflop'&&a.action!=='FOLD');if(!prior&&state.heroPosition!=='SB'){$('decision').textContent='AGUARDANDO';$('engine').textContent='HISTÓRICO LOCAL';$('reason').textContent='Há call/raise na tela, mas a ação anterior ainda não foi confirmada.';return}}
+ const key=[handId,state.heroCards.join(''),state.board.join(''),state.pot,state.toCall,state.heroStack,state.blinds,state.heroPosition,state.legalActions.join('-'),hist.join('>')].join('|');if(key===lastDecisionKey)return;lastDecisionKey=key;try{let d;if(st==='preflop'){const p=preContext();d=preflopDecision({...state,actionHistory:hist,effectiveStack:state.heroStack},{format:'cash',tableSize:'6max',handId,preflopNode:p.node,versus:p.versus,preflopMultiway:p.multiway})}else d=postflopPolicyV4Decision({...state,actionHistory:hist},{heroActor:state.heroPosition});const code=decisionCode(d?.decision);if(!d?.decision||!code||!state.legalActions.includes(code)){$('decision').textContent='SEM DICA';$('engine').textContent=d?.engine||'NODE NÃO RESOLVIDO';$('reason').textContent=d?.reason||'Estado fora da cobertura segura. Não vou inventar ação.';return}$('decision').textContent=d.decision;$('engine').textContent=d.engine||'LOCAL';$('reason').textContent=d.reason||'Decisão local.'}catch(e){lastDecisionKey='';$('decision').textContent='SEM DICA';$('engine').textContent='ERRO LOCAL';$('reason').textContent=e.message;log('STRATEGY '+e.message)}
+}
+function tick(ts){if(!running)return;if(ts-lastCardTick>=28){lastCardTick=ts;try{applyCards()}catch(e){log('CARDS '+e.message)}}if(ts-lastActionTick>=28){lastActionTick=ts;try{analyzeOpponents(Date.now())}catch(e){log('AÇÕES '+e.message)}}void scanButtons();void scanQuick();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
+function run(){if(running||!window.__SSJ_CAPTURE?.active)return;running=true;lastCardTick=0;lastActionTick=0;log('RUNTIME V30 LOCAL INICIADO');render();if(video.requestVideoFrameCallback)frameHandle=video.requestVideoFrameCallback(()=>tick(performance.now()));else frameHandle=requestAnimationFrame(tick)}
+function stopRuntime(){running=false;if(video.cancelVideoFrameCallback&&frameHandle)try{video.cancelVideoFrameCallback(frameHandle)}catch{}else if(frameHandle)cancelAnimationFrame(frameHandle);frameHandle=null;render()}
+window.addEventListener('ssj-capture-ready',run);window.addEventListener('ssj-capture-stopped',stopRuntime);window.addEventListener('ssj-reset',()=>resetHand('RESET MANUAL'));
+render();log('MÓDULOS V30 carregados');if(window.__SSJ_CAPTURE?.active)run();
+</script>
+</body></html>
