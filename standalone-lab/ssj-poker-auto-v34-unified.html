@@ -190,6 +190,7 @@ function practicalPreflopDecision(){
  }
  if(PREMIUM.has(hc)){if(legal.has('RAISE'))return{decision:'AUMENTAR',engine:'PREFLOP LOCAL · FALLBACK',reason:`${hc} premium; ação agressiva entre os botões atuais.`};if(legal.has('CALL'))return{decision:'PAGAR',engine:'PREFLOP LOCAL · FALLBACK',reason:`${hc} premium e raise indisponível; continuar.`}}
  if(SOLID.has(hc)&&legal.has('CALL')&&actions.some(a=>a.street==='preflop'&&(a.action==='RAISE'||a.action==='ALLIN'||a.action==='CALL')))return{decision:'PAGAR',engine:'PREFLOP LOCAL · FALLBACK CONTROLADO',reason:`${hc}: continuação permitida somente porque há ação pré-flop confirmada.`};
+ if(econ?.node==='vs_open'&&legal.has('FOLD'))return{decision:'DESISTIR',engine:'PREFLOP LOCAL · DEFESA CONSERVADORA',reason:`${hc}: aumento confirmado pelo ledger e mão fora das faixas locais de continuação; fold conservador.`};
  return null
 }
 function postflopEmergency(){const legal=new Set(state.legalActions);if(legal.has('CHECK'))return{decision:'PASSAR',engine:'POSTFLOP LOCAL · FAIL-SAFE',reason:'Sem custo para continuar e estado incompleto; check é a ação segura disponível.'};if(legal.has('FOLD'))return{decision:'DESISTIR',engine:'POSTFLOP LOCAL · FAIL-SAFE',reason:'Preço/estado não confirmou a tempo; fold evita call inventado.'};return null}
