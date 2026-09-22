@@ -239,6 +239,7 @@ function render(){
 function invalidate(reason='Atualizando estado local.'){lastDecisionKey='';$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO LOCAL';$('reason').textContent=reason}
 function resetHand(reason='RESET'){
  const advance=/NOVAS CARTAS|MESA LIMPA|TRANSIÇÃO/i.test(reason);const prevDealer=dealerSeat;
+ if(test&&advance){const pending=test.turns.at(-1);if(pending?.handId===handId&&!pending.decision&&video.currentTime-pending.mediaTime<2){test.turns.pop();testEvent('hero-turn-cancelled',{handId,epoch:pending.epoch,reason:'hand-transition',startedMediaTime:pending.mediaTime})}}
  actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
  newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroStackTotal=null;
@@ -528,7 +529,8 @@ async function scanCommitments(force=false){
     const numericStarted=performance.now();
     for(const seat of seats){
       let parsed=numericReader.readCanvas(commitmentPixelCanvas(seat));
-      if(parsed.value==null&&parsed.visible){const tail=numericReader.readCanvas(commitmentPixelCanvas(seat,true));if(tail.value!=null)parsed=tail}
+      const tail=numericReader.readCanvas(commitmentPixelCanvas(seat,true));
+      if(tail.value!=null&&(parsed.value==null||(!parsed.text.includes(',')&&tail.text.includes(','))))parsed=tail;
       observeStableCommitment(seat,parsed.value!=null?{kind:'amount',value:parsed.value}:parsed.visible?{kind:'unreadable',value:null}:{kind:'empty',value:0});
     }
     commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
@@ -561,7 +563,7 @@ function liveSnapshot(){
   heroButtons:[...state.legalActions],heroTurnConfirmed:heroTurn,buttonsSource:'physical-action-buttons',
   heroPosition:state.heroPosition,positionSource:dealerSeat?'dealer-plus-occupied-seats-only':'pending',
   pot:num(state.pot),heroStack:num(state.heroStack),toCall:num(state.toCall),toCallSource:'commitment-delta',
-  actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitScanBusy&&!commitAmbiguous.size&&!ledgerUnresolved.size,
+  actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitAmbiguous.size&&!ledgerUnresolved.size,
   actionLedgerSource:'seat-state-ledger-v1',actionHistory:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount}))
  }
 }
