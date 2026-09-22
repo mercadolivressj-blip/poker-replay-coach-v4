@@ -31,7 +31,7 @@
  <div class="main">
   <div class="toolbar">
    <div class="left"><span class="brand">SSJ POKER · AUTO V34 UNIFIED</span><span class="badge">CAPTURA ROBUSTA</span><span class="badge">AÇÕES AUTO</span><span class="badge">SEM VISION REMOTA</span><span class="badge">~35 FPS</span></div>
-   <div class="right"><button id="start" class="btn primary">Compartilhar mesa</button><button id="reset" class="btn">RESETAR MÃO</button><button id="stop" class="btn danger">Parar</button></div>
+   <div class="right"><label for="replay-file" class="btn" role="button">Abrir replay</label><input id="replay-file" type="file" accept="video/mp4,video/webm" hidden><button id="start" class="btn primary">Compartilhar mesa</button><button id="reset" class="btn">RESETAR MÃO</button><button id="stop" class="btn danger">Parar</button></div>
   </div>
   <div class="stage-wrap"><div class="stage">
    <video id="video" muted playsinline></video><canvas id="overlay"></canvas>
@@ -60,11 +60,13 @@
  const $=id=>document.getElementById(id),video=$('video'),log=$('log');
  const replay=new URLSearchParams(location.search).get('replay');
  const say=s=>{if(log)log.textContent=new Date().toLocaleTimeString()+' '+s+'\n'+log.textContent.slice(0,7000)};
- window.__SSJ_CAPTURE={stream:null,active:false,mode:'screen'};
- async function startReplay(){
-   if(!replay||window.__SSJ_CAPTURE.active)return;
+ window.__SSJ_CAPTURE={stream:null,active:false,mode:'screen',objectUrl:null};
+ async function startReplay(source=replay){
+   if(!source||window.__SSJ_CAPTURE.active)return;
    try{
-     window.__SSJ_CAPTURE.active=true;window.__SSJ_CAPTURE.mode='replay';video.crossOrigin='anonymous';video.muted=true;video.preload='auto';video.src=replay;
+     window.__SSJ_CAPTURE.active=true;window.__SSJ_CAPTURE.mode='replay';video.muted=true;video.preload='auto';
+     if(!source.startsWith('blob:'))video.crossOrigin='anonymous';else video.removeAttribute('crossorigin');
+     video.src=source;
      await new Promise((resolve,reject)=>{if(video.readyState>=2)return resolve();video.addEventListener('loadeddata',resolve,{once:true});video.addEventListener('error',()=>reject(new Error('vídeo de replay não carregou')),{once:true})});
      const rate=Number(new URLSearchParams(location.search).get('rate')||1);video.playbackRate=Number.isFinite(rate)&&rate>0?rate:1;await video.play();
      $('engine').textContent='REPLAY DE TESTE';$('reason').textContent='Vídeo local reproduzindo no mesmo pipeline da captura.';say('REPLAY OK '+video.videoWidth+'x'+video.videoHeight+' @'+video.playbackRate+'x');
@@ -86,10 +88,11 @@
    }
  }
  function stop(){
-   const c=window.__SSJ_CAPTURE;c.active=false;c.stream?.getTracks?.().forEach(t=>t.stop());c.stream=null;video.pause();video.srcObject=null;if(c.mode==='replay')video.removeAttribute('src');
+   const c=window.__SSJ_CAPTURE;c.active=false;c.stream?.getTracks?.().forEach(t=>t.stop());c.stream=null;video.pause();video.srcObject=null;if(c.mode==='replay')video.removeAttribute('src');if(c.objectUrl){URL.revokeObjectURL(c.objectUrl);c.objectUrl=null}
    $('engine').textContent='PARADO';$('reason').textContent='Captura parada.';say('Captura parada');window.dispatchEvent(new Event('ssj-capture-stopped'));
  }
  $('start').addEventListener('click',share);$('stop').addEventListener('click',stop);$('reset').addEventListener('click',()=>window.dispatchEvent(new Event('ssj-reset')));
+ $('replay-file').addEventListener('change',e=>{const file=e.target.files?.[0];if(!file)return;if(window.__SSJ_CAPTURE.active)stop();const url=URL.createObjectURL(file);window.__SSJ_CAPTURE.objectUrl=url;void startReplay(url)});
  window.addEventListener('error',e=>say('JS '+(e.message||e.error||'erro')));
  window.addEventListener('unhandledrejection',e=>say('PROMISE '+(e.reason?.message||e.reason||'erro')));
  window.__SSJ_SHARE=share;window.__SSJ_STOP=stop;
@@ -116,7 +119,7 @@ const $=id=>document.getElementById(id),video=$('video'),analysis=$('analysis'),
 const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
 const LABEL={FOLD:'Desistir',CHECK:'Passar',CALL:'Pagar',BET:'Apostar',RAISE:'Aumentar',ALLIN:'All-in'};
 const state={heroCards:[],board:[],pot:null,toCall:null,heroStack:null,blinds:null,legalActions:[],heroPosition:null,players:6,activePlayers:6,actionHistory:[]};
-const TEST_MODE=new URLSearchParams(location.search).has('replay');
+const TEST_MODE=new URLSearchParams(location.search).has('replay')||new URLSearchParams(location.search).has('cert');
 const test=TEST_MODE?(window.__SSJ_TEST={version:'v34-unified',startedAt:Date.now(),events:[],turns:[],decisions:[],ocr:[],done:false}):null;
 const testSink=TEST_MODE?Object.assign(document.createElement('script'),{id:'ssj-test-telemetry',type:'application/json'}):null;if(testSink)document.body.appendChild(testSink);
 let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
