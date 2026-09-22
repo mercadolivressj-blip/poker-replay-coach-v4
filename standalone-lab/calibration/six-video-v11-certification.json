@@ -1,0 +1,25 @@
+{
+  "version": "ssj-six-video-v11-certification-v1",
+  "scanner": "tools/holdout/pokerstars_v11_scanner.py",
+  "calibrationPolicy": "videos 1-2 frozen calibration; videos 3-6 target-only holdouts",
+  "totals": {
+    "hands": 108,
+    "heroDecisions": 246,
+    "completeDecisions": 246,
+    "continuousHands": 108,
+    "blockedDecisions": 0,
+    "criticalInternalInconsistencies": 0
+  },
+  "videos": [
+    {"id":"video1","role":"calibration","frames":30829,"durationSec":1027.633,"hands":23,"heroDecisions":47,"unstableDecisionWindows":2},
+    {"id":"video2","role":"calibration","frames":16591,"durationSec":553.033,"hands":14,"heroDecisions":31,"unstableDecisionWindows":1},
+    {"id":"video3","role":"holdout","frames":20805,"durationSec":693.5,"hands":19,"heroDecisions":40,"unstableDecisionWindows":0},
+    {"id":"video4","role":"holdout","frames":22266,"durationSec":742.2,"hands":14,"heroDecisions":35,"unstableDecisionWindows":0},
+    {"id":"video5","role":"holdout","frames":24497,"durationSec":816.567,"hands":17,"heroDecisions":37,"unstableDecisionWindows":0},
+    {"id":"video6","role":"holdout","frames":20028,"durationSec":667.6,"hands":21,"heroDecisions":56,"unstableDecisionWindows":0}
+  ],
+  "scope": {
+    "certified": "offline reconstruction on the six recorded PokerStars sessions",
+    "notCertified": "unseen themes, layouts, resolutions, live timing, or a seventh independent recording"
+  }
+}
