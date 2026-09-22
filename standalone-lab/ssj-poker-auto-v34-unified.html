@@ -321,7 +321,7 @@ async function scanButtons(){
  }catch(e){ocrBusy=false;log('BOTÕES erro '+e.message)}finally{buttonsBusy=false;if(actionOcrQueue.length&&!ocrBusy)setTimeout(pumpActionOcr,15)}
 }
 function recordAction(seatId,action,amount=null,confidence=.8,source='local'){
- if(!seatId||seatId==='hero'||!action||state.heroCards.length!==2||betweenHands)return;if(folded.has(seatId))return;const st=street();if(st==='preflop'&&action==='BET')action='RAISE';
+ if(!seatId||seatId==='hero'||!action||state.heroCards.length!==2||(betweenHands&&!heroTurn))return;if(folded.has(seatId))return;const st=street();if(st==='preflop'&&action==='BET')action='RAISE';
  const prev=lastBySeat[seatId];if(prev&&prev.action===action&&prev.street===st&&Date.now()-prev.at<900){const a=num(amount),b=num(prev.amount);if(a==null||b==null||Math.abs(a-b)<.01)return}
  if(action==='FOLD')folded.add(seatId);const row={id:actions.length+1,seatId,action,amount:num(amount),street:st,at:Date.now(),confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));
  invalidate('Ação adversária atualizada.');render();setTimeout(decide,70)
