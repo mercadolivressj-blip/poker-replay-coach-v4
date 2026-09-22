@@ -146,9 +146,9 @@ fetch('../src/core/pokerstars-card-bank.json',{cache:'no-store'})
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
 function syncTest(){if(testSink)testSink.textContent=JSON.stringify(test)}
 function testEvent(type,data={}){if(!test)return;test.events.push({type,at:Date.now(),perf:performance.now(),mediaTime:video.currentTime,...data});if(test.events.length>2500)test.events.shift();syncTest()}
-function testTurn(){return test?.turns.find(x=>x.epoch===heroTurnEpoch)||null}
+function testTurn(){return test?[...test.turns].reverse().find(x=>x.handId===handId&&x.epoch===heroTurnEpoch)||null:null}
 function testDecision(decision,engine,reason,gate){
- if(!test||test.decisions.some(x=>x.epoch===heroTurnEpoch))return;
+ if(!test||test.decisions.some(x=>x.handId===handId&&x.epoch===heroTurnEpoch))return;
  const turn=testTurn(),row={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,decision,engine,reason,latencyMs:turn?Math.round(performance.now()-turn.perfAt):null,snapshot:gate?.snapshot||liveSnapshot()};
  test.decisions.push(row);if(turn){turn.decision=decision;turn.decisionMediaTime=row.mediaTime;turn.latencyMs=row.latencyMs}testEvent('decision',row)
 }
