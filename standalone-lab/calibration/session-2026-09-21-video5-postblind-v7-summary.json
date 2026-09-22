@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "session": "2026-09-21-video5",
+  "sourceVideo": "2026-09-21 16-24-01.mkv",
+  "sourceBytes": 272066919,
+  "readerHead": "cdecb04b6230a343535fcca5129a14a5579ea44f",
+  "calibrationPolicy": "sessions 1-2 frozen only; video5 contributes zero templates, labels or thresholds",
+  "methodology": {
+    "firstBlindPreserved": true,
+    "firstBlindWasPerfect": false,
+    "v7IsPostBlind": true,
+    "visualReaderChangedAfterBlind": false,
+    "ledgerHarnessChangedAfterBlind": true
+  },
+  "video": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30.0,
+    "frames": 24497,
+    "durationSec": 816.567,
+    "sampleStepFrames": 3
+  },
+  "v7": {
+    "handsDetected": 17,
+    "heroDecisionsDetected": 37,
+    "buttonsConfirmed": 37,
+    "heroCardsComplete": 37,
+    "boardComplete": 37,
+    "heroStackComplete": 37,
+    "potComplete": 37,
+    "toCallComplete": 37,
+    "positionComplete": 37,
+    "historyComplete": 37,
+    "brainValidDecisions": 37,
+    "heroActionAfterDecision": 37,
+    "handContinuity": "17/17",
+    "blockReasons": {},
+    "criticalInternalInconsistencies": 0,
+    "semanticErrors": 0,
+    "badDecisions": 0
+  },
+  "postBlindGenericFixes": [
+    "Do not infer a Hero fold from transient card disappearance before a confirmed physical Hero decision.",
+    "A confirmed physical Hero turn can reconcile a still-present prior actor as CHECK only when that actor owed zero and showed no commitment increase.",
+    "Do not terminal a river as showdown until legal river action exists, the physical turn indicator is idle, and face-up evidence is persistent."
+  ],
+  "workflowEvidence": {
+    "runId": 35669315673,
+    "jobId": 106561991161,
+    "artifactId": 10670802624,
+    "artifactSha256": "42a88d7136db156f41edbf778f8cffa069072aa70f3f616464a67e5258e59fa6"
+  }
+}
