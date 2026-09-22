@@ -561,7 +561,13 @@ function liveSnapshot(){
   actionLedgerSource:'seat-state-ledger-v1',actionHistory:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount}))
  }
 }
+function prunePreflopUnresolvedAfterHero(){
+ if(street()!=='preflop'||!state.heroPosition||!ledgerUnresolved.size)return;
+ const order=['UTG','HJ','CO','BTN','SB','BB'],m=posMap(),heroIndex=order.indexOf(state.heroPosition);if(heroIndex<0)return;
+ for(const seat of [...ledgerUnresolved]){const seatIndex=order.indexOf(m[seat]);if(seatIndex<0||seatIndex>=heroIndex)ledgerUnresolved.delete(seat)}
+}
 function liveGate(){
+ prunePreflopUnresolvedAfterHero();
  const snapshot=liveSnapshot(),validation=validatePokerSnapshot(snapshot),errors=[...validation.errors];
  if(commitReadyEpoch!==heroTurnEpoch)errors.push('commitment_scan_pending');
  if(commitAmbiguous.size)errors.push('commitment_ambiguity');
