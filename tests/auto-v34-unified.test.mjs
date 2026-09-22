@@ -34,6 +34,8 @@ assert.match(html, /numericReaderPromise/);
 assert.match(html, /commitmentPixelCanvas/);
 assert.match(html, /numericReaderMs/);
 assert.match(html, /readMoneyCanvas/);
+assert.match(html, /PokerStarsCardReader/);
+assert.match(html, /function deterministicBoard/);
 assert.match(html, /function observeLedger/);
 assert.match(html, /turn-transition/);
 assert.match(html, /card-disappearance/);

@@ -114,6 +114,7 @@ import {resolveSeatCommitmentV1} from 'https://raw.githack.com/mercadolivressj-b
 import {computeToCallFromCommitments} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/bdc06ebae3c47d434a2b64c05d3f38f8f0ae474e/src/core/seat-delta-inference.js';
 import {validatePokerSnapshot} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/bdc06ebae3c47d434a2b64c05d3f38f8f0ae474e/src/core/snapshot-validator.js';
 import {PokerStarsCommitmentReader} from '../src/core/pokerstars-numeric-reader.js';
+import {PokerStarsCardReader} from '../src/core/pokerstars-card-reader.js';
 
 const $=id=>document.getElementById(id),video=$('video'),analysis=$('analysis'),actx=analysis.getContext('2d',{willReadFrequently:true});
 const VISUAL_ORDER=['hero','left-low','left-high','top','right-high','right-low'];
@@ -136,6 +137,11 @@ const numericReaderPromise=fetch('../src/core/pokerstars-commitment-bank.json',{
  .then(r=>{if(!r.ok)throw new Error('bank HTTP '+r.status);return r.json()})
  .then(bank=>{numericReader=new PokerStarsCommitmentReader(bank);numericReaderState='ready';log('LEITOR NUMÉRICO determinístico pronto')})
  .catch(e=>{numericReaderState='error';log('LEITOR NUMÉRICO indisponível: '+e.message)});
+let boardReader=null,boardReaderState='loading';
+fetch('../src/core/pokerstars-card-bank.json',{cache:'no-store'})
+ .then(r=>{if(!r.ok)throw new Error('bank HTTP '+r.status);return r.json()})
+ .then(bank=>{boardReader=new PokerStarsCardReader(bank,'board');boardReaderState='ready';log('LEITOR DE BOARD determinístico pronto')})
+ .catch(e=>{boardReaderState='error';log('LEITOR DE BOARD indisponível: '+e.message)});
 
 function log(s){$('log').textContent=new Date().toLocaleTimeString()+' '+s+'\n'+$('log').textContent.slice(0,7000)}
 function syncTest(){if(testSink)testSink.textContent=JSON.stringify(test)}
@@ -255,9 +261,14 @@ function classifyBoardFallback(probe){
  for(const b of probe.boxes){ctx.fillStyle='#06351f';ctx.fillRect(0,0,fake.width,fake.height);const sh=Math.max(20,Math.round(b.h*.56));ctx.drawImage(probe.canvas,b.x,b.y,b.w,sh,x1,y,fw,fh);ctx.drawImage(probe.canvas,b.x,b.y,b.w,sh,x2,y,fw,fh);const r=cards.readHeroLocal(fake);if(!r?.cards||r.cards.length!==2||r.cards[0]!==r.cards[1])return null;res.push(r.cards[0])}
  return res
 }
+function deterministicBoard(){
+ const rects=[[476,236,60,85],[543,236,60,85],[610,236,60,85],[677,236,60,85],[744,236,60,85]],flags=rects.map(rect=>fixedSample(rect,(h,s,v)=>s<65&&v>170)>.18),count=flags.filter(Boolean).length;
+ if(count===0)return{cards:[],count,ms:0,confidence:1};if(![3,4,5].includes(count)||flags.some((v,i)=>v!==(i<count)))return{cards:null,count,ms:0,confidence:0};
+ const rows=rects.slice(0,count).map(rect=>boardReader.readCanvas(captureNative(...rect))),cards=rows.map(x=>x.card);return{cards:cards.every(Boolean)?cards:null,count,ms:rows.reduce((n,x)=>n+x.latencyMs,0),confidence:Math.min(...rows.map(x=>x.confidence))}
+}
 function applyCards(){
- const h=cards.readHeroLocal(video),legacy=cards.readBoardLocal(video);visualBoardSeen=legacy?.count||0;let b=legacy;
- if(legacy&&legacy.count>=3&&(!legacy.cards||legacy.cards.length<legacy.count)){const fb=classifyBoardFallback(boardProbe());if(fb&&fb.length===legacy.count){b={cards:fb,count:fb.length,ms:legacy.ms,confidence:.84};log('BOARD RECOVERY '+fb.join(' '))}}
+ const h=cards.readHeroLocal(video),legacy=boardReader?deterministicBoard():cards.readBoardLocal(video);visualBoardSeen=legacy?.count||0;let b=legacy;
+ if(!boardReader&&legacy&&legacy.count>=3&&(!legacy.cards||legacy.cards.length<legacy.count)){const fb=classifyBoardFallback(boardProbe());if(fb&&fb.length===legacy.count){b={cards:fb,count:fb.length,ms:legacy.ms,confidence:.84};log('BOARD RECOVERY '+fb.join(' '))}}
 
  if(h){
   if(!h.pairSeen){
@@ -335,7 +346,7 @@ async function scanButtons(){
 function recordAction(seatId,action,amount=null,confidence=.8,source='local'){
  if(!seatId||!action||state.heroCards.length!==2||(betweenHands&&!heroTurn))return;if(seatId!=='hero'&&folded.has(seatId))return;const st=street();if(st==='preflop'&&action==='BET')action='RAISE';
  const sameStreet=actions.filter(a=>a.seatId===seatId&&a.street===st);if(action==='CHECK'&&sameStreet.some(a=>a.action==='CHECK')){ledgerUnresolved.delete(seatId);return}
- if((action==='BET'||action==='RAISE')&&sameStreet.some(a=>a.action==='CHECK'))actions=actions.filter(a=>!(a.seatId===seatId&&a.street===st&&a.action==='CHECK'));
+ if((action==='CALL'||action==='BET'||action==='RAISE'||action==='ALLIN')&&sameStreet.some(a=>a.action==='CHECK'))actions=actions.filter(a=>!(a.seatId===seatId&&a.street===st&&a.action==='CHECK'));
  const prev=lastBySeat[seatId];if(prev&&prev.action===action&&prev.street===st&&Date.now()-prev.at<900){const a=num(amount),b=num(prev.amount);if(a==null||b==null||Math.abs(a-b)<.01){ledgerUnresolved.delete(seatId);return}}
  if(action==='FOLD')folded.add(seatId);ledgerUnresolved.delete(seatId);const row={id:actions.length+1,seatId,action,amount:num(amount),street:st,at:Date.now(),mediaTime:video.currentTime,confidence,source};actions.push(row);lastBySeat[seatId]=row;log('AUTO '+seatId+' → '+action+(row.amount!=null?' '+row.amount:''));if(test)testEvent('action',row);
  invalidate('Ação adversária atualizada.');render();setTimeout(decide,70)
@@ -366,9 +377,9 @@ async function scanQuick(force=false){
    const potRead=numericReader.readMoneyCanvas(captureNative(640,212,70,25),'pot'),stackRead=numericReader.readMoneyCanvas(captureNative(650,510,85,26),'stack');
    if(potRead.value!=null)state.pot=potRead.value;if(stackRead.value!=null)state.heroStack=stackRead.value;
    if(test){test.lastMoney={mediaTime:video.currentTime,pot:potRead.value,stack:stackRead.value,potConfidence:potRead.confidence,stackConfidence:stackRead.confidence,latencyMs:Math.round((potRead.latencyMs+stackRead.latencyMs)*1000)/1000};test.numericMoneyMs=test.lastMoney.latencyMs}
-   // Blinds are metadata, never a source for toCall. Read them sparsely and
-   // never let their OCR block a live commitment scan.
-   if(state.blinds||heroTurn||now-lastBlindAt<10000){inferEconomics();render();decide();return}
+   // Pot/stack/commitments are now fully deterministic. Never let metadata OCR
+   // serialize the live lane; blinds are inferred only from stable forced bets.
+   inferEconomics();render();decide();return
   }
   const jobs=[];if(!numericReader){jobs.push(['pot',capture(.37,.29,.26,.105,360)],['stack',capture(.39,.72,.22,.105,360)])}if(!heroTurn&&(force||now-lastBlindAt>10000)){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,720)])}
   for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:120});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);
@@ -469,7 +480,7 @@ function deriveLiveToCall(){
  const rows=commitmentRows(),missing=Object.entries(rows).filter(([,r])=>r.folded!==true&&r.commitment==null).map(([s])=>s),bad=[...new Set([...missing,...commitAmbiguous])];
  if(bad.length){state.toCall=null;return{ok:false,ambiguous:bad,reason:'commitment_ambiguity'}}
  const derived=computeToCallFromCommitments(rows,'hero');if(derived.value==null){state.toCall=null;return{ok:false,ambiguous:['hero'],reason:derived.reason}}
- state.toCall=derived.value;return{ok:true,derived,ambiguous:[]}
+ state.toCall=derived.value;if(!state.blinds&&street()==='preflop'&&video.currentTime-handMediaStartedAt<3.5){const vals=[...new Set(Object.values(seatCommit).filter(v=>Number.isFinite(v)&&v>0).map(v=>Math.round(v*100)/100))].sort((a,b)=>a-b);for(let i=0;i<vals.length-1;i++)if(vals[i+1]/vals[i]>=1.8&&vals[i+1]/vals[i]<=2.2){state.blinds=vals[i]+'/'+vals[i+1];log('BLINDS inferidos '+state.blinds);break}}return{ok:true,derived,ambiguous:[]}
 }
 function actorSeatForPosition(pos){const m=posMap();return Object.keys(m).find(k=>m[k]===pos&&k!=='hero')||null}
 function reconstructPreflopFromCommitments(){
@@ -496,7 +507,7 @@ function reconstructPreflopFromCommitments(){
  }
 }
 async function scanCommitments(force=false){
- const now=Date.now();if(commitScanBusy||ocrBusy||!running)return;resetCommitStreetIfNeeded();
+ const now=Date.now();if(commitScanBusy||(!numericReader&&ocrBusy)||!running)return;resetCommitStreetIfNeeded();
  if(!force&&now-lastCommitScanAt<(numericReader?90:520))return;lastCommitScanAt=now;commitScanBusy=true;
  const testStarted=performance.now();
  try{
