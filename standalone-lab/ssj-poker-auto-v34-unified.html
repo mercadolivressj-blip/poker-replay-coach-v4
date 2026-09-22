@@ -212,7 +212,8 @@ function practicalPreflopDecision(){
 }
 function postflopEmergency(){const legal=new Set(state.legalActions);if(legal.has('CHECK'))return{decision:'PASSAR',engine:'POSTFLOP LOCAL · FAIL-SAFE',reason:'Sem custo para continuar e estado incompleto; check é a ação segura disponível.'};if(legal.has('FOLD'))return{decision:'DESISTIR',engine:'POSTFLOP LOCAL · FAIL-SAFE',reason:'Preço/estado não confirmou a tempo; fold evita call inventado.'};return null}
 
-function activeSlots(){const x=VISUAL_ORDER.filter(s=>sessionSlots.has(s));return x.length>=5?x:[...VISUAL_ORDER]}
+function currentHandSlots(){return VISUAL_ORDER.filter(s=>ledgerActive.has(s)||ledgerPresent.has(s))}
+function activeSlots(){const hand=currentHandSlots();return hand.length>=2?hand:[...VISUAL_ORDER]}
 function posMap(){
  const slots=activeSlots();
  if(heroPosLocked&&heroPos)return {...(dealerSeat&&slots.length>=2?(positionsFromDealer(slots,dealerSeat)||{}):{}),hero:heroPos};
@@ -225,7 +226,7 @@ function posMap(){
  if(heroTurn&&first.length>0&&i<order.length){heroPos=order[i];state.heroPosition=heroPos}
  if(heroPos)m.hero=heroPos;return m
 }
-function updatePosition(){const m=posMap();if(m.hero){heroPos=m.hero;state.heroPosition=heroPos;if(heroTurn)heroPosLocked=true}return m}
+function updatePosition(){const m=posMap();if(m.hero){heroPos=m.hero;state.heroPosition=heroPos;if(heroTurn&&currentHandSlots().length>=2)heroPosLocked=true}return m}
 function historyStrings(){const m=posMap(),out=[];let last='';for(const a of [...actions].sort((x,y)=>x.at-y.at)){if(a.street!==last){out.push(a.street.toUpperCase());last=a.street}out.push((m[a.seatId]||a.seatId.toUpperCase())+' '+a.action+(a.amount!=null?' '+a.amount:''))}return out}
 
 function render(){
