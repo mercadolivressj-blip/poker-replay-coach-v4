@@ -23,8 +23,10 @@ helpers = r'''def commitment_prefix_present(roi):
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     sat, val = hsv[:, :, 1], hsv[:, :, 2]
     bw = (((sat < 155) & (val > 80)).astype('uint8')) * 255
+    found = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = found[0] if len(found) == 2 else found[1]
     glyphs = []
-    for c in _contours(bw):
+    for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         ink = int(cv2.countNonZero(bw[y:y+h, x:x+w]))
         if 7 <= h <= 16 and w <= 12 and ink >= 10:
