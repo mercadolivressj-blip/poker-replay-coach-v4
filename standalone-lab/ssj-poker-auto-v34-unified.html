@@ -126,7 +126,7 @@ const testSink=TEST_MODE?Object.assign(document.createElement('script'),{id:'ssj
 let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
 let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
 let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKey='',lastCallReadAt=0,lastQuickAt=0,lastBlindAt=0,lastDealerAt=0,lastActionTick=0,lastCardTick=0;
-let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0;
+let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0,heroTurnCommitStartEpoch=0;
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
 let heroStackTotal=null;
@@ -243,7 +243,7 @@ function resetHand(reason='RESET'){
  if(test&&advance){const pending=test.turns.at(-1);if(pending?.handId===handId&&!pending.decision&&video.currentTime-pending.mediaTime<2){test.turns.pop();testEvent('hero-turn-cancelled',{handId,epoch:pending.epoch,reason:'hand-transition',startedMediaTime:pending.mediaTime})}}
  actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
- newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroStackTotal=null;
+ newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroTurnCommitStartEpoch=0;heroStackTotal=null;
  ledgerPrev={};ledgerActive=new Set();ledgerPresent=new Set();ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();ledgerAbsentVotes={};heroDecisionSeen=false;handMediaStartedAt=video.currentTime||0;
  if(advance&&prevDealer){dealerSeat=nextOccupiedSeat(prevDealer)||prevDealer;dealerPredicted=true;log('DEALER PREDITO '+dealerSeat)}else if(!prevDealer){dealerSeat=null;dealerPredicted=false}
  Object.assign(state,{heroCards:[],board:[],pot:null,toCall:null,heroStack:null,legalActions:[],heroPosition:null,actionHistory:[]});
@@ -340,7 +340,7 @@ async function scanButtons(){
   if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn){turn.endedMediaTime=video.currentTime;syncTest()}state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
   lastButtonsAt=now;
   const newTurn=!heroTurn;
-  if(newTurn){heroTurn=true;heroDecisionSeen=true;if(ledgerTurn&&ledgerTurn!=='hero')finishLedgerTurn(ledgerTurn);heroTurnStartedAt=now;heroTurnEpoch++;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal],heroCards:[...state.heroCards],board:[...state.board],actions:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount,street:a.street,mediaTime:a.mediaTime}))};test.turns.push(turn);testEvent('hero-turn',turn)}}
+  if(newTurn){heroTurn=true;heroDecisionSeen=true;if(ledgerTurn&&ledgerTurn!=='hero')finishLedgerTurn(ledgerTurn);heroTurnStartedAt=now;heroTurnEpoch++;heroTurnCommitStartEpoch=commitScanEpoch;commitReadyEpoch=0;state.toCall=null;tc=null;log('SUA VEZ · fechando compromissos');if(test){const turn={epoch:heroTurnEpoch,handId,street:street(),mediaTime:video.currentTime,at:Date.now(),perfAt:performance.now(),buttonKind:vf?.kind,legal:[...legal],heroCards:[...state.heroCards],board:[...state.board],actions:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount,street:a.street,mediaTime:a.mediaTime}))};test.turns.push(turn);testEvent('hero-turn',turn)}}
   // O texto do botão confirma somente a ação legal. O valor de CALL nunca vem
   // do botão/time-bank: V34 deriva exclusivamente do ledger de compromissos.
   if(!legal.includes('CALL'))state.toCall=0;else tc=state.toCall;
@@ -438,7 +438,7 @@ function commitAmountFromText(text){
  return Math.min(...vals)
 }
 function resetCommitStreetIfNeeded(){
- const st=street();if(st===commitStreet)return;commitStreet=st;seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitScanEpoch=0;commitReadyEpoch=0;state.toCall=null;ledgerPrev={};ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();log('LEDGER '+st+' reset')
+ const st=street();if(st===commitStreet)return;commitStreet=st;seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitScanEpoch=0;heroTurnCommitStartEpoch=0;commitReadyEpoch=0;state.toCall=null;ledgerPrev={};ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();log('LEDGER '+st+' reset')
 }
 function commitObservation(text){
  const raw=String(text||''),value=commitAmountFromText(raw);
@@ -534,7 +534,7 @@ async function scanCommitments(force=false){
       if(tail.value!=null&&(parsed.value==null||(!parsed.text.includes(',')&&tail.text.includes(','))))parsed=tail;
       observeStableCommitment(seat,parsed.value!=null?{kind:'amount',value:parsed.value}:parsed.visible?{kind:'unreadable',value:null}:{kind:'empty',value:0});
     }
-    commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+    commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch-heroTurnCommitStartEpoch>=2)commitReadyEpoch=heroTurnEpoch;
     if(test)test.lastCommitState={mediaTime:video.currentTime,heroTurn,heroTurnEpoch,commitReadyEpoch,commitScanEpoch,derivedOk:derived.ok,toCall:state.toCall,ambiguous:[...commitAmbiguous]};
     if(test)test.numericReaderMs=Math.round(performance.now()-numericStarted);
     if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();return;
@@ -542,7 +542,7 @@ async function scanCommitments(force=false){
    const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.rawText||out?.text||'';
    const parts=out?.tsv?commitmentBatchTsv(out.tsv,seats):commitmentBatchParts(out?.rawText||out?.text,seats);
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
-   commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+   commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch-heroTurnCommitStartEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();
  }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(heroTurn&&commitReadyEpoch!==heroTurnEpoch)setTimeout(()=>scanCommitments(true),0);else if(heroTurn)setTimeout(decide,0);else if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
