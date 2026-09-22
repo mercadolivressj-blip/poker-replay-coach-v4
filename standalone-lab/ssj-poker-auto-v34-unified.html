@@ -329,7 +329,7 @@ function recordAction(seatId,action,amount=null,confidence=.8,source='local'){
  invalidate('Ação adversária atualizada.');render();setTimeout(decide,70)
 }
 function queueSeatOcr(ev){
- if(!localFelt)return;const band=actionBand.actionBandRegionsFromFelt(localFelt).find(x=>x.id===ev.seatId),c=band?cropRect(band.region,500):null;if(!c)return;
+ if(!localFelt)return;const band=actionBand.actionBandRegionsFromFelt(localFelt).find(x=>x.id===ev.seatId),c=band?cropRect(band.region,300):null;if(!c)return;
  const last=actionOcrQueue.at(-1);if(last&&last.seatId===ev.seatId&&Date.now()-last.at<90)return;
  actionOcrQueue.push({seatId:ev.seatId,canvas:c,at:Date.now(),type:ev.type,confidence:ev.confidence||.75});if(actionOcrQueue.length>18)actionOcrQueue.shift();void pumpActionOcr()
 }
@@ -350,7 +350,7 @@ async function scanQuick(force=false){
  const now=Date.now();if(heroTurn||quickBusy||ocrBusy||commitScanBusy||!running||(!force&&now-lastQuickAt<900))return;quickBusy=true;lastQuickAt=now;
  const testStarted=performance.now();
  try{
-  const jobs=[['pot',capture(.37,.29,.26,.105,760)],['stack',capture(.39,.72,.22,.105,760)]];if(force||now-lastBlindAt>1800){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,1500)])}
+  const jobs=[['pot',capture(.37,.29,.26,.105,360)],['stack',capture(.39,.72,.22,.105,360)]];if(force||now-lastBlindAt>1800){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,720)])}
   for(const [kind,c] of jobs){if(!c)continue;ocrBusy=true;const r=await ocr.readFast(c,{cacheMs:120});ocrBusy=false;const text=String(r?.text||''),ns=nums(text);
    if(kind==='pot'&&ns.length){let v=ns.at(-1);const m=text.match(/(?:pote|pot)[^0-9]{0,24}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>=0&&v<1000)state.pot=v}
    if(kind==='stack'&&ns.length){let v=ns.at(-1);const m=text.match(/US\$?[^0-9]{0,10}(\d+(?:[.,]\d+)?)/i);if(m)v=Number(m[1].replace(',','.'));if(v>.05&&v<100000)state.heroStack=v}
@@ -430,7 +430,7 @@ async function scanCommitments(force=false){
  try{
    const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
    for(const seat of seats){
-     const r=COMMIT_ROI[seat];if(!r)continue;const c=capture(r[0],r[1],r[2],r[3],560);if(!c)continue;
+     const r=COMMIT_ROI[seat];if(!r)continue;const c=capture(r[0],r[1],r[2],r[3],260);if(!c)continue;
      ocrBusy=true;let out=null;try{out=await ocr.readFast(c,{cacheMs:90})}finally{ocrBusy=false}
      observeStableCommitment(seat,commitObservation(out?.text||''));
    }
