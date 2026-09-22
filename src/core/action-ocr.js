@@ -62,12 +62,12 @@ function quickSignature(source){
   }catch{return '';}
 }
 
-async function recognize(worker,image){
+async function recognize(worker,image,detailed=false){
   const t0=performance.now();
-  const out=await worker.recognize(image);
+  const out=await worker.recognize(image,{},detailed?{text:true,tsv:true}:undefined);
   const rawText=(out?.data?.text||'').trim(),text=rawText.replace(/\s+/g,' ').trim();
   const confidence=Number(out?.data?.confidence)||0;
-  return {text,rawText,confidence,parsed:parsePokerStarsActionText(text),ms:performance.now()-t0};
+  return {text,rawText,tsv:out?.data?.tsv||'',confidence,parsed:parsePokerStarsActionText(text),ms:performance.now()-t0};
 }
 
 export class ActionTextOcr{
@@ -102,7 +102,7 @@ export class ActionTextOcr{
     try{
       await worker.setParameters({tessedit_pageseg_mode:'6'});
       const image=contrast(source,{invert:true,threshold:146,scale:1.7});
-      return await recognize(worker,image);
+      return await recognize(worker,image,true);
     }catch{return {text:'',confidence:0,parsed:null,error:true};}
     finally{try{await worker.setParameters({tessedit_pageseg_mode:'7'});}catch{}this.busy=false;}
   }
