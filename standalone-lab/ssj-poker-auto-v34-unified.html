@@ -121,7 +121,7 @@ const testSink=TEST_MODE?Object.assign(document.createElement('script'),{id:'ssj
 let running=false,frameHandle=null,localFelt=null,seatState=null,bandState=null,dealerSeat=null,dealerCandidate=null,dealerVotes=0,handId=1;
 let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
 let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKey='',lastCallReadAt=0,lastQuickAt=0,lastBlindAt=0,lastDealerAt=0,lastActionTick=0,lastCardTick=0;
-let actionOcrQueue=[],actionOcrWorking=false,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0;
+let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0;
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
 let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
@@ -334,9 +334,9 @@ function queueSeatOcr(ev){
  actionOcrQueue.push({seatId:ev.seatId,canvas:c,at:Date.now(),type:ev.type,confidence:ev.confidence||.75});if(actionOcrQueue.length>18)actionOcrQueue.shift();void pumpActionOcr()
 }
 async function pumpActionOcr(){
- if(actionOcrWorking||ocrBusy||!actionOcrQueue.length||!running||heroTurn)return;actionOcrWorking=true;ocrBusy=true;const testStarted=performance.now();
+ if(actionOcrWorking||ocrBusy||!actionOcrQueue.length||!running||heroTurn)return;const quiet=Date.now()-lastActionOcrAt;if(quiet<700){setTimeout(pumpActionOcr,700-quiet);return}actionOcrWorking=true;ocrBusy=true;const testStarted=performance.now();
  try{const job=actionOcrQueue.shift(),r=await ocr.readFast(job.canvas,{cacheMs:0}),p=r?.parsed;if(p?.action)recordAction(job.seatId,p.action,p.amount,Math.max(.72,(r.confidence||0)/100),'action-snapshot');else if(job.type==='fold-candidate'&&street()==='preflop'&&!betweenHands)recordAction(job.seatId,'FOLD',null,Math.max(.86,job.confidence),'card-back-confirmed')}
- catch(e){log('ACTION OCR '+e.message)}finally{if(test){test.ocr.push({kind:'action',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});syncTest()}ocrBusy=false;actionOcrWorking=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,25)}
+ catch(e){log('ACTION OCR '+e.message)}finally{lastActionOcrAt=Date.now();if(test){test.ocr.push({kind:'action',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});syncTest()}ocrBusy=false;actionOcrWorking=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,700)}
 }
 function analyzeOpponents(now){
  if(!video.videoWidth)return;actx.drawImage(video,0,0,analysis.width,analysis.height);const im=actx.getImageData(0,0,analysis.width,analysis.height),felt=geometry.detectFeltPixels(im.data,analysis.width,analysis.height);if(!felt)return;
