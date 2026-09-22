@@ -128,7 +128,7 @@ let actions=[],lastBySeat={},folded=new Set(),sessionSlots=new Set(['hero']);
 let ocrBusy=false,buttonsBusy=false,quickBusy=false,lastButtonsAt=0,lastButtonKey='',lastCallReadAt=0,lastQuickAt=0,lastBlindAt=0,lastDealerAt=0,lastActionTick=0,lastCardTick=0;
 let actionOcrQueue=[],actionOcrWorking=false,lastActionOcrAt=0,heroTurnStartedAt=0,dealerPredicted=false,commitScanBusy=false,lastCommitScanAt=0,seatCommit={},commitCandidates={},commitAmbiguous=new Set(),commitStreet='preflop',commitScanEpoch=0,commitReadyEpoch=0,heroTurnEpoch=0,heroTurnCommitStartEpoch=0;
 let heroKey='',heroVotes=0,heroAbsent=0,boardKey='',boardVotes=0,boardAbsent=0,visualBoardSeen=0;
-let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
+let heroTurn=false,heroPos=null,heroPosLocked=false,lastDecisionKey='',lastDecisionStreet=null,newHandCandidate='',newHandVotes=0,betweenHands=false,handHadBoard=false;
 let heroStackTotal=null;
 let ledgerPrev={},ledgerActive=new Set(),ledgerPresent=new Set(),ledgerTurn=null,ledgerTurnCandidate=null,ledgerTurnVotes=0,ledgerTurnInfo=null,ledgerUnresolved=new Set(),ledgerAbsentVotes={},heroDecisionSeen=false,handMediaStartedAt=0;
 const ocr=new ActionTextOcr(); void ocr.prewarm();
@@ -241,7 +241,7 @@ function invalidate(reason='Atualizando estado local.'){lastDecisionKey='';$('de
 function resetHand(reason='RESET'){
  const advance=/NOVAS CARTAS|MESA LIMPA|TRANSIÇÃO/i.test(reason);const prevDealer=dealerSeat;
  if(test&&advance){const pending=test.turns.at(-1);if(pending?.handId===handId&&!pending.decision&&video.currentTime-pending.mediaTime<2){test.turns.pop();testEvent('hero-turn-cancelled',{handId,epoch:pending.epoch,reason:'hand-transition',startedMediaTime:pending.mediaTime})}}
- actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;
+ actions=[];lastBySeat={};folded=new Set();dealerCandidate=null;dealerVotes=0;heroPos=null;heroPosLocked=false;heroTurn=false;heroTurnStartedAt=0;lastDecisionStreet=null;
  heroKey='';heroVotes=0;heroAbsent=0;boardKey='';boardVotes=0;boardAbsent=0;visualBoardSeen=0;seatState=null;bandState=null;localFelt=null;
  newHandCandidate='';newHandVotes=0;betweenHands=false;handHadBoard=false;actionOcrQueue=[];seatCommit={};commitCandidates={};commitAmbiguous=new Set();commitStreet='preflop';commitScanEpoch=0;commitReadyEpoch=0;heroTurnEpoch=0;heroTurnCommitStartEpoch=0;heroStackTotal=null;
  ledgerPrev={};ledgerActive=new Set();ledgerPresent=new Set();ledgerTurn=null;ledgerTurnCandidate=null;ledgerTurnVotes=0;ledgerTurnInfo=null;ledgerUnresolved=new Set();ledgerAbsentVotes={};heroDecisionSeen=false;handMediaStartedAt=video.currentTime||0;
@@ -337,6 +337,7 @@ async function scanButtons(){
  try{
   const now=Date.now(),vf=buttonVisual();let legal=[],tc=state.toCall;
   if(vf?.kind==='fcr')legal=['FOLD','CALL','RAISE'];else if(vf?.kind==='checkAgg')legal=street()==='preflop'?['CHECK','RAISE']:['CHECK','BET'];
+  if(vf?.kind==='checkAgg'&&street()==='preflop'&&lastDecisionStreet==='preflop')return;
   if(!legal.length){if(now-lastButtonsAt>280&&state.legalActions.length){const turn=testTurn();if(turn){turn.endedMediaTime=video.currentTime;syncTest()}state.legalActions=[];state.toCall=null;heroTurn=false;heroTurnStartedAt=0;heroPosLocked=!!heroPos;lastButtonKey='';invalidate('Aguardando sua vez.');render()}return}
   lastButtonsAt=now;
   const newTurn=!heroTurn;
@@ -595,7 +596,7 @@ function decide(){
  updatePosition();inferEconomics();
  if(visualBoardSeen>=3&&state.board.length<visualBoardSeen){$('decision').textContent='AGUARDANDO';$('engine').textContent='BOARD INCOMPLETO';$('reason').textContent=`Vejo ${visualBoardSeen} cartas na mesa, mas decodifiquei ${state.board.length}. Não vou recomendar com board parcial.`;return}
  const gate=liveGate();if(!gate.ok){void scanCommitments(true);$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ESTADO BLOQUEADO';$('reason').textContent='Fechando estado seguro: '+gate.errors.join(', ')+'.';const turn=testTurn();if(turn){turn.lastGateErrors=[...gate.errors];turn.unresolvedSeats=[...ledgerUnresolved];turn.ambiguousSeats=[...commitAmbiguous];turn.lastGateMediaTime=video.currentTime;syncTest()}lastDecisionKey='';return}
- if(st==='preflop'&&state.heroPosition==='BB'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
+ if(st==='preflop'&&state.heroPosition==='BB'&&state.legalActions.includes('CHECK')&&state.legalActions.includes('RAISE')&&!state.legalActions.includes('CALL')&&!state.legalActions.includes('FOLD')){const d=bbFreeDecision();$('decision').textContent=d.decision;$('engine').textContent=d.engine+' · V11 GATE';$('reason').textContent=d.reason;lastDecisionStreet=st;testDecision(d.decision,$('engine').textContent,d.reason,gate);return}
  const hist=historyStrings(),key=[handId,state.heroCards.join(''),state.board.join(''),state.pot,state.toCall,state.heroStack,state.blinds,state.heroPosition,state.legalActions.join('-'),hist.join('>'),Math.floor(age/500)].join('|');if(key===lastDecisionKey)return;lastDecisionKey=key;
  try{
   let d=null;
@@ -608,7 +609,7 @@ function decide(){
   }
   const code=decisionCode(d?.decision);
   if(!d?.decision||!code||!state.legalActions.includes(code)){$('decision').textContent='AGUARDANDO';$('engine').textContent='ESTADO INCOMPLETO';$('reason').textContent='Falta contexto confirmado. Não vou inventar fold/call/raise.';return}
-  $('decision').textContent=d.decision;$('engine').textContent=d.engine||'LOCAL';$('reason').textContent=d.reason||'Decisão local.';testDecision(d.decision,$('engine').textContent,$('reason').textContent,gate)
+  $('decision').textContent=d.decision;$('engine').textContent=d.engine||'LOCAL';$('reason').textContent=d.reason||'Decisão local.';lastDecisionStreet=st;testDecision(d.decision,$('engine').textContent,$('reason').textContent,gate)
  }catch(e){lastDecisionKey='';$('decision').textContent='AGUARDANDO';$('engine').textContent='V11 · ERRO BLOQUEADO';$('reason').textContent=e.message;log('STRATEGY '+e.message)}
 }
 function tick(ts){
