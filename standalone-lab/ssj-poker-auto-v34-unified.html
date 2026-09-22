@@ -534,6 +534,7 @@ async function scanCommitments(force=false){
       observeStableCommitment(seat,parsed.value!=null?{kind:'amount',value:parsed.value}:parsed.visible?{kind:'unreadable',value:null}:{kind:'empty',value:0});
     }
     commitScanEpoch++;const derived=deriveLiveToCall();observeLedger();if(heroTurn&&derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
+    if(test)test.lastCommitState={mediaTime:video.currentTime,heroTurn,heroTurnEpoch,commitReadyEpoch,commitScanEpoch,derivedOk:derived.ok,toCall:state.toCall,ambiguous:[...commitAmbiguous]};
     if(test)test.numericReaderMs=Math.round(performance.now()-numericStarted);
     if(heroTurn&&street()==='preflop')reconstructPreflopFromCommitments();render();decide();return;
    }
