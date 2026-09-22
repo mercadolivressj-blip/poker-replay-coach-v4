@@ -438,6 +438,13 @@ function reconstructPreflopFromCommitments(){
    else if(Math.abs(amt-currentMax)<=Math.max(.01,currentMax*.22))action='CALL';
    if(action){recordAction(seat,action,amt,.82,'commitment-ocr');currentMax=Math.max(currentMax,amt)}
  }
+ // A second hero decision can happen after BTN/SB/BB acted later in the same
+ // orbit. Any stable non-hero contribution materially above Hero's is direct
+ // evidence of aggression, regardless of the initial positional prefix.
+ for(const seat of activeSlots()){
+   if(seat==='hero'||folded.has(seat)||lastBySeat[seat])continue;const amt=seatCommit[seat];if(amt==null||heroC==null)continue;
+   if(amt>heroC+Math.max(.01,heroC*.22))recordAction(seat,'RAISE',amt,.88,'commitment-delta');
+ }
 }
 async function scanCommitments(force=false){
  const now=Date.now();if(commitScanBusy||ocrBusy||!running||!heroTurn)return;resetCommitStreetIfNeeded();
