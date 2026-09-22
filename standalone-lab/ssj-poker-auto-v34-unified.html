@@ -334,7 +334,7 @@ function queueSeatOcr(ev){
  actionOcrQueue.push({seatId:ev.seatId,canvas:c,at:Date.now(),type:ev.type,confidence:ev.confidence||.75});if(actionOcrQueue.length>18)actionOcrQueue.shift();void pumpActionOcr()
 }
 async function pumpActionOcr(){
- if(actionOcrWorking||ocrBusy||!actionOcrQueue.length||!running||(heroTurn&&commitReadyEpoch!==heroTurnEpoch))return;actionOcrWorking=true;ocrBusy=true;const testStarted=performance.now();
+ if(actionOcrWorking||ocrBusy||!actionOcrQueue.length||!running||heroTurn)return;actionOcrWorking=true;ocrBusy=true;const testStarted=performance.now();
  try{const job=actionOcrQueue.shift(),r=await ocr.readFast(job.canvas,{cacheMs:0}),p=r?.parsed;if(p?.action)recordAction(job.seatId,p.action,p.amount,Math.max(.72,(r.confidence||0)/100),'action-snapshot');else if(job.type==='fold-candidate'&&street()==='preflop'&&!betweenHands)recordAction(job.seatId,'FOLD',null,Math.max(.86,job.confidence),'card-back-confirmed')}
  catch(e){log('ACTION OCR '+e.message)}finally{if(test){test.ocr.push({kind:'action',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});syncTest()}ocrBusy=false;actionOcrWorking=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,25)}
 }
@@ -453,7 +453,7 @@ async function scanCommitments(force=false){
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
- }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length&&commitReadyEpoch===heroTurnEpoch)setTimeout(pumpActionOcr,20)}
+ }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(heroTurn&&commitReadyEpoch!==heroTurnEpoch)setTimeout(()=>scanCommitments(true),0);else if(!heroTurn&&actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
 }
 function preContext(){
  const pre=actions.filter(a=>a.street==='preflop'),ag=pre.filter(a=>a.action==='RAISE'||a.action==='ALLIN'),calls=pre.filter(a=>a.action==='CALL'),m=posMap();
@@ -475,7 +475,7 @@ function liveSnapshot(){
   heroButtons:[...state.legalActions],heroTurnConfirmed:heroTurn,buttonsSource:'physical-action-buttons',
   heroPosition:state.heroPosition,positionSource:(dealerSeat||physicalBb)?'dealer-plus-occupied-seats-only':'pending',
   pot:num(state.pot),heroStack:num(state.heroStack),toCall:num(state.toCall),toCallSource:'commitment-delta',
-  actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitScanBusy&&!actionOcrWorking&&!actionOcrQueue.length&&!commitAmbiguous.size,
+  actionComplete:commitReadyEpoch===heroTurnEpoch&&!commitScanBusy&&!commitAmbiguous.size,
   actionLedgerSource:'seat-state-ledger-v1',actionHistory:actions.map(a=>({seat:a.seatId,action:a.action,amount:a.amount}))
  }
 }
