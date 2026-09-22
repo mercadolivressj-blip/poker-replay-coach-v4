@@ -103,7 +103,7 @@ import * as cards from 'https://raw.githack.com/mercadolivressj-blip/poker-repla
 import * as geometry from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/geometry.js';
 import * as actionCapture from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/action-capture.js';
 import * as actionBand from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/action-band.js';
-import {ActionTextOcr} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/8e52bc88072b1c99780a9dc6b7bb7fa50483bf79/src/core/action-ocr.js';
+import {ActionTextOcr} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/802c19682f7aced9f516d44be9697a9c821e4a0a/src/core/action-ocr.js';
 import {positionsFromDealer,detectDealerButtonSeat} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/core/dealer-button.js';
 import {preflopDecision,handCode} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/brain/preflop.js';
 import {postflopPolicyV4Decision} from 'https://raw.githack.com/mercadolivressj-blip/poker-replay-coach-v4/13c426fa69972a9f3f3d2763ed0aa4ae2b1aa100/src/brain/postflop-policy-v4-browser-safe.js';
@@ -409,6 +409,10 @@ function commitmentBatchParts(text,seats){
  for(let i=1;i<marks.length;i++)if(marks[i].i<=marks[i-1].i)return null;
  return seats.map((seat,i)=>({seat,text:raw.slice(marks[i].end,i+1<marks.length?marks[i+1].i:raw.length)}))
 }
+function commitmentBatchTsv(tsv,seats){
+ const rows=Array.from({length:seats.length},()=>[]);for(const line of String(tsv||'').split(/\r?\n/)){const c=line.split('\t');if(c.length<12||c[0]!=='5')continue;const top=Number(c[7]),height=Number(c[9]),word=c.slice(11).join('\t').trim();if(!Number.isFinite(top)||!Number.isFinite(height)||!word)continue;const row=Math.floor(((top+height/2)/1.7)/96);if(row>=0&&row<rows.length)rows[row].push(word)}
+ return seats.map((seat,i)=>({seat,text:rows[i].join(' ')}))
+}
 function commitmentRows(){
  const out={};for(const seat of activeSlots()){
   if(folded.has(seat)){out[seat]={cardsPresent:false,folded:true,commitment:seatCommit[seat]??0};continue}
@@ -445,7 +449,7 @@ async function scanCommitments(force=false){
  try{
    const seats=['hero','top','left-high','left-low','right-high','right-low'].filter(s=>activeSlots().includes(s)&&!folded.has(s));
    const batch=commitmentBatchCanvas(seats);ocrBusy=true;let out=null;try{out=await ocr.readBatch(batch)}finally{ocrBusy=false}if(test)test.lastCommitText=out?.rawText||out?.text||'';
-   const parts=commitmentBatchParts(out?.rawText||out?.text,seats);
+   const parts=out?.tsv?commitmentBatchTsv(out.tsv,seats):commitmentBatchParts(out?.rawText||out?.text,seats);
    if(parts)for(const part of parts)observeStableCommitment(part.seat,commitObservation(part.text));else for(const seat of seats)commitAmbiguous.add(seat);
    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
