@@ -65,9 +65,9 @@ function quickSignature(source){
 async function recognize(worker,image){
   const t0=performance.now();
   const out=await worker.recognize(image);
-  const text=(out?.data?.text||'').replace(/\s+/g,' ').trim();
+  const rawText=(out?.data?.text||'').trim(),text=rawText.replace(/\s+/g,' ').trim();
   const confidence=Number(out?.data?.confidence)||0;
-  return {text,confidence,parsed:parsePokerStarsActionText(text),ms:performance.now()-t0};
+  return {text,rawText,confidence,parsed:parsePokerStarsActionText(text),ms:performance.now()-t0};
 }
 
 export class ActionTextOcr{
