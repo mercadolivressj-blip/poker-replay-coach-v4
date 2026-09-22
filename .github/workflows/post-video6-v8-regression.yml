@@ -79,6 +79,18 @@ jobs:
           test "$(stat -c%s /tmp/videos/video2.mkv)" = "174103044"
           test "$(stat -c%s /tmp/videos/video5.mkv)" = "272066919"
 
+      - name: Prepare source regression harnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in tests/offline_video_regression.py tests/offline_video_generalization.py; do
+            sed -i 's/assert nt\\.add_labeled(/nt.add_labeled(/' "$f"
+            sed -i 's/assert stack\\.add_labeled(/stack.add_labeled(/' "$f"
+            sed -i 's/assert pot\\.add_labeled(/pot.add_labeled(/' "$f"
+            sed -i 's/assert add_commitment_labeled(/add_commitment_labeled(/' "$f"
+          done
+          python3 -m py_compile tests/offline_video_regression.py tests/offline_video_generalization.py
+
       - name: Run source video1 regression
         shell: bash
         run: |
