@@ -334,9 +334,9 @@ function queueSeatOcr(ev){
  actionOcrQueue.push({seatId:ev.seatId,canvas:c,at:Date.now(),type:ev.type,confidence:ev.confidence||.75});if(actionOcrQueue.length>18)actionOcrQueue.shift();void pumpActionOcr()
 }
 async function pumpActionOcr(){
- if(actionOcrWorking||ocrBusy||!actionOcrQueue.length||!running)return;actionOcrWorking=true;ocrBusy=true;
+ if(actionOcrWorking||ocrBusy||!actionOcrQueue.length||!running||(heroTurn&&commitReadyEpoch!==heroTurnEpoch))return;actionOcrWorking=true;ocrBusy=true;const testStarted=performance.now();
  try{const job=actionOcrQueue.shift(),r=await ocr.readFast(job.canvas,{cacheMs:0}),p=r?.parsed;if(p?.action)recordAction(job.seatId,p.action,p.amount,Math.max(.72,(r.confidence||0)/100),'action-snapshot');else if(job.type==='fold-candidate'&&street()==='preflop'&&!betweenHands)recordAction(job.seatId,'FOLD',null,Math.max(.86,job.confidence),'card-back-confirmed')}
- catch(e){log('ACTION OCR '+e.message)}finally{ocrBusy=false;actionOcrWorking=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,25)}
+ catch(e){log('ACTION OCR '+e.message)}finally{if(test){test.ocr.push({kind:'action',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted)});syncTest()}ocrBusy=false;actionOcrWorking=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,25)}
 }
 function analyzeOpponents(now){
  if(!video.videoWidth)return;actx.drawImage(video,0,0,analysis.width,analysis.height);const im=actx.getImageData(0,0,analysis.width,analysis.height),felt=geometry.detectFeltPixels(im.data,analysis.width,analysis.height);if(!felt)return;
@@ -347,7 +347,7 @@ function analyzeOpponents(now){
  if(!heroPosLocked&&now-lastDealerAt>220){lastDealerAt=now;const d=detectDealerButtonSeat(im.data,analysis.width,analysis.height,localFelt);if(d){if(d.seatId===dealerCandidate)dealerVotes++;else{dealerCandidate=d.seatId;dealerVotes=1}if(dealerVotes>=2&&dealerSeat!==d.seatId){dealerSeat=d.seatId;dealerPredicted=false;log('DEALER '+dealerSeat);updatePosition();render();decide()}}}
 }
 async function scanQuick(force=false){
- const now=Date.now();if(quickBusy||ocrBusy||!running||(!force&&now-lastQuickAt<360))return;quickBusy=true;lastQuickAt=now;
+ const now=Date.now();if(heroTurn||quickBusy||ocrBusy||commitScanBusy||!running||(!force&&now-lastQuickAt<900))return;quickBusy=true;lastQuickAt=now;
  const testStarted=performance.now();
  try{
   const jobs=[['pot',capture(.37,.29,.26,.105,760)],['stack',capture(.39,.72,.22,.105,760)]];if(force||now-lastBlindAt>1800){lastBlindAt=now;jobs.push(['blinds',capture(.00,.00,.75,.05,1500)])}
@@ -436,7 +436,7 @@ async function scanCommitments(force=false){
    }
    commitScanEpoch++;const derived=deriveLiveToCall();if(derived.ok&&commitScanEpoch>=2)commitReadyEpoch=heroTurnEpoch;
    if(street()==='preflop')reconstructPreflopFromCommitments();render();decide();
- }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length)setTimeout(pumpActionOcr,20)}
+ }catch(e){log('COMMIT OCR '+e.message)}finally{if(test){test.ocr.push({kind:'commitments',mediaTime:video.currentTime,ms:Math.round(performance.now()-testStarted),seats:Object.keys(seatCommit).length,ambiguous:[...commitAmbiguous]});syncTest()}ocrBusy=false;commitScanBusy=false;if(actionOcrQueue.length&&commitReadyEpoch===heroTurnEpoch)setTimeout(pumpActionOcr,20)}
 }
 function preContext(){
  const pre=actions.filter(a=>a.street==='preflop'),ag=pre.filter(a=>a.action==='RAISE'||a.action==='ALLIN'),calls=pre.filter(a=>a.action==='CALL'),m=posMap();
