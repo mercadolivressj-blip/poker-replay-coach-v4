@@ -1,7 +1,7 @@
 name: MTT Foundation
 on:
   push:
-    branches: [mtt-brain-v0.1-foundation, mtt-brain-v0.2-tournament-state, mtt-brain-v0.3-coverage-audit, mtt-brain-v0.4-terminal-equity, mtt-brain-v0.5-pushfold-solver, mtt-brain-v0.6-certification-gates, mtt-brain-v0.7-deadmoney-pushfold, mtt-brain-v0.8-context-safe-packs]
+    branches: [mtt-brain-v0.1-foundation, mtt-brain-v0.2-tournament-state, mtt-brain-v0.3-coverage-audit, mtt-brain-v0.4-terminal-equity, mtt-brain-v0.5-pushfold-solver, mtt-brain-v0.6-certification-gates, mtt-brain-v0.7-deadmoney-pushfold, mtt-brain-v0.8-context-safe-packs, mtt-brain-v0.9-preflop-node-routing]
     paths: ['mtt/**', '.github/workflows/mtt-foundation.yml']
   pull_request:
     paths: ['mtt/**', '.github/workflows/mtt-foundation.yml']
