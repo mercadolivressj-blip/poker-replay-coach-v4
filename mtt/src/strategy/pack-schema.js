@@ -1,8 +1,10 @@
+import {validatePreflopContext} from './pack-context.js';
 const POS=new Set(['UTG','UTG1','MP','LJ','HJ','CO','BTN','SB','BB']);
 const MODES=new Set(['cEV','ICM']);
 const NODES=new Set(['unopened','vs_open','vs_open_multiway','vs_3bet','vs_4bet_plus','blind_vs_blind','reshove']);
 const CERT=new Set(['reference-only','solver-derived','solver-verified','audited']);
 const POLICIES=new Set(['exact','band']);
+const CONTEXT_POLICIES=new Set(['generic','exact-preflop-forced']);
 const SHA=/^[a-f0-9]{64}$/i;
 const finitePositive=v=>Number.isFinite(Number(v))&&Number(v)>0;
 
@@ -36,6 +38,12 @@ export function validatePackMeta(meta={}){
  if(meta.snapshotSha256&&!SHA.test(meta.snapshotSha256))errors.push('snapshot_sha256_invalid');
  if(!Array.isArray(meta.actionSet)||!meta.actionSet.length)errors.push('action_set_missing');
  if(meta.mode==='ICM'&&!String(meta.icmStage||'').trim())errors.push('icm_stage_missing');
+ const contextPolicy=String(meta.contextPolicy||'generic');
+ if(!CONTEXT_POLICIES.has(contextPolicy))errors.push('context_policy_invalid');
+ if(contextPolicy==='exact-preflop-forced'){
+  const c=validatePreflopContext(meta.preflopContext||{});for(const e of c.errors)errors.push(`preflop_context_${e}`);
+ }
+ if(String(meta.sourceType)==='internal-pushfold-solver'&&contextPolicy!=='exact-preflop-forced')errors.push('pushfold_solver_requires_exact_context');
  return{valid:errors.length===0,errors};
 }
 
