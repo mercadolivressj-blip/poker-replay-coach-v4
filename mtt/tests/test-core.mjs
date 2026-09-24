@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {normalizeTournamentState,phaseOf,stackBucket} from '../src/core/tournament-state.js';
+import {preflopPressure} from '../src/core/action-history.js';
+import {icmEquities} from '../src/icm/icm.js';
+import {analyze} from '../src/strategy/brain.js';
+const near=(a,b,e=1e-8)=>Math.abs(a-b)<=e;
+
+const s=normalizeTournamentState({tableSize:8,heroPosition:'BTN',smallBlind:500,bigBlind:1000,ante:125,playersDealt:8,heroStack:24000,villainStack:30000,pot:2500,toCall:0,entrants:1000,remaining:700,paidSpots:150,legalActions:['FOLD','CALL','RAISE']});
+assert.equal(s.bb.heroStack,24);assert.equal(s.bb.effective,24);assert.equal(s.bb.forcedPreflopPot,2.5);assert.equal(s.stackBucket,'17-25');assert.equal(s.phase,'EARLY');
+assert.equal(phaseOf({entrants:1000,remaining:160,paidSpots:150,tableSize:8}),'BUBBLE');
+assert.equal(phaseOf({entrants:1000,remaining:120,paidSpots:150,tableSize:8}),'ITM');
+assert.equal(phaseOf({entrants:1000,remaining:8,paidSpots:150,tableSize:8}),'FINAL_TABLE');
+assert.equal(stackBucket(7.9),'<8');assert.equal(stackBucket(10),'8-12');assert.equal(stackBucket(20),'17-25');assert.equal(stackBucket(100),'100+');
+const p=preflopPressure([{actor:'UTG',action:'RAISE',street:'preflop',amount:2},{actor:'CO',action:'RAISE',street:'preflop',amount:6},{actor:'BTN',action:'RAISE',street:'preflop',amount:15}]);
+assert.equal(p.node,'vs_4bet_plus');assert.equal(p.raiseCount,3);
+const eq=icmEquities([100,100],[70,30]);assert(near(eq[0],50));assert(near(eq[1],50));
+const eq2=icmEquities([200,100],[70,30]);assert(eq2[0]>eq2[1]);assert(near(eq2[0]+eq2[1],100));
+const a=analyze({tableSize:8,heroPosition:'BTN',smallBlind:500,bigBlind:1000,ante:125,heroStack:24000,villainStack:30000,pot:2500,toCall:0,entrants:1000,remaining:700,paidSpots:150,legalActions:['FOLD','CALL','RAISE']});
+assert.equal(a.status,'CORE_READY_STRATEGY_PACK_PENDING');assert.equal(a.coverage.decisionCertified,false);assert.equal(a.coverage.stateEngineCertified,true);
+console.log('PASS — MTT Core V0.1 foundation regressions');
