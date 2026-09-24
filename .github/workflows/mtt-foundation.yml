@@ -1,9 +1,10 @@
 name: MTT Foundation
 on:
   push:
-    branches: [mtt-brain-v0.1-foundation]
+    branches: [mtt-brain-v0.1-foundation, mtt-brain-v0.2-tournament-state]
+    paths: ['mtt/**', '.github/workflows/mtt-foundation.yml']
   pull_request:
-    paths: ['mtt/**']
+    paths: ['mtt/**', '.github/workflows/mtt-foundation.yml']
 
 jobs:
   test:
@@ -13,6 +14,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Run MTT foundation regressions
+      - name: Run MTT regressions
         working-directory: mtt
         run: npm test
