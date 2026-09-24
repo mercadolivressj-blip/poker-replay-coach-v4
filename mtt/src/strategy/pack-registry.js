@@ -1,12 +1,14 @@
 import {normalizeHandClass} from '../core/hand-class.js';
 import {assertPackMeta} from './pack-schema.js';
 import {coversEffectiveBB,depthDistance,normalizeDepthMeta} from './depth-router.js';
+import {contextPolicyMatches} from './pack-context.js';
 
 const packs=new Map();
 const baseKey=x=>[x.game||'NLHE',x.format||'MTT',x.mode||'cEV',x.tableSize,x.node,x.heroPosition,x.villainPosition||'*'].join('|');
 const keyOf=x=>{
  const d=normalizeDepthMeta(x)||{anchor:x.stackDepthBB,min:x.minEffectiveBB??x.stackDepthBB,max:x.maxEffectiveBB??x.stackDepthBB};
- return[baseKey(x),d.anchor,d.min,d.max,x.depthPolicy||'exact'].join('|');
+ const ctx=x.contextPolicy==='exact-preflop-forced'?JSON.stringify(x.preflopContext):String(x.contextPolicy||'generic');
+ return[baseKey(x),d.anchor,d.min,d.max,x.depthPolicy||'exact',ctx].join('|');
 };
 const certRank={audited:4,'solver-verified':3,'solver-derived':2,'reference-only':1};
 
@@ -29,7 +31,8 @@ function baseMatches(meta,query){
  if(Number(meta.tableSize)!==Number(query.tableSize))return false;
  if(meta.node!==query.node||meta.heroPosition!==query.heroPosition)return false;
  const qv=query.villainPosition||'*';
- return(meta.villainPosition||'*')==='*'||(meta.villainPosition||'*')===qv;
+ if(!((meta.villainPosition||'*')==='*'||(meta.villainPosition||'*')===qv))return false;
+ return contextPolicyMatches(meta,query);
 }
 
 export function candidatePacks(query={}){
@@ -39,6 +42,7 @@ export function candidatePacks(query={}){
   const qv=query.villainPosition||'*';
   const ax=(a.meta.villainPosition||'*')===qv?1:0,bx=(b.meta.villainPosition||'*')===qv?1:0;
   if(bx!==ax)return bx-ax;
+  const ctxA=a.meta.contextPolicy==='exact-preflop-forced'?1:0,ctxB=b.meta.contextPolicy==='exact-preflop-forced'?1:0;if(ctxB!==ctxA)return ctxB-ctxA;
   const dd=depthDistance(a.meta,effectiveBB)-depthDistance(b.meta,effectiveBB);if(dd)return dd;
   const cr=(certRank[b.meta.certification]||0)-(certRank[a.meta.certification]||0);if(cr)return cr;
   const ad=normalizeDepthMeta(a.meta),bd=normalizeDepthMeta(b.meta);
