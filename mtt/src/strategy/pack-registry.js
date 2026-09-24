@@ -1,12 +1,18 @@
 import {normalizeHandClass} from '../core/hand-class.js';
+import {assertPackMeta} from './pack-schema.js';
 
 const packs=new Map();
 const keyOf=x=>[x.game||'NLHE',x.format||'MTT',x.mode||'cEV',x.tableSize,x.stackBucket,x.node,x.heroPosition,x.villainPosition||'*'].join('|');
 
 export function registerPack(meta,chart){
- if(!meta?.tableSize||!meta?.stackBucket||!meta?.node||!meta?.heroPosition)throw new Error('strategy_pack_meta_incomplete');
+ assertPackMeta(meta);
  const key=keyOf(meta),normalized={};
- for(const [hand,dist] of Object.entries(chart||{})){const h=normalizeHandClass(hand);if(h)normalized[h]={...dist}}
+ for(const [hand,dist] of Object.entries(chart||{})){
+  const h=normalizeHandClass(hand);if(!h)continue;
+  const clean={};for(const [action,weight] of Object.entries(dist||{})){const w=Number(weight);if(Number.isFinite(w)&&w>0)clean[String(action).toUpperCase()]=w}
+  if(Object.keys(clean).length)normalized[h]=Object.freeze(clean);
+ }
+ if(!Object.keys(normalized).length)throw new Error('strategy_pack_empty_chart');
  packs.set(key,{meta:Object.freeze({...meta,key}),chart:Object.freeze(normalized)});return key;
 }
 
