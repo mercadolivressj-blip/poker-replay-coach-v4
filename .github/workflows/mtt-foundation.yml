@@ -1,7 +1,7 @@
 name: MTT Foundation
 on:
   push:
-    branches: [mtt-brain-v0.1-foundation, mtt-brain-v0.2-tournament-state, mtt-brain-v0.3-coverage-audit]
+    branches: [mtt-brain-v0.1-foundation, mtt-brain-v0.2-tournament-state, mtt-brain-v0.3-coverage-audit, mtt-brain-v0.4-terminal-equity]
     paths: ['mtt/**', '.github/workflows/mtt-foundation.yml']
   pull_request:
     paths: ['mtt/**', '.github/workflows/mtt-foundation.yml']
