@@ -19,16 +19,19 @@ const b=chooseMixed({CALL:50,RAISE:50},['CALL','RAISE'],'same-seed');
 assert.equal(a.action,b.action);
 
 clearPacks();
-registerPack({game:'NLHE',format:'MTT',mode:'cEV',tableSize:8,stackBucket:'17-25',node:'unopened',heroPosition:'BTN',villainPosition:'*',source:'unit-test',certification:'test-only'}, {
-  AKo:{RAISE:100},
-  A5s:{CALL:50,RAISE:50}
-});
+const meta={
+ game:'NLHE',format:'MTT',mode:'cEV',tableSize:8,stackBucket:'17-25',node:'unopened',heroPosition:'BTN',villainPosition:'*',
+ source:'unit-test fixture',sourceType:'synthetic-test',referenceDate:'2026-09-24',certification:'reference-only',actionSet:['FOLD','CALL','RAISE']
+};
+assert.throws(()=>registerPack({...meta,source:''},{AKo:{RAISE:100}}),/strategy_pack_invalid:source_missing/);
+registerPack(meta,{AKo:{RAISE:100},A5s:{CALL:50,RAISE:50}});
 assert.equal(registeredPackCount(),1);
 
 const base={tableSize:8,heroPosition:'BTN',smallBlind:500,bigBlind:1000,ante:125,playersDealt:8,heroStack:24000,villainStack:30000,pot:2500,toCall:0,entrants:1000,remaining:700,paidSpots:150,history:[],legalActions:['FOLD','CALL','RAISE']};
 let r=decideFromRegisteredPack({...base,hand:'AKo'});
 assert.equal(r.status,'DECISION');
 assert.equal(r.decision,'RAISE');
+assert.equal(r.pack.source,'unit-test fixture');
 
 r=decideFromRegisteredPack({...base,hand:'A5s'},{decisionKey:'mtt-mix-1'});
 assert.equal(r.status,'DECISION');
