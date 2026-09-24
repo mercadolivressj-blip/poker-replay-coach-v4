@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>SSJ Poker · V40.1.2 Safe Patcher</title>
+<style>
+body{font:15px system-ui;background:#07150e;color:#e7fff1;max-width:900px;margin:40px auto;padding:0 20px}h1{font-size:24px}.card{background:#0b2317;border:1px solid #1d6a42;border-radius:12px;padding:18px;margin:16px 0}button,input{font:inherit}button{background:#1d8f58;color:white;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.ok{color:#70f2a9}.bad{color:#ff8d8d}pre{white-space:pre-wrap;background:#051008;padding:12px;border-radius:8px;max-height:360px;overflow:auto}code{color:#aaf0c7}
+</style>
+<h1>V40.1.2 · Replay Hardening</h1>
+<div class="card">
+<p>Selecione <code>ABRA_ESTE_V40_1_1_REPLAY_FIX.html</code>. Este patcher só gera a V40.1.2 se TODOS os trechos esperados forem encontrados e se o bloco do cérebro permanecer byte-a-byte idêntico.</p>
+<input id="f" type="file" accept=".html,text/html"> <button id="go" disabled>Gerar V40.1.2 validada</button>
+</div>
+<div class="card"><b>Validação</b><pre id="log">Aguardando arquivo...</pre></div>
+<script>
+const $=id=>document.getElementById(id), log=[]; let src='';
+const say=(s,cls='')=>{log.push(s);$('log').textContent=log.join('\n');$('log').className=cls};
+function count(h,n){return h.split(n).length-1}
+function once(h,oldv,newv,label){const n=count(h,oldv);if(n!==1)throw new Error(`${label}: esperado 1 trecho, encontrei ${n}`);say('✓ '+label);return h.replace(oldv,newv)}
+function moduleBlock(h){const a=h.indexOf('const __SSJ_MODULE_SOURCES=');const b=h.indexOf('\nconst __SSJ_MODULE_URLS',a);if(a<0||b<0)throw new Error('Bloco congelado do cérebro não localizado');return h.slice(a,b)}
+async function sha256(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+$('f').onchange=async e=>{log.length=0;src=await e.target.files[0].text();try{
+ if(!src.includes('V40.1.1')||!src.includes('strategy-v7.1-cash6max-stackoff-terminal-fix-2026-09-23'))throw new Error('Este não é o HTML V40.1.1 esperado.');
+ say('✓ V40.1.1 reconhecida');say('✓ cérebro strategy-v7.1 reconhecido');$('go').disabled=false;
+}catch(err){say('ERRO: '+err.message,'bad');$('go').disabled=true}}
+$('go').onclick=async()=>{log.length=0;try{
+ const brainBefore=moduleBlock(src),hashBefore=await sha256(brainBefore);say('✓ SHA cérebro antes: '+hashBefore);
+ let out=src;
+ out=once(out,'<title>SSJ Poker · REPLAY V40.1.1 · CAPTURE/LEDGER FIX</title>','<title>SSJ Poker · REPLAY V40.1.2 · CAPTURE/LEDGER HARDENED</title>','título da versão');
+ out=once(out,'SSJ POKER · REPLAY V40.1.1 · SOLVER CONSENSUS','SSJ POKER · REPLAY V40.1.2 · SOLVER CONSENSUS','cabeçalho da versão');
+ out=once(out,"version:'v40.1.1-replay-capture-ledger-fix'","version:'v40.1.2-replay-capture-ledger-hardening'",'telemetria da versão');
+ out=once(out,"log('RUNTIME V40.1.1 REPLAY + CAPTURE/LEDGER FIX INICIADO')","log('RUNTIME V40.1.2 REPLAY + CAPTURE/LEDGER HARDENING INICIADO')",'log de runtime');
+ out=once(out,"log('MÓDULOS V40.1.1 carregados · cérebro '+STRATEGY_V7_MANIFEST.version+' · olhos V34 congelados · SEM IA')","log('MÓDULOS V40.1.2 carregados · cérebro '+STRATEGY_V7_MANIFEST.version+' · olhos V34 congelados · SEM IA')",'log de módulos');
+ out=once(out,
+`function sameCommitment(a,b){return a==null&&b==null||Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=.005}`,
+`function sameCommitment(a,b){return a==null&&b==null||Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=.025}`,
+'anti-flicker de retomada');
+ out=once(out,
+`function observeStableCommitment(seat,obs){\n  const persisted=seatCommit[seat];\n  if(obs.kind==='unreadable'){commitAmbiguous.add(seat);return}\n  const resolved=resolveSeatCommitmentV1({ocrValue:obs.value,persistedCommitment:persisted});\n  const value=resolved.value;if(value==null){commitAmbiguous.add(seat);return}\n  if(persisted!=null&&value+0.02<persisted){commitAmbiguous.add(seat);return}\n  const prev=commitCandidates[seat],same=prev&&Math.abs(prev.value-value)<=0.02;\n  const next={value,count:same?prev.count+1:1};commitCandidates[seat]=next;\n  if(next.count>=2){seatCommit[seat]=value;commitAmbiguous.delete(seat)}\n  else if(persisted==null)commitAmbiguous.add(seat)\n}`,
+`function observeStableCommitment(seat,obs){\n  const persisted=seatCommit[seat],tol=moneyTolerance();\n  if(obs.kind==='unreadable'){commitAmbiguous.add(seat);return}\n  const resolved=resolveSeatCommitmentV1({ocrValue:obs.value,persistedCommitment:persisted});\n  const value=resolved.value;if(value==null){commitAmbiguous.add(seat);return}\n  if(persisted!=null&&value+tol<persisted){commitAmbiguous.add(seat);return}\n  const prev=commitCandidates[seat],same=prev&&Math.abs(prev.value-value)<=tol;\n  const next={value,count:same?prev.count+1:1};commitCandidates[seat]=next;\n  if(next.count>=2){seatCommit[seat]=value;commitAmbiguous.delete(seat)}\n  else if(persisted==null)commitAmbiguous.add(seat)\n}`,
+'estabilidade do leitor monetário');
+ out=once(out,
+`function commitmentCandidatesSettled(){\n  for(const [seat,candidate] of Object.entries(commitCandidates)){const stable=seatCommit[seat];if(!folded.has(seat)&&stable!=null&&candidate&&Math.abs(candidate.value-stable)>.005)return false}return true\n}`,
+`function commitmentCandidatesSettled(){\n  const tol=moneyTolerance();for(const [seat,candidate] of Object.entries(commitCandidates)){const stable=seatCommit[seat];if(!folded.has(seat)&&stable!=null&&candidate&&Math.abs(candidate.value-stable)>tol)return false}return true\n}`,
+'fechamento monetário tolerante');
+ out=once(out,
+`function closeCommitStreet(nextStreet){\n  const previous=commitStreet;if(previous===nextStreet)return;const present=deterministicPresent();\n  const values=Object.entries(seatCommit).filter(([seat,value])=>seat!=='hero'&&!folded.has(seat)&&Number.isFinite(value));\n  const maximum=values.length?Math.max(...values.map(([,value])=>value),Number.isFinite(seatCommit.hero)?seatCommit.hero:0):0;\n  if(maximum<=.02)return;\n  // Chips can be swept in the same frames that reveal the next board card. If\n  // a player survives into the next street after contributing a positive but\n  // smaller amount, the missing terminal action is necessarily a continuation\n  // (normally a call). Preserve it before clearing the previous-street ledger.\n  for(const [seat,value] of values){\n   if(!present.has(seat)||value<=0||value>=maximum-.005)continue;\n   recordAction(seat,'CALL',maximum,.9,'street-transition-survivor',previous)\n  }\n}`,
+`function closeCommitStreet(nextStreet){\n  const previous=commitStreet;if(previous===nextStreet)return;const present=deterministicPresent(),tol=moneyTolerance();\n  const values=Object.entries(seatCommit).filter(([seat,value])=>seat!=='hero'&&!folded.has(seat)&&Number.isFinite(value));\n  const maximum=values.length?Math.max(...values.map(([,value])=>value),Number.isFinite(seatCommit.hero)?seatCommit.hero:0):0;\n  if(maximum<=tol)return;\n  // A sobrevivência visual prova apenas que o jogador CONTINUOU na mão. Sem stack\n  // adversário confirmado, não é seguro inventar CALL nem sizing (pode ser short all-in).\n  // Mantemos isso somente como telemetria diagnóstica; o Sovereign Ledger recebe\n  // exclusivamente ações monetárias observadas ou canônicas com prova econômica.\n  for(const [seat,value] of values){\n   if(!present.has(seat)||value<=tol||value>=maximum-tol)continue;\n   testEvent('survivor-continuation-uncommitted',{handId,seat,street:previous,observedCommit:value,tableMax:maximum,reason:'street-transition-without-direct-money-proof'});\n  }\n}`,
+'não inventar CALL na troca de street');
+ const brainAfter=moduleBlock(out),hashAfter=await sha256(brainAfter);if(hashBefore!==hashAfter)throw new Error('TRAVA: bloco do cérebro mudou ('+hashBefore+' != '+hashAfter+')');say('✓ cérebro byte-a-byte intacto: '+hashAfter);
+ if(!out.includes("if(vf?.kind==='fc')legal=['FOLD','CALL']"))throw new Error('TRAVA: detector terminal FOLD/CALL desapareceu');say('✓ all-in de 2 botões preservado');
+ if(!out.includes('return Math.max(.025,bb*.04)'))throw new Error('TRAVA: moneyTolerance 1,96↔1,98 não encontrada');say('✓ tolerância 1,96 ↔ 1,98 preservada');
+ if(out.includes("recordAction(seat,'CALL',maximum,.9,'street-transition-survivor',previous)"))throw new Error('TRAVA: inferência antiga de CALL ainda presente');say('✓ CALL inferido removido do ledger soberano');
+ if(Math.abs(1.98-1.96)>.025)throw new Error('regressão aritmética inesperada');say('✓ fixture 1,96/1,98 classificada dentro da tolerância');
+ const blob=new Blob([out],{type:'text/html;charset=utf-8'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='ABRA_ESTE_V40_1_2_REPLAY_HARDENED.html';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);say('✓ GERADO: ABRA_ESTE_V40_1_2_REPLAY_HARDENED.html','ok');
+}catch(err){say('ERRO / ARQUIVO NÃO GERADO: '+err.message,'bad')}}
+</script>
