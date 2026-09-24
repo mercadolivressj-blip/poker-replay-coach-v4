@@ -10,11 +10,11 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export function terminalCallThreshold({stacks,payouts,heroIndex,villainIndex,potBeforeCall,callCost}){
  const s=stacks.map(Number),p=payouts.map(Number),h=Number(heroIndex),v=Number(villainIndex),pot=Number(potBeforeCall),call=Number(callCost);
  if(!Array.isArray(stacks)||s.length<2||p.length<s.length)throw new Error('icm_terminal_bad_table');
- if(!Number.isInteger(h)||!Number.isInteger(v)||h===v||!s[h]>=0||!s[v]>=0)throw new Error('icm_terminal_bad_seats');
+ if(!Number.isInteger(h)||!Number.isInteger(v)||h===v||!Number.isFinite(s[h])||!Number.isFinite(s[v])||s[h]<0||s[v]<0)throw new Error('icm_terminal_bad_seats');
  if(!Number.isFinite(pot)||pot<0||!Number.isFinite(call)||call<0||call>s[h])throw new Error('icm_terminal_bad_price');
 
  const fold=s.slice(); fold[v]+=pot;
- const win=s.slice(); win[h]=s[h]-call+pot+call; win[v]=s[v];
+ const win=s.slice(); win[h]=s[h]+pot; win[v]=s[v];
  const lose=s.slice(); lose[h]=s[h]-call; lose[v]=s[v]+pot+call;
 
  const foldEq=icmWithBusted(fold,p)[h];
