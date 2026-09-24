@@ -5,11 +5,15 @@ import {chooseMixed} from '../src/strategy/mixed.js';
 import {registerPack,clearPacks,registeredPackCount,candidatePacks} from '../src/strategy/pack-registry.js';
 import {decideFromRegisteredPack} from '../src/decision/decision-engine.js';
 import {nearestTargetDepth,suggestedNonOverlappingBands} from '../src/strategy/depth-router.js';
+import {certificationMeets,decisionCertificationGate} from '../src/strategy/certification.js';
 
 assert.equal(normalizeHandClass('AsKh'),'AKo');
 assert.equal(normalizeHandClass('AhKh'),'AKs');
 assert.equal(normalizeHandClass('7c7d'),'77');
 assert.equal(all169().length,169);
+assert.equal(certificationMeets('audited','solver-verified'),true);
+assert.equal(certificationMeets('solver-derived','solver-verified'),false);
+assert.equal(decisionCertificationGate({certification:'reference-only'}).allowed,false);
 
 assert.deepEqual(maskDistribution({limp:50,raise:50},['CALL','RAISE']),{CALL:50,RAISE:50});
 assert.deepEqual(maskDistribution({jam:100},['RAISE']),{RAISE:100});
@@ -39,15 +43,19 @@ assert.equal(registeredPackCount(),1);
 
 const base={tableSize:8,heroPosition:'BTN',smallBlind:500,bigBlind:1000,ante:125,playersDealt:8,heroStack:24000,villainStack:30000,pot:2500,toCall:0,entrants:1000,remaining:700,paidSpots:150,history:[],legalActions:['FOLD','CALL','RAISE']};
 let r=decideFromRegisteredPack({...base,hand:'AKo'});
+assert.equal(r.status,'STRATEGY_NOT_CERTIFIED');
+assert.equal(r.decision,null);
+
+r=decideFromRegisteredPack({...base,hand:'AKo'},{allowUnverified:true});
 assert.equal(r.status,'DECISION');
 assert.equal(r.decision,'RAISE');
 assert.equal(r.pack.source,'unit-test fixture');
 assert.equal(r.depth.anchorBB,24);
 
-r=decideFromRegisteredPack({...base,hand:'A5s'},{decisionKey:'mtt-mix-1'});
+r=decideFromRegisteredPack({...base,hand:'A5s'},{decisionKey:'mtt-mix-1',allowUnverified:true});
 assert.equal(r.status,'DECISION');
 assert(['CALL','RAISE'].includes(r.decision));
-const r2=decideFromRegisteredPack({...base,hand:'A5s'},{decisionKey:'mtt-mix-1'});
+const r2=decideFromRegisteredPack({...base,hand:'A5s'},{decisionKey:'mtt-mix-1',allowUnverified:true});
 assert.equal(r.decision,r2.decision);
 
 r=decideFromRegisteredPack({...base,hand:'Q7o'});
@@ -62,7 +70,9 @@ registerPack(bandMeta,{AKo:{RAISE:100}});
 assert.equal(candidatePacks({game:'NLHE',format:'MTT',mode:'cEV',tableSize:8,effectiveBB:21,node:'unopened',heroPosition:'CO',villainPosition:'*'}).length,1);
 const bandBase={...base,heroPosition:'CO',heroStack:21000,villainStack:30000,hand:'AKo'};
 r=decideFromRegisteredPack(bandBase);
+assert.equal(r.status,'STRATEGY_NOT_CERTIFIED');
+r=decideFromRegisteredPack(bandBase,{minimumCertification:'solver-derived'});
 assert.equal(r.status,'DECISION');
 assert.equal(r.pack.stackDepthBB,20);
 
-console.log('PASS — MTT strategy kernel depth-aware regressions');
+console.log('PASS — MTT strategy kernel depth-aware certification regressions');
