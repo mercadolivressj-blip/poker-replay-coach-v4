@@ -4,6 +4,7 @@ import {solvePushFoldConsensus} from '../src/solver/pushfold-consensus.js';
 import {buildBlindVsBlindPushFoldPacks} from '../src/strategy/pushfold-pack-builder.js';
 import {clearPacks,registerPack} from '../src/strategy/pack-registry.js';
 import {decideFromRegisteredPack} from '../src/decision/decision-engine.js';
+import {equityAuditFixture} from '../src/math/equity-stability.js';
 
 const individual={smallBlindBB:.5,anteBB:.125,anteType:'individual',playersDealt:8,forcedPreflopPotBB:2.5};
 const gi=pushFoldGameFromPreflopContext(attachEffectiveStackToContext(individual,10));
@@ -15,8 +16,15 @@ assert.throws(()=>pushFoldGameFromPreflopContext(attachEffectiveStackToContext({
 
 const hands=['AA','72o'];
 const M={AA:{AA:.5,'72o':.82},'72o':{AA:.18,'72o':.5}};
-const consensus=solvePushFoldConsensus({game:gi,equityMatrix:M,hands,regretIterations:12000,burnIn:1000,fictitiousIterations:8000,maxNashConv:.05,maxMeanFrequencyDiff:.08,maxFrequencyDiff:.2});
+let consensus=solvePushFoldConsensus({game:gi,equityMatrix:M,hands,regretIterations:12000,burnIn:1000,fictitiousIterations:8000,maxNashConv:.05,maxMeanFrequencyDiff:.08,maxFrequencyDiff:.2});
 assert.equal(consensus.solverConsensus,true,JSON.stringify(consensus.agreement));
+assert.equal(consensus.equityStable,false);
+assert.equal(consensus.verificationReady,false);
+assert.equal(consensus.recommendedCertification,'solver-derived');
+assert.throws(()=>buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,promoteVerified:true}),/equity_stability_required/);
+
+consensus=solvePushFoldConsensus({game:gi,equityMatrix:M,equityAudit:equityAuditFixture(true),hands,regretIterations:12000,burnIn:1000,fictitiousIterations:8000,maxNashConv:.05,maxMeanFrequencyDiff:.08,maxFrequencyDiff:.2});
+assert.equal(consensus.verificationReady,true);
 assert.equal(consensus.recommendedCertification,'solver-verified');
 
 const derived=buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10});
@@ -27,16 +35,14 @@ assert.equal(Object.keys(derived.bb.chart).length,169);
 const verified=buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,promoteVerified:true});
 assert.equal(verified.sb.meta.certification,'solver-verified');
 
-// Default decision gate must block a solver-derived pack.
 clearPacks();registerPack(derived.sb.meta,derived.sb.chart);
 const sbRaw={tableSize:8,playersDealt:8,heroPosition:'SB',smallBlind:500,bigBlind:1000,ante:125,anteType:'individual',heroStack:10000,villainStack:10000,pot:2500,toCall:0,history:[],legalActions:['FOLD','ALLIN'],hand:'AA',entrants:1000,remaining:700,paidSpots:150};
 let r=decideFromRegisteredPack(sbRaw);
 assert.equal(r.status,'STRATEGY_NOT_CERTIFIED');
 
-// Promotion only after consensus explicitly unlocks the normal gate.
 clearPacks();registerPack(verified.sb.meta,verified.sb.chart);
 r=decideFromRegisteredPack(sbRaw);
 assert.equal(r.status,'DECISION');
 assert(['FOLD','ALLIN'].includes(r.decision));
 
-console.log('PASS — dual-solver consensus / ante allocation / pack-promotion gates');
+console.log('PASS — dual-solver consensus / equity-stability / pack-promotion gates');
