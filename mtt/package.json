@@ -1,7 +1,7 @@
 {
   "name":"ssj-mtt-brain",
-  "version":"0.3.0",
+  "version":"0.4.0",
   "private":true,
   "type":"module",
-  "scripts":{"test":"node tests/test-core.mjs && node tests/test-strategy-kernel.mjs && node tests/test-icm-terminal.mjs && node tests/test-holdem-evaluator.mjs && node tests/test-tournament-snapshot.mjs && node tests/test-coverage-audit.mjs"}
+  "scripts":{"test":"node tests/test-core.mjs && node tests/test-strategy-kernel.mjs && node tests/test-icm-terminal.mjs && node tests/test-holdem-evaluator.mjs && node tests/test-tournament-snapshot.mjs && node tests/test-coverage-audit.mjs && node tests/test-range-combos.mjs && node tests/test-terminal-chip-ev.mjs"}
 }
