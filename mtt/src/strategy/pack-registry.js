@@ -20,3 +20,5 @@ export function getPack(query){return packs.get(keyOf(query))||packs.get(keyOf({
 export function lookupDistribution(query,hand){const p=getPack(query),h=normalizeHandClass(hand);return p&&h?{pack:p.meta,distribution:p.chart[h]||null}:null}
 export function clearPacks(){packs.clear()}
 export function registeredPackCount(){return packs.size}
+export function listRegisteredPacks(){return [...packs.values()].map(p=>p.meta)}
+export function registeredPackKeys(){return [...packs.keys()]}
