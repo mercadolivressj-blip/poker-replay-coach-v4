@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {normalizeTournamentState,phaseOf,stackBucket} from '../src/core/tournament-state.js';
+import {normalizeTournamentContext,contextReadiness,strategyRoutingKey} from '../src/core/tournament-context.js';
 import {preflopPressure} from '../src/core/action-history.js';
 import {icmEquities} from '../src/icm/icm.js';
 import {analyze} from '../src/strategy/brain.js';
@@ -13,6 +14,13 @@ assert.equal(phaseOf({entrants:1000,remaining:8,paidSpots:150,tableSize:8}),'FIN
 assert.equal(stackBucket(7.9),'<8');assert.equal(stackBucket(10),'8-12');assert.equal(stackBucket(20),'17-25');assert.equal(stackBucket(100),'100+');
 const p=preflopPressure([{actor:'UTG',action:'RAISE',street:'preflop',amount:2},{actor:'CO',action:'RAISE',street:'preflop',amount:6},{actor:'BTN',action:'RAISE',street:'preflop',amount:15}]);
 assert.equal(p.node,'vs_4bet_plus');assert.equal(p.raiseCount,3);
+
+const ctx=normalizeTournamentContext({game:'NLHE',format:'MTT',tableSize:8,speed:'regular',tournamentName:'Big US$ 3,30',series:'PokerStars',bountyType:'none',smallBlind:500,bigBlind:1000,ante:125,nextSmallBlind:600,nextBigBlind:1200,nextAnte:150,secondsToNextLevel:212,entrants:499,remaining:300,paidSpots:71});
+assert.equal(contextReadiness(ctx).ready,true);
+assert.equal(strategyRoutingKey(ctx),'nlhe|mtt|8max|regular|none');
+const brandedDifferently=normalizeTournamentContext({...ctx,tournamentName:'Whatever Marketing Name',series:'Other'});
+assert.equal(strategyRoutingKey(brandedDifferently),strategyRoutingKey(ctx));
+
 const eq=icmEquities([100,100],[70,30]);assert(near(eq[0],50));assert(near(eq[1],50));
 const eq2=icmEquities([200,100],[70,30]);assert(eq2[0]>eq2[1]);assert(near(eq2[0]+eq2[1],100));
 const a=analyze({tableSize:8,heroPosition:'BTN',smallBlind:500,bigBlind:1000,ante:125,heroStack:24000,villainStack:30000,pot:2500,toCall:0,entrants:1000,remaining:700,paidSpots:150,legalActions:['FOLD','CALL','RAISE']});
