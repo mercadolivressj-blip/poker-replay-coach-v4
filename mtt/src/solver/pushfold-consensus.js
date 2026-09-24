@@ -8,7 +8,7 @@ function diffStats(a,b,hands){
  return{meanAbsDiff:hands.length?sum/hands.length:0,maxAbsDiff:max,maxDiffHand:maxHand};
 }
 
-export function solvePushFoldConsensus({game,equityMatrix,hands=all169(),regretIterations=12000,burnIn=1000,fictitiousIterations=8000,maxNashConv=.02,maxMeanFrequencyDiff=.04,maxFrequencyDiff=.15}={}){
+export function solvePushFoldConsensus({game,equityMatrix,equityAudit=null,hands=all169(),regretIterations=12000,burnIn=1000,fictitiousIterations=8000,maxNashConv=.02,maxMeanFrequencyDiff=.04,maxFrequencyDiff=.15}={}){
  const hs=[...new Set(hands.map(normalizeHandClass).filter(Boolean))];
  const regret=solvePushFoldGame({game,equityMatrix,hands:hs,iterations:regretIterations,burnIn});
  const fictitious=solvePushFoldFictitiousPlay({game,equityMatrix,hands:hs,iterations:fictitiousIterations});
@@ -23,5 +23,7 @@ export function solvePushFoldConsensus({game,equityMatrix,hands=all169(),regretI
   callMaxAgreement:call.maxAbsDiff<=thresholds.maxFrequencyDiff
  };
  const solverConsensus=Object.values(checks).every(Boolean);
- return{version:'pushfold-consensus-v1',hands:hs.length,regret,fictitious,agreement:{shove,call},thresholds,checks,solverConsensus,recommendedCertification:solverConsensus?'solver-verified':'solver-derived'};
+ const equityStable=Boolean(equityAudit?.stable);
+ const verificationReady=solverConsensus&&equityStable;
+ return{version:'pushfold-consensus-v2',hands:hs.length,regret,fictitious,agreement:{shove,call},thresholds,checks,solverConsensus,equityAudit:equityAudit||null,equityStable,verificationReady,recommendedCertification:verificationReady?'solver-verified':'solver-derived'};
 }
