@@ -1,8 +1,14 @@
 import {normalizeHandClass} from '../core/hand-class.js';
 import {assertPackMeta} from './pack-schema.js';
+import {coversEffectiveBB,depthDistance,normalizeDepthMeta} from './depth-router.js';
 
 const packs=new Map();
-const keyOf=x=>[x.game||'NLHE',x.format||'MTT',x.mode||'cEV',x.tableSize,x.stackBucket,x.node,x.heroPosition,x.villainPosition||'*'].join('|');
+const baseKey=x=>[x.game||'NLHE',x.format||'MTT',x.mode||'cEV',x.tableSize,x.node,x.heroPosition,x.villainPosition||'*'].join('|');
+const keyOf=x=>{
+ const d=normalizeDepthMeta(x)||{anchor:x.stackDepthBB,min:x.minEffectiveBB??x.stackDepthBB,max:x.maxEffectiveBB??x.stackDepthBB};
+ return[baseKey(x),d.anchor,d.min,d.max,x.depthPolicy||'exact'].join('|');
+};
+const certRank={audited:4,'solver-verified':3,'solver-derived':2,'reference-only':1};
 
 export function registerPack(meta,chart){
  assertPackMeta(meta);
@@ -16,7 +22,31 @@ export function registerPack(meta,chart){
  packs.set(key,{meta:Object.freeze({...meta,key}),chart:Object.freeze(normalized)});return key;
 }
 
-export function getPack(query){return packs.get(keyOf(query))||packs.get(keyOf({...query,villainPosition:'*'}))||null}
+function baseMatches(meta,query){
+ if((meta.game||'NLHE')!==(query.game||'NLHE'))return false;
+ if((meta.format||'MTT')!==(query.format||'MTT'))return false;
+ if((meta.mode||'cEV')!==(query.mode||'cEV'))return false;
+ if(Number(meta.tableSize)!==Number(query.tableSize))return false;
+ if(meta.node!==query.node||meta.heroPosition!==query.heroPosition)return false;
+ const qv=query.villainPosition||'*';
+ return(meta.villainPosition||'*')==='*'||(meta.villainPosition||'*')===qv;
+}
+
+export function candidatePacks(query={}){
+ const effectiveBB=Number(query.effectiveBB??query.stackDepthBB);
+ if(!Number.isFinite(effectiveBB)||effectiveBB<=0)return[];
+ return[...packs.values()].filter(p=>baseMatches(p.meta,query)&&coversEffectiveBB(p.meta,effectiveBB)).sort((a,b)=>{
+  const qv=query.villainPosition||'*';
+  const ax=(a.meta.villainPosition||'*')===qv?1:0,bx=(b.meta.villainPosition||'*')===qv?1:0;
+  if(bx!==ax)return bx-ax;
+  const dd=depthDistance(a.meta,effectiveBB)-depthDistance(b.meta,effectiveBB);if(dd)return dd;
+  const cr=(certRank[b.meta.certification]||0)-(certRank[a.meta.certification]||0);if(cr)return cr;
+  const ad=normalizeDepthMeta(a.meta),bd=normalizeDepthMeta(b.meta);
+  return(ad.max-ad.min)-(bd.max-bd.min);
+ });
+}
+
+export function getPack(query){return candidatePacks(query)[0]||null}
 export function lookupDistribution(query,hand){const p=getPack(query),h=normalizeHandClass(hand);return p&&h?{pack:p.meta,distribution:p.chart[h]||null}:null}
 export function clearPacks(){packs.clear()}
 export function registeredPackCount(){return packs.size}
