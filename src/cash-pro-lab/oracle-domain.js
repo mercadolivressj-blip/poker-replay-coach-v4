@@ -12,7 +12,7 @@ export function verifyOracleDomain(node={},domain={}){
   }
 
   const checks={
-    game:false,currency:false,stack:false,rake:false,street:false,players:false,evUnit:false,evSemantics:false,
+    game:false,currency:false,stack:false,rake:false,street:false,players:false,strategyProfile:false,evUnit:false,evSemantics:false,
   };
 
   checks.game=domain.game===node.game;
@@ -42,6 +42,9 @@ export function verifyOracleDomain(node={},domain={}){
   checks.players=modeOk&&boundsOk;
   if(!checks.players) reasons.push('domain_player_count_mismatch');
 
+  checks.strategyProfile=!node.strategyProfile||includesExact(domain.strategyProfiles,node.strategyProfile);
+  if(!checks.strategyProfile) reasons.push('domain_strategy_profile_mismatch');
+
   checks.evUnit=domain.evUnit==='BB';
   if(!checks.evUnit) reasons.push('domain_ev_unit_mismatch');
 
@@ -49,7 +52,7 @@ export function verifyOracleDomain(node={},domain={}){
   if(!checks.evSemantics) reasons.push('domain_ev_semantics_mismatch');
 
   return {
-    version:'cash-pro-lab-oracle-domain-v1',
+    version:'cash-pro-lab-oracle-domain-v2',
     ok:reasons.length===0,
     reasons,
     checks,
@@ -62,6 +65,7 @@ export function verifyOracleDomain(node={},domain={}){
       playerMode:domain.playerMode??null,
       minPlayers,
       maxPlayers,
+      strategyProfiles:Array.isArray(domain.strategyProfiles)?[...domain.strategyProfiles]:[],
       evUnit:domain.evUnit??null,
       evSemantics:domain.evSemantics??null,
     },
@@ -79,6 +83,7 @@ export function domainForNodeFixture(node={},overrides={}){
     playerMode:node.activePlayers===2?'heads-up':node.activePlayers>=3?'multiway':'any',
     minPlayers:Number.isInteger(node.activePlayers)?node.activePlayers:null,
     maxPlayers:Number.isInteger(node.activePlayers)?node.activePlayers:null,
+    strategyProfiles:node.strategyProfile?[node.strategyProfile]:[],
     evUnit:'BB',
     evSemantics:'action-ev-from-node',
     ...overrides,
