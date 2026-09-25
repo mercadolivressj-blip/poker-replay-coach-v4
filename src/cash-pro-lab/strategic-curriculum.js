@@ -59,6 +59,7 @@ const stable=value=>{
   return JSON.stringify(value);
 };
 const product=axes=>Object.values(axes).reduce((n,values)=>n*values.length,1);
+const POSITION_ORDER=new Map(POSITIONS.map((p,i)=>[p,i]));
 
 function splitForHash(hash,split={train:80,dev:10,holdout:10}){
   const train=Number(split.train??80),dev=Number(split.dev??10),holdout=Number(split.holdout??10),total=train+dev+holdout;
@@ -86,6 +87,47 @@ function resolvedPlans(overrides={}){
   return out;
 }
 
+function canonicalMatchupPair(value){
+  const m=String(value||'').toUpperCase().match(/^(UTG|HJ|CO|BTN|SB|BB)-VS-(UTG|HJ|CO|BTN|SB|BB)$/);
+  if(!m||m[1]===m[2]) return String(value||'');
+  return [m[1],m[2]].sort((a,b)=>(POSITION_ORDER.get(a)??99)-(POSITION_ORDER.get(b)??99)).join('-');
+}
+
+export function strategicSplitGroupKey(lane,axes={},sampleIndex=0){
+  if(lane==='preflop'){
+    return stable({
+      lane,
+      effectiveStackBB:axes.effectiveStackBB,
+      heroPosition:axes.heroPosition,
+      activePlayers:axes.activePlayers,
+      facingClass:axes.facingClass,
+      sampleIndex,
+    });
+  }
+  if(lane==='postflop-heads-up'){
+    return stable({
+      lane,
+      effectiveStackBB:axes.effectiveStackBB,
+      positionPair:canonicalMatchupPair(axes.positionMatchup),
+      potType:axes.potType,
+      textureClass:axes.textureClass,
+      sampleIndex,
+    });
+  }
+  if(lane==='postflop-multiway'){
+    return stable({
+      lane,
+      effectiveStackBB:axes.effectiveStackBB,
+      heroPosition:axes.heroPosition,
+      activePlayers:axes.activePlayers,
+      potType:axes.potType,
+      textureClass:axes.textureClass,
+      sampleIndex,
+    });
+  }
+  return stable({lane,axes,sampleIndex});
+}
+
 export function strategicCurriculumManifest({plans={},seed='cash-pro-lab-strategic-v1',split={train:80,dev:10,holdout:10}}={}){
   const resolved=resolvedPlans(plans);
   const lanes={};let cells=0,tickets=0;
@@ -95,11 +137,14 @@ export function strategicCurriculumManifest({plans={},seed='cash-pro-lab-strateg
     cells+=laneCells;tickets+=laneTickets;
   }
   return {
-    version:'cash-pro-lab-strategic-curriculum-v1',seed:String(seed),split,lanes,cells,tickets,
+    version:'cash-pro-lab-strategic-curriculum-v2',seed:String(seed),split,lanes,cells,tickets,
+    splitUnit:'strategic-root-family',
     invariants:[
       'preflop has no board texture axis',
-      'postflop-heads-up uses ordered position matchups',
+      'postflop-heads-up uses ordered position matchups but split isolation is by canonical position pair',
       'postflop-multiway starts at three active players',
+      'street initiative and facing branches of the same postflop root family never cross train dev holdout',
+      'hero/villain perspective reversals of the same heads-up root family never cross train dev holdout',
       'tickets are targets, never completed studies until exact-state proof and teacher EV audit pass',
     ],
   };
@@ -116,9 +161,12 @@ export function* iterateStrategicCurriculum({plans={},seed='cash-pro-lab-strateg
       const cellId=`scell-${fnv1a(cellKey).toString(16).padStart(8,'0')}`;
       for(let sampleIndex=0;sampleIndex<plan.samplesPerCell;sampleIndex++){
         const sampleSeed=fnv1a(`${seed}|${cellKey}|${sampleIndex}`);
+        const splitGroupKey=strategicSplitGroupKey(lane,axes,sampleIndex);
+        const splitGroupSeed=fnv1a(`${seed}|split-group|${splitGroupKey}`);
+        const splitGroupId=`sgroup-${splitGroupSeed.toString(16).padStart(8,'0')}`;
         yield {
-          version:'cash-pro-lab-strategic-ticket-v1',ordinal:ordinal++,lane,teacherLane:lane,cellId,sampleIndex,sampleSeed,
-          split:splitForHash(sampleSeed,split),axes:{...axes},
+          version:'cash-pro-lab-strategic-ticket-v2',ordinal:ordinal++,lane,teacherLane:lane,cellId,sampleIndex,sampleSeed,
+          split:splitForHash(splitGroupSeed,split),splitGroupId,splitGroupSeed,axes:{...axes},
         };
       }
     }
