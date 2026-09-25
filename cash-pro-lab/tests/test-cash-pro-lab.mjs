@@ -18,10 +18,12 @@ assert.equal(profileSnapshot(pm).trusted,false);
 assert.equal(exploitWeight(pm),0);
 assert.equal(exploitGate({handsSeen:8,exploitWeight:0}).allowed,false);
 
-// 3) With meaningful observations, confidence can rise gradually rather than snap-classifying.
+// 3) Even many observations of only ONE stat must not unlock a global exploit profile.
+// This prevents overfitting a player because of one visible behavior.
 for(let i=0;i<160;i++){addHand(pm);observe(pm,'riverBluff',i%2===0);}
 assert(profileSnapshot(pm).handsSeen>=160);
-assert(exploitWeight(pm)>0);
+assert.equal(profileSnapshot(pm).trusted,false);
+assert.equal(exploitWeight(pm),0);
 
 // 4) River large bet on a completed flush should polarize range and reduce medium showdown.
 let rb=createRangeBelief();
@@ -70,9 +72,10 @@ const valueGate=terminalDecisionGate({
 });
 assert.equal(valueGate.allowed,true);
 
-// 9) Deterministic player learning should improve directionally with sample size.
+// 9) Deterministic multi-stat player learning should improve with sample size.
 const learn=compareLearning({archetype:'AGGRO_REG',seed:42,shortHands:20,longHands:600});
 assert(learn.longError<learn.shortError);
 assert(learn.long.snapshot.trusted);
+assert(exploitWeight(learn.long.model)>0);
 
 console.log('PASS — Cash Pro Lab V0.1 foundation regressions');
