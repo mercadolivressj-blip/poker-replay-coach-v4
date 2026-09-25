@@ -2,6 +2,12 @@ import { evaluateCashDecision } from './cash-pro-lab.js';
 import { summarizeEVAudits } from './ev-auditor.js';
 import { buildLeakReport } from './leak-report.js';
 
+const STRICT_PROOF={
+  requireSizedAggression:true,
+  requireLegalOptionsEvidence:true,
+  requireStrategyProfile:true,
+};
+
 const STRICT_CONSENSUS={
   requireDomainDescriptor:true,
   requireIndependentFamilies:true,
@@ -32,6 +38,7 @@ export async function runCurriculumStream({
   if(typeof student!=='function') throw new TypeError('student must be a function');
   if(typeof oracleProvider!=='function') throw new TypeError('oracleProvider must be a function');
   if(!(maxTickets>0)) throw new TypeError('maxTickets must be above zero');
+  const resolvedProofOptions={...STRICT_PROOF,...proofOptions};
   const resolvedConsensusOptions={...STRICT_CONSENSUS,...consensusOptions};
 
   let seen=0,processed=0,studied=0,blocked=0,nodeFactoryBlocked=0,oracleProviderBlocked=0;
@@ -74,7 +81,7 @@ export async function runCurriculumStream({
       continue;
     }
 
-    const evaluation=await evaluateCashDecision({node,student,oracles,proofOptions,consensusOptions:resolvedConsensusOptions});
+    const evaluation=await evaluateCashDecision({node,student,oracles,proofOptions:resolvedProofOptions,consensusOptions:resolvedConsensusOptions});
     processed++;
     if(evaluation.status==='STUDIED'){
       studied++;
@@ -93,6 +100,7 @@ export async function runCurriculumStream({
   return {
     version:'cash-pro-lab-scale-run-v1',
     requestedSplit:split,
+    proofOptions:resolvedProofOptions,
     consensusOptions:resolvedConsensusOptions,
     ticketsSeen:seen,
     processedNodes:processed,
@@ -105,6 +113,6 @@ export async function runCurriculumStream({
     leakReport:buildLeakReport(retained.filter(r=>r?.node)),
     retainedEvaluations:retained,
     retentionLimit:retainEvaluations,
-    note:'This runner is bounded-memory orchestration. Ticket count is not equivalent to solver-certified studies; only STUDIED nodes passed proof, teacher-domain verification, teacher-disagreement gates and EV audit.',
+    note:'This runner is bounded-memory orchestration. Ticket count is not equivalent to solver-certified studies; only STUDIED nodes passed exact-state proof, teacher-domain verification, teacher-disagreement gates and EV audit.',
   };
 }
