@@ -1,7 +1,6 @@
-import { infer100zSrpFromNode, RANGE_PROFILE_100Z_SRP } from './range-profile-100z.js';
+import { RANGE_PROFILE_100Z_SRP } from './range-profile-100z.js';
+import { prove100zSrpFlopSolveRoot } from './solve-root.js';
 import { createSolverTreeProfile, treeProfileKey } from './solver-tree-profile.js';
-
-const finite=v=>typeof v==='number'&&Number.isFinite(v);
 
 function numberText(v){
   if(Number.isInteger(v)) return String(v);
@@ -17,29 +16,22 @@ function profileOrError(treeProfile){
   return createSolverTreeProfile(treeProfile||{});
 }
 
-export function buildTexasSolverFlopJob({node={},treeProfile,outputFile=null}={}){
-  const errors=[];
-  if(node.street!=='flop'||!Array.isArray(node.board)||node.board.length!==3) errors.push('flop_root_required');
-  if(!finite(node.potBB)||node.potBB<=0) errors.push('pot_missing');
-  if(!finite(node.effectiveStackBB)||node.effectiveStackBB<=0) errors.push('effective_stack_missing');
-  if(finite(node.startingStackBB)&&node.effectiveStackBB>node.startingStackBB+1e-9) errors.push('effective_stack_exceeds_starting_stack');
-
-  const rangeResult=infer100zSrpFromNode(node);
-  if(!rangeResult.ok) errors.push(...rangeResult.errors.map(e=>`range_profile:${e}`));
+export function buildTexasSolverFlopJob({root={},treeProfile,outputFile=null}={}){
+  const rootProof=prove100zSrpFlopSolveRoot(root);
   const treeResult=profileOrError(treeProfile);
-  if(!treeResult.ok) errors.push(...treeResult.errors.map(e=>`tree_profile:${e}`));
+  const errors=[...rootProof.errors,...(treeResult.ok?[]:treeResult.errors.map(e=>`tree_profile:${e}`))];
   if(errors.length){
-    return {version:'cash-pro-lab-texassolver-job-v1',ok:false,errors:[...new Set(errors)],job:null};
+    return {version:'cash-pro-lab-texassolver-job-v2',ok:false,errors:[...new Set(errors)],rootProof,job:null};
   }
 
   const profile=treeResult.profile;
-  const filename=safeFilename(outputFile||`${node.fingerprint}_${treeProfileKey(profile)}.json`);
+  const filename=safeFilename(outputFile||`${root.fingerprint}_${treeProfileKey(profile)}.json`);
   const lines=[
-    `set_pot ${numberText(node.potBB)}`,
-    `set_effective_stack ${numberText(node.effectiveStackBB)}`,
-    `set_board ${node.board.join(',')}`,
-    `set_range_ip ${rangeResult.rangeIp}`,
-    `set_range_oop ${rangeResult.rangeOop}`,
+    `set_pot ${numberText(root.potBB)}`,
+    `set_effective_stack ${numberText(root.effectiveStackBB)}`,
+    `set_board ${root.board.join(',')}`,
+    `set_range_ip ${root.rangeIp}`,
+    `set_range_oop ${root.rangeOop}`,
   ];
   for(const action of profile.actions){
     if(action.kind==='allin') lines.push(`set_bet_sizes ${action.position},${action.street},allin`);
@@ -59,23 +51,24 @@ export function buildTexasSolverFlopJob({node={},treeProfile,outputFile=null}={}
   );
 
   return {
-    version:'cash-pro-lab-texassolver-job-v1',
+    version:'cash-pro-lab-texassolver-job-v2',
     ok:true,
     errors:[],
+    rootProof,
     job:{
-      nodeFingerprint:node.fingerprint,
-      fingerprintVersion:node.fingerprintVersion,
-      observationFingerprint:node.observationFingerprint??null,
+      solveRootFingerprint:root.fingerprint,
+      solveRootFingerprintVersion:root.fingerprintVersion,
       strategyProfile:RANGE_PROFILE_100Z_SRP.profileId,
+      preflopModelProfile:root.preflopModelProfile,
       rangeProfile:{
         profileId:RANGE_PROFILE_100Z_SRP.profileId,
         baselineVersion:RANGE_PROFILE_100Z_SRP.baselineVersion,
         snapshotSha256:RANGE_PROFILE_100Z_SRP.snapshotSha256,
         frequencyModel:RANGE_PROFILE_100Z_SRP.frequencyModel,
-        openerPosition:rangeResult.openerPosition,
-        defenderPosition:rangeResult.defenderPosition,
-        ipPosition:rangeResult.ipPosition,
-        oopPosition:rangeResult.oopPosition,
+        openerPosition:root.openerPosition,
+        defenderPosition:root.defenderPosition,
+        ipPosition:root.ipPosition,
+        oopPosition:root.oopPosition,
       },
       treeProfile:{
         profileId:profile.profileId,
@@ -86,17 +79,18 @@ export function buildTexasSolverFlopJob({node={},treeProfile,outputFile=null}={}
       },
       computeProfile:{...profile.compute},
       root:{
-        board:[...node.board],
-        potBB:node.potBB,
-        startingStackBB:node.startingStackBB,
-        effectiveStackBB:node.effectiveStackBB,
+        board:[...root.board],
+        potBB:root.potBB,
+        startingStackBB:root.startingStackBB,
+        effectiveStackBB:root.effectiveStackBB,
       },
       outputFile:filename,
       commandText:`${lines.join('\n')}\n`,
       provenance:{
         solverFamily:'TexasSolver-external-export',
-        builderVersion:'cash-pro-lab-texassolver-job-v1',
-        note:'This file describes an external offline solve job. The job builder does not execute TexasSolver and does not certify the resulting artifact by itself.',
+        builderVersion:'cash-pro-lab-texassolver-job-v2',
+        sourceRef:root.sourceRef??null,
+        note:'This file describes an external offline range solve. One solve root covers many private-card decision nodes. The builder does not execute TexasSolver and does not certify the resulting artifact by itself.',
       },
     },
   };
