@@ -119,25 +119,27 @@ test('strict consensus quarantines teachers whose action EVs disagree beyond tol
   assert.ok(result.divergentActions.includes('CALL'));
 });
 
-test('offline teacher artifacts only answer exact node fingerprints',async()=>{
+test('offline teacher artifacts only answer exact node fingerprints and matching fingerprint version',async()=>{
   const node=highImpactNode();
   const domain=domainForNodeFixture(node);
   const artifacts=[
-    {metadata:{artifactId:'solver-a-river',artifactVersion:'1',family:'solver-a',source:'solver-a',domain},rows:[{fingerprint:node.fingerprint,action:'CALL',evByAction:{FOLD:0,CALL:.5,RAISE:.1},confidence:.99}]},
-    {metadata:{artifactId:'solver-b-river',artifactVersion:'7',family:'solver-b',source:'solver-b',domain},rows:[{fingerprint:node.fingerprint,action:'CALL',evByAction:{FOLD:0,CALL:.45,RAISE:.05},confidence:.97}]},
+    {metadata:{artifactId:'solver-a-river',artifactVersion:'1',fingerprintVersion:node.fingerprintVersion,family:'solver-a',source:'solver-a',domain},rows:[{fingerprint:node.fingerprint,action:'CALL',evByAction:{FOLD:0,CALL:.5,RAISE:.1},confidence:.99}]},
+    {metadata:{artifactId:'solver-b-river',artifactVersion:'7',fingerprintVersion:node.fingerprintVersion,family:'solver-b',source:'solver-b',domain},rows:[{fingerprint:node.fingerprint,action:'CALL',evByAction:{FOLD:0,CALL:.45,RAISE:.05},confidence:.97}]},
   ];
   const provider=createArtifactOracleProvider(artifacts);
   const exact=await provider(node);
   assert.equal(exact.length,2);
   const wrong=await provider({...node,fingerprint:'different-fingerprint'});
   assert.equal(wrong.length,0);
+  const wrongVersion=await provider({...node,fingerprintVersion:'old-fingerprint-v1'});
+  assert.equal(wrongVersion.length,0);
 });
 
 test('oracle artifact rejects duplicate fingerprints instead of silently overwriting them',()=>{
   const node=highImpactNode();
   const domain=domainForNodeFixture(node);
   const index=createOracleArtifactIndex({
-    metadata:{artifactId:'dup',artifactVersion:'1',family:'solver-a',source:'solver-a',domain},
+    metadata:{artifactId:'dup',artifactVersion:'1',fingerprintVersion:node.fingerprintVersion,family:'solver-a',source:'solver-a',domain},
     rows:[
       {fingerprint:node.fingerprint,action:'CALL',evByAction:{FOLD:0,CALL:.5}},
       {fingerprint:node.fingerprint,action:'CALL',evByAction:{FOLD:0,CALL:.6}},
