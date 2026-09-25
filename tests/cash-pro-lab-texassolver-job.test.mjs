@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDecisionNode } from '../src/cash-pro-lab/decision-node.js';
 import { RANGE_PROFILE_100Z_SRP } from '../src/cash-pro-lab/range-profile-100z.js';
+import { create100zSrpFlopSolveRoot } from '../src/cash-pro-lab/solve-root.js';
 import { createSolverTreeProfile } from '../src/cash-pro-lab/solver-tree-profile.js';
 import { buildTexasSolverFlopJob } from '../src/cash-pro-lab/texassolver-job-builder.js';
 
@@ -27,15 +27,12 @@ function treeProfile(overrides={}){
 }
 
 function flopRoot(overrides={}){
-  return createDecisionNode({
-    handId:'solve-root',decisionId:'flop-root',heroCards:['Ah','Kd'],board:['As','7c','2d'],street:'flop',heroPosition:'BB',
-    startingStackBB:100,effectiveStackBB:97.5,heroStackBB:97.5,potBB:5.5,toCallBB:0,activePlayers:2,
-    legalActions:['CHECK','BET'],legalOptions:[{id:'CHECK',action:'CHECK'},{id:'BET:1.8',action:'BET',amountBB:1.8}],
-    rakeProfile:RANGE_PROFILE_100Z_SRP.rakeProfile,strategyProfile:RANGE_PROFILE_100Z_SRP.profileId,
-    actionHistory:[
-      {seq:1,street:'preflop',actorPosition:'BTN',action:'RAISE',amountBB:2.5},
-      {seq:2,street:'preflop',actorPosition:'BB',action:'CALL',amountBB:1.5},
-    ],
+  return create100zSrpFlopSolveRoot({
+    board:['As','7c','2d'],openerPosition:'BTN',defenderPosition:'BB',
+    startingStackBB:100,effectiveStackBB:97.5,potBB:5.5,
+    rakeProfile:RANGE_PROFILE_100Z_SRP.rakeProfile,
+    strategyProfile:RANGE_PROFILE_100Z_SRP.profileId,
+    preflopModelProfile:'fixture-open-model-v1',sourceRef:'fixture',
     ...overrides,
   });
 }
@@ -60,13 +57,16 @@ test('solver tree profile requires explicit bet raise and allin policy for every
   assert.ok(out.errors.includes('tree_kind_missing:ip:turn:raise'));
 });
 
-test('TexasSolver flop job uses current stack behind, frozen SRP ranges and explicit full tree',()=>{
-  const node=flopRoot();
-  const result=buildTexasSolverFlopJob({node,treeProfile:treeProfile(),outputFile:'fixture-output.json'});
+test('TexasSolver flop job uses range-level root, current stack behind, frozen SRP ranges and explicit full tree',()=>{
+  const root=flopRoot();
+  const result=buildTexasSolverFlopJob({root,treeProfile:treeProfile(),outputFile:'fixture-output.json'});
   assert.equal(result.ok,true);
+  assert.equal(root.heroCards,undefined);
   assert.equal(result.job.root.startingStackBB,100);
   assert.equal(result.job.root.effectiveStackBB,97.5);
   assert.equal(result.job.strategyProfile,RANGE_PROFILE_100Z_SRP.profileId);
+  assert.equal(result.job.preflopModelProfile,'fixture-open-model-v1');
+  assert.equal(result.job.solveRootFingerprint,root.fingerprint);
   assert.equal(result.job.treeProfile.key,'srp-hu-tree-a@1');
   assert.equal(result.job.outputFile,'fixture-output.json');
   assert.match(result.job.commandText,/^set_pot 5\.5$/m);
@@ -82,24 +82,39 @@ test('TexasSolver flop job uses current stack behind, frozen SRP ranges and expl
   assert.match(result.job.commandText,/^dump_result fixture-output\.json$/m);
 });
 
-test('TexasSolver job builder rejects a turn node because ranges must enter at the certified flop root',()=>{
-  const node=flopRoot({board:['As','7c','2d','9h'],street:'turn'});
-  const result=buildTexasSolverFlopJob({node,treeProfile:treeProfile()});
+test('solve-root fingerprint is independent of private Hero combo by construction',()=>{
+  const a=flopRoot();
+  const b=flopRoot();
+  assert.equal(a.fingerprint,b.fingerprint);
+  assert.equal(a.heroCards,undefined);
+  assert.equal(b.heroCards,undefined);
+});
+
+test('TexasSolver job builder rejects a non-flop root',()=>{
+  const root={...flopRoot(),street:'turn'};
+  const result=buildTexasSolverFlopJob({root,treeProfile:treeProfile()});
   assert.equal(result.ok,false);
   assert.ok(result.errors.includes('flop_root_required'));
 });
 
 test('TexasSolver job builder rejects a non-100bb starting profile instead of reusing 100z ranges',()=>{
-  const node=flopRoot({startingStackBB:50,effectiveStackBB:47.5,heroStackBB:47.5});
-  const result=buildTexasSolverFlopJob({node,treeProfile:treeProfile()});
+  const root=flopRoot({startingStackBB:50,effectiveStackBB:47.5});
+  const result=buildTexasSolverFlopJob({root,treeProfile:treeProfile()});
   assert.equal(result.ok,false);
-  assert.ok(result.errors.includes('range_profile:starting_stack_not_100bb'));
+  assert.ok(result.errors.includes('starting_stack_not_100bb'));
+});
+
+test('TexasSolver job builder rejects root without explicit preflop model provenance',()=>{
+  const root=flopRoot({preflopModelProfile:''});
+  const result=buildTexasSolverFlopJob({root,treeProfile:treeProfile()});
+  assert.equal(result.ok,false);
+  assert.ok(result.errors.includes('preflop_model_profile_missing'));
 });
 
 test('TexasSolver job builder rejects an incomplete tree profile before producing commands',()=>{
-  const node=flopRoot();
+  const root=flopRoot();
   const result=buildTexasSolverFlopJob({
-    node,
+    root,
     treeProfile:{profileId:'bad',profileVersion:'1',tree:{},allinThreshold:.67,compute:{threadNum:1,accuracy:1,maxIteration:10,printInterval:1,dumpRounds:1,useIsomorphism:true}},
   });
   assert.equal(result.ok,false);
