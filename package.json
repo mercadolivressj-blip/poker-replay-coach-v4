@@ -16,6 +16,7 @@
     "cash-lab:pc": "node scripts/cash-pro-lab-local-pc-worker.mjs",
     "cash-lab:pc:preflight": "node scripts/cash-pro-lab-local-pc-worker.mjs --mode preflight",
     "cash-lab:pc:prepare": "node scripts/cash-pro-lab-local-pc-worker.mjs --mode prepare",
+    "cash-lab:pc:probe": "node scripts/cash-pro-lab-local-pc-worker.mjs --mode probe",
     "cash-lab:pc:pilot": "node scripts/cash-pro-lab-local-pc-worker.mjs --mode pilot",
     "cash-lab:pc:campaign": "node scripts/cash-pro-lab-local-pc-worker.mjs --mode campaign",
     "test:offline-video": "python3 tests/offline_video_regression.py",
