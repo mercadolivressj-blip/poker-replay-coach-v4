@@ -5,6 +5,7 @@ import { buildLeakReport } from './leak-report.js';
 const STRICT_PROOF={
   requireSizedAggression:true,
   requireLegalOptionsEvidence:true,
+  requireStartingStackEvidence:true,
   requireStrategyProfile:true,
 };
 
@@ -113,6 +114,6 @@ export async function runCurriculumStream({
     leakReport:buildLeakReport(retained.filter(r=>r?.node)),
     retainedEvaluations:retained,
     retentionLimit:retainEvaluations,
-    note:'This runner is bounded-memory orchestration. Ticket count is not equivalent to solver-certified studies; only STUDIED nodes passed exact-state proof, teacher-domain verification, teacher-disagreement gates and EV audit.',
+    note:'This runner is bounded-memory orchestration. Ticket count is not equivalent to solver-certified studies; only STUDIED nodes passed exact-state proof, starting/current-stack provenance, teacher-domain verification, teacher-disagreement gates and EV audit.',
   };
 }
