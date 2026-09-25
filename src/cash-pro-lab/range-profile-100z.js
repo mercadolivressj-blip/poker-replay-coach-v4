@@ -7,12 +7,12 @@ const POSITIONS=new Set(['UTG','HJ','CO','BTN','SB','BB']);
 export const RANGE_PROFILE_100Z_SRP=Object.freeze({
   profileId:`${BASELINE_META.version}-srp-rfi-call-v1`,
   baselineVersion:BASELINE_META.version,
-  effectiveStackBB:BASELINE_META.effectiveStackBB,
+  startingStackBB:BASELINE_META.effectiveStackBB,
   rakeProfile:'100z-high-rake',
   source:BASELINE_META.source,
   snapshotSha256:BASELINE_META.snapshotSha256,
   frequencyModel:BASELINE_META.frequencyModel,
-  scope:'heads-up single-raised pots produced by one RFI and one defender call',
+  scope:'heads-up single-raised pots produced by one RFI and one defender call from a 100bb starting-stack profile',
 });
 
 function fmtWeight(w){
@@ -66,7 +66,7 @@ export function infer100zSrpFromNode(node={}){
   if(node.game!=='NLHE_CASH_6MAX')errors.push('game_mismatch');
   if(node.currency!=='BB')errors.push('currency_mismatch');
   if(node.activePlayers!==2)errors.push('not_heads_up');
-  if(Math.abs(Number(node.effectiveStackBB)-100)>0.01)errors.push('stack_not_100bb');
+  if(Math.abs(Number(node.startingStackBB)-100)>0.01)errors.push('starting_stack_not_100bb');
   if(node.rakeProfile!==RANGE_PROFILE_100Z_SRP.rakeProfile)errors.push('rake_profile_mismatch');
   if(node.strategyProfile&&node.strategyProfile!==RANGE_PROFILE_100Z_SRP.profileId)errors.push('strategy_profile_mismatch');
   const pre=(Array.isArray(node.actionHistory)?node.actionHistory:[]).filter(e=>e?.street==='preflop');
