@@ -12,7 +12,7 @@ test('ordered matchup parser preserves hero perspective but solver path identifi
 
 test('flop turn and river tickets for the same 100bb SRP sample collapse to the same solve root',()=>{
   const base={
-    lane:'postflop-heads-up',sampleIndex:2,sampleSeed:123,split:'train',
+    lane:'postflop-heads-up',sampleIndex:2,sampleSeed:123,split:'train',splitGroupId:'sgroup-fixture',
     axes:{effectiveStackBB:100,positionMatchup:'BB-vs-BTN',potType:'srp',initiative:'villain',facingClass:'bet-large',textureClass:'two-tone'},
   };
   const keys=[];
@@ -27,7 +27,7 @@ test('flop turn and river tickets for the same 100bb SRP sample collapse to the 
 });
 
 test('non-100bb and non-SRP tickets are rejected from the frozen 100z SRP teacher instead of approximated',()=>{
-  const base={lane:'postflop-heads-up',sampleIndex:0,sampleSeed:1,split:'train',axes:{street:'flop',positionMatchup:'BB-vs-BTN',initiative:'villain',facingClass:'check',textureClass:'dry'}};
+  const base={lane:'postflop-heads-up',sampleIndex:0,sampleSeed:1,split:'train',splitGroupId:'sgroup-fixture',axes:{street:'flop',positionMatchup:'BB-vs-BTN',initiative:'villain',facingClass:'check',textureClass:'dry'}};
   const fifty=solveRootCandidatesForStrategicTicket({...base,axes:{...base.axes,effectiveStackBB:50,potType:'srp'}});
   assert.equal(fifty.ok,false);
   assert.ok(fifty.errors.includes('starting_stack_not_100bb'));
@@ -36,7 +36,7 @@ test('non-100bb and non-SRP tickets are rejected from the frozen 100z SRP teache
   assert.ok(threeBet.errors.includes('pot_type_not_srp'));
 });
 
-test('entire HU curriculum is compressed into reusable exact-domain solve roots',()=>{
+test('entire HU curriculum is compressed into reusable exact-domain solve roots with zero split leakage',()=>{
   const tickets=iterateStrategicCurriculum({lanes:['postflop-heads-up']});
   const plan=planReusableSolveRoots(tickets);
   assert.equal(plan.ticketsSeen,1382400);
@@ -48,4 +48,23 @@ test('entire HU curriculum is compressed into reusable exact-domain solve roots'
   assert.ok((plan.rejectionCounts.pot_type_not_srp||0)>0);
   assert.equal(plan.roots.some(r=>r.startingStackBB!==100),false);
   assert.equal(plan.roots.some(r=>r.potType!=='srp'),false);
+  assert.equal(plan.valid,true);
+  assert.equal(plan.splitIntegrity.leakageRoots,0);
+  assert.equal(plan.splitIntegrity.splitGroupLeakageRoots,0);
+  assert.equal(plan.splitIntegrity.missingSplitGroupRoots,0);
+  assert.equal(plan.roots.some(r=>Object.keys(r.splits).length!==1),false);
+});
+
+test('compressor itself rejects a manually leaked solve root even if upstream split logic is bypassed',()=>{
+  const base={
+    lane:'postflop-heads-up',sampleIndex:0,sampleSeed:1,
+    axes:{effectiveStackBB:100,street:'flop',positionMatchup:'BB-vs-BTN',potType:'srp',initiative:'villain',facingClass:'check',textureClass:'dry'},
+  };
+  const plan=planReusableSolveRoots([
+    {...base,split:'train',splitGroupId:'group-a'},
+    {...base,split:'holdout',splitGroupId:'group-b'},
+  ]);
+  assert.equal(plan.valid,false);
+  assert.equal(plan.splitIntegrity.leakageRoots,1);
+  assert.equal(plan.splitIntegrity.splitGroupLeakageRoots,1);
 });
