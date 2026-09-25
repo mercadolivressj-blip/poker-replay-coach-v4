@@ -91,13 +91,14 @@ function strategicOptions(options=[]){
 
 function strategicPayload(node={}){
   return {
-    fingerprintVersion:'cash-pro-lab-strategic-fingerprint-v2',
+    fingerprintVersion:'cash-pro-lab-strategic-fingerprint-v3',
     game:node.game,
     currency:node.currency,
     heroCards:node.heroCards,
     board:node.board,
     street:node.street,
     heroPosition:node.heroPosition,
+    startingStackBB:node.startingStackBB,
     effectiveStackBB:node.effectiveStackBB,
     heroStackBB:node.heroStackBB,
     potBB:node.potBB,
@@ -118,7 +119,7 @@ export function createDecisionNode(input={}){
   legalActions=[...new Set([...legalActions,...legalOptions.map(x=>x.action).filter(Boolean)])];
   const node={
     schemaVersion:'cash-pro-lab-node-v1',
-    fingerprintVersion:'cash-pro-lab-strategic-fingerprint-v2',
+    fingerprintVersion:'cash-pro-lab-strategic-fingerprint-v3',
     game:'NLHE_CASH_6MAX',
     currency:'BB',
     handId:input.handId??null,
@@ -127,6 +128,7 @@ export function createDecisionNode(input={}){
     board,
     street:String(input.street||streetFromBoard(board)).toLowerCase(),
     heroPosition:upper(input.heroPosition),
+    startingStackBB:num(input.startingStackBB??input.effectiveStackBB),
     effectiveStackBB:num(input.effectiveStackBB),
     heroStackBB:num(input.heroStackBB??input.effectiveStackBB),
     potBB:num(input.potBB),
@@ -142,7 +144,7 @@ export function createDecisionNode(input={}){
     assumptions:Array.isArray(input.assumptions)?input.assumptions.map(String):[],
     tags:Array.isArray(input.tags)?input.tags.map(String):[],
   };
-  node.fingerprint=`cpl2-${fnv1a(stableStringify(strategicPayload(node)))}`;
+  node.fingerprint=`cpl3-${fnv1a(stableStringify(strategicPayload(node)))}`;
   const observationPayload={
     fingerprintVersion:'cash-pro-lab-observation-fingerprint-v1',
     strategicFingerprint:node.fingerprint,
@@ -181,7 +183,9 @@ export function proveDecisionNode(node={},options={}){
   if(new Set(allCards).size!==allCards.length) errors.push('duplicate_card');
   if(node.street!==streetFromBoard(board)) errors.push('street_board_mismatch');
   if(!POSITIONS.has(node.heroPosition)) errors.push('hero_position_missing');
+  if(!finite(node.startingStackBB)||node.startingStackBB<=0) errors.push('starting_stack_missing');
   if(!finite(node.effectiveStackBB)||node.effectiveStackBB<=0) errors.push('effective_stack_missing');
+  if(finite(node.startingStackBB)&&finite(node.effectiveStackBB)&&node.effectiveStackBB>node.startingStackBB+1e-9) errors.push('effective_stack_exceeds_starting_stack');
   if(!finite(node.heroStackBB)||node.heroStackBB<=0) errors.push('hero_stack_missing');
   if(!finite(node.potBB)||node.potBB<=0) errors.push('pot_missing');
   if(!finite(node.toCallBB)||node.toCallBB<0) errors.push('to_call_missing');
@@ -209,6 +213,7 @@ export function proveDecisionNode(node={},options={}){
   }
 
   const critical=['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','actionHistory'];
+  if(options.requireStartingStackEvidence===true) critical.push('startingStackBB');
   if(options.requireLegalOptionsEvidence===true) critical.push('legalOptions');
   const confidences=[];
   for(const field of critical){
