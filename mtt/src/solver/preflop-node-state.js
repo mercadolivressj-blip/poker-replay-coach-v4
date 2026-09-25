@@ -30,7 +30,6 @@ function heroRole({hero,history,aggressions,limpers}){
 }
 
 function nodeFor({hero,econ,aggressions,limpers,callsAfter,history}){
- const player=history.length>=0?null:null;
  const raises=aggressions.length;
  const own=history.filter(a=>normalizePosition(a.position)===hero);
  const lastAgg=aggressions.at(-1)||null;
