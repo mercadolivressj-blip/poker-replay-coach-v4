@@ -1,7 +1,7 @@
 diff --git a/engine/src/nlhe.rs b/engine/src/nlhe.rs
 --- a/engine/src/nlhe.rs
 +++ b/engine/src/nlhe.rs
-@@
+@@ -772,6 +772,8 @@ impl Game for NlheGame {
      fn zero_sum(&self) -> bool {
 -        // An ICM spot is general-sum: the frozen field trades equity with the pair
 -        // whenever chips move, by a different amount at every terminal and not always
@@ -17,7 +17,7 @@ diff --git a/engine/src/nlhe.rs b/engine/src/nlhe.rs
 diff --git a/cli/src/solve.rs b/cli/src/solve.rs
 --- a/cli/src/solve.rs
 +++ b/cli/src/solve.rs
-@@
+@@ -146,7 +146,8 @@ pub fn run(args: SolveArgs) -> Result<(), String> {
 -    // Under a tournament payoff map the headline metric is NashConv in CSTE chips,
 -    // not exploitability in chips: the game is general-sum. Same number, different
 -    // meaning, so it never wears the chip label.
@@ -32,7 +32,7 @@ diff --git a/cli/src/solve.rs b/cli/src/solve.rs
 +        (None, true) => ("NashConv", "chips"),
 +        (Some(_), _) => ("NashConv", "cste chips"),
      };
-@@
+@@ -219,11 +220,21 @@ fn print_final_report(solver: &Solver<NlheGame>, wall_seconds: f64) {
 -    match &cfg.tournament {
 -        // Chips: the game is zero-sum, so this number is a genuine bound on what
 -        // either player can win by deviating.
@@ -60,5 +60,3 @@ diff --git a/cli/src/solve.rs b/cli/src/solve.rs
 -        Some(_) => {
 +        (Some(_), _) => {
              println!("payoff unit: cste (chip-scaled tournament equity)");
-             println!(
-                 "NashConv: {:.6} cste chips  {:.4}% of pot  [measured]",
