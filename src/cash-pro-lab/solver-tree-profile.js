@@ -22,7 +22,14 @@ export function createSolverTreeProfile(input={}){
   for(const position of POSITIONS){
     for(const street of STREETS){
       const row=tree?.[position]?.[street];
-      if(!row) continue;
+      if(!row||typeof row!=='object'){
+        errors.push(`tree_row_missing:${position}:${street}`);
+        continue;
+      }
+      for(const required of ['bet','raise']){
+        if(!Object.prototype.hasOwnProperty.call(row,required)) errors.push(`tree_kind_missing:${position}:${street}:${required}`);
+      }
+      if(typeof row.allin!=='boolean') errors.push(`allin_flag_missing:${position}:${street}`);
       for(const kind of KINDS){
         if(row[kind]==null) continue;
         const sizes=cleanSizes(row[kind]);
@@ -30,7 +37,6 @@ export function createSolverTreeProfile(input={}){
         else if(sizes.length) actions.push({position,street,kind,sizes});
       }
       if(row.allin===true) actions.push({position,street,kind:'allin',sizes:[]});
-      else if(row.allin!=null&&row.allin!==false) errors.push(`invalid_allin_flag:${position}:${street}`);
     }
   }
   if(!actions.length) errors.push('tree_actions_missing');
@@ -64,6 +70,7 @@ export function createSolverTreeProfile(input={}){
       actions:Object.freeze(actions.map(a=>Object.freeze({...a,sizes:Object.freeze([...a.sizes])}))),
       allinThreshold,
       compute:Object.freeze({threadNum,accuracy,maxIteration,printInterval,dumpRounds,useIsomorphism}),
+      coverage:Object.freeze({positions:[...POSITIONS],streets:[...STREETS],requiredKinds:['bet','raise'],allinExplicit:true}),
     }),
   };
 }
