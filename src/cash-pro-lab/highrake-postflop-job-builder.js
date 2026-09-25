@@ -108,6 +108,8 @@ export function buildHighRakePostflopFlopJob({root={},treeProfile,outputFile=nul
   const providerFingerprint=sha256(JSON.stringify({
     engine:HIGHRake_POSTFLOP_ENGINE,
     rootFingerprint:root.fingerprint,
+    rangeIp:root.rangeIp,
+    rangeOop:root.rangeOop,
     treeProfileKey:treeProfileKey(profile),
     rake,
     targetExploitability,
@@ -131,6 +133,7 @@ export function buildHighRakePostflopFlopJob({root={},treeProfile,outputFile=nul
       strategyProfile:root.strategyProfile,
       preflopModelProfile:root.preflopModelProfile,
       treeProfileKey:treeProfileKey(profile),
+      expectedRanges:{oop:root.rangeOop,ip:root.rangeIp},
       rake:{...rake,sourceBaselineVersion:BASELINE_META.version,sourceSnapshotSha256:BASELINE_META.snapshotSha256},
       convergence:{targetExploitabilityPct:targetExploitability,maxIterations,reportEvery,threads,turnChanceSampling:false},
       root:{board:[...root.board],potBB:root.potBB,startingStackBB:root.startingStackBB,effectiveStackBB:root.effectiveStackBB,oopPosition:root.oopPosition,ipPosition:root.ipPosition},
