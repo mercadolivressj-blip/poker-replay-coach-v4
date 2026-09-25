@@ -77,7 +77,7 @@ export async function evaluateCashDecision({input,node,student,oracles=[],proofO
 
   const normalizedStudent={
     ...studentResult,
-    action:choice?.action??upper(studentResult?.action)||null,
+    action:choice?.action??(upper(studentResult?.action)||null),
     choiceId:choice?.id??studentResult?.choiceId??null,
     choiceMix:explicitChoiceMix,
     actionMix,
