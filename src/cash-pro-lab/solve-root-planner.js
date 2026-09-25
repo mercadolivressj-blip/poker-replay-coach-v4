@@ -90,28 +90,41 @@ export function planReusableSolveRoots(tickets,{maxTickets=Infinity}={}){
       if(existing){
         existing.ticketReferences++;
         existing.splits[ticket.split]=(existing.splits[ticket.split]||0)+1;
+        existing.splitGroupIds[ticket.splitGroupId||'missing']=(existing.splitGroupIds[ticket.splitGroupId||'missing']||0)+1;
         existing.heroPerspectives[ticket.axes?.positionMatchup]=(existing.heroPerspectives[ticket.axes?.positionMatchup]||0)+1;
       }else{
         roots.set(root.key,{
           ...root,
           ticketReferences:1,
           splits:{[ticket.split]:1},
+          splitGroupIds:{[ticket.splitGroupId||'missing']:1},
           heroPerspectives:{[ticket.axes?.positionMatchup]:1},
         });
       }
     }
   }
   const list=[...roots.values()].sort((a,b)=>a.key.localeCompare(b.key));
+  const splitLeakageRoots=list.filter(root=>Object.keys(root.splits).filter(k=>(root.splits[k]||0)>0).length>1);
+  const splitGroupLeakageRoots=list.filter(root=>Object.keys(root.splitGroupIds).filter(k=>k!=='missing').length>1);
+  const missingSplitGroupRoots=list.filter(root=>Object.hasOwn(root.splitGroupIds,'missing'));
+  const valid=splitLeakageRoots.length===0&&splitGroupLeakageRoots.length===0&&missingSplitGroupRoots.length===0;
   return {
-    version:'cash-pro-lab-solve-root-plan-v1',
+    version:'cash-pro-lab-solve-root-plan-v2',
+    valid,
     ticketsSeen:seen,
     eligibleTickets,
     rootReferences,
     uniqueSolveRoots:list.length,
     compressionRatio:list.length?rootReferences/list.length:null,
     rejectionCounts,
+    splitIntegrity:{
+      leakageRoots:splitLeakageRoots.length,
+      splitGroupLeakageRoots:splitGroupLeakageRoots.length,
+      missingSplitGroupRoots:missingSplitGroupRoots.length,
+      leakageRootKeys:splitLeakageRoots.slice(0,100).map(r=>r.key),
+    },
     roots:list,
-    note:'A solve root is not a completed study. One validated external solver tree may later yield many certified decision nodes. Train/dev/holdout labels remain attached to ticket references and must not be collapsed for policy governance.',
+    note:'A solve root is not a completed study. One validated external solver tree may later yield many certified decision nodes. A valid plan requires every reusable root to belong to exactly one strategic split group so train/dev/holdout cannot share the same teacher tree.',
   };
 }
 
