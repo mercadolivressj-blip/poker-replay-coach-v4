@@ -1,0 +1,127 @@
+name: cash-pro-lab-tiny-pipeline-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cash-pro-lab-v1
+    paths:
+      - .github/workflows/cash-pro-lab-tiny-pipeline-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  tiny-pipeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned solver source
+        run: |
+          git clone --filter=blob:none https://github.com/ucsandman/postflop.git /tmp/postflop
+          git -C /tmp/postflop checkout 5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de
+          test "$(git -C /tmp/postflop rev-parse HEAD)" = "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de"
+
+      - name: Build solver and EV extractor
+        run: |
+          cargo build --release --manifest-path /tmp/postflop/Cargo.toml --bin solver
+          cargo build --release --manifest-path tools/highrake-action-ev/Cargo.toml
+          mkdir -p tiny-pipeline
+          sha256sum /tmp/postflop/target/release/solver > tiny-pipeline/solver.sha256
+          sha256sum tools/highrake-action-ev/target/release/cash-pro-lab-action-ev > tiny-pipeline/action-ev.sha256
+
+      - name: Write tiny turn fixture
+        run: |
+          cat > tiny-pipeline/spot.toml <<'EOF'
+          board = "Qs Jh 2h 8c"
+          oop_range = "QQ,JJ,88,22,AQs,KQs,QJs"
+          ip_range = "AA,KK,AQs,KQs,QJs"
+          effective_stack = 20.0
+          starting_pot = 10.0
+          target_exploitability = 5.0
+          max_iterations = 100
+          allin_threshold = 67.0
+          raise_cap = 1
+          turn_chance_sampling = false
+
+          [rake]
+          percent = 0.0
+          cap = 0.0
+
+          [sizings.oop.turn]
+          bet = { percents = [75.0], allin = false }
+          [sizings.oop.river]
+          bet = { percents = [75.0], allin = true }
+          [sizings.ip.turn]
+          bet = { percents = [75.0], allin = false }
+          raise = { percents = [60.0], allin = false }
+          [sizings.ip.river]
+          bet = { percents = [75.0], allin = true }
+          raise = { percents = [60.0], allin = false }
+          EOF
+          sha256sum tiny-pipeline/spot.toml > tiny-pipeline/config.sha256
+
+      - name: Solve tiny fixture
+        run: |
+          /tmp/postflop/target/release/solver solve \
+            --config tiny-pipeline/spot.toml \
+            --report-every 10 \
+            --threads 1 \
+            --out tiny-pipeline/solution.json \
+            2>&1 | tee tiny-pipeline/solver.log
+          test -s tiny-pipeline/solution.json
+
+      - name: Probe saved solution
+        run: |
+          node -e "const fs=require('fs');const s=JSON.parse(fs.readFileSync('tiny-pipeline/solution.json','utf8'));console.log(JSON.stringify({keys:Object.keys(s),format_version:s.format_version??null,meta:s.meta??null,config:s.config??null},null,2));" | tee tiny-pipeline/solution-probe.json
+
+      - name: Extract per-action EV at first extractable node
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=tools/highrake-action-ev/target/release/cash-pro-lab-action-ev
+          FOUND=0
+          mkdir -p tiny-pipeline/action-ev
+          for NODE in $(seq 0 40); do
+            if "$BIN" tiny-pipeline/solution.json "$NODE" "tiny-pipeline/action-ev/node-${NODE}.json" 0.0001 >"tiny-pipeline/action-ev/node-${NODE}.stdout" 2>"tiny-pipeline/action-ev/node-${NODE}.stderr"; then
+              echo "$NODE" | tee tiny-pipeline/action-ev/first-node.txt
+              FOUND=1
+              break
+            fi
+          done
+          test "$FOUND" = "1"
+          NODE=$(cat tiny-pipeline/action-ev/first-node.txt)
+          node -e "const fs=require('fs');const p='tiny-pipeline/action-ev/node-'+process.argv[1]+'.json';const r=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify({node:Number(process.argv[1]),keys:Object.keys(r),result:r},null,2));" "$NODE" > tiny-pipeline/action-ev/summary.json
+
+      - name: Write smoke truth
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const node=Number(fs.readFileSync('tiny-pipeline/action-ev/first-node.txt','utf8').trim());
+          const truth={
+            version:'cash-pro-lab-tiny-pipeline-smoke-v1',
+            purpose:'external-solver-plumbing-only',
+            productionAuthority:false,
+            pokerStrategyAuthority:false,
+            sourceCommit:'5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de',
+            board:['Qs','Jh','2h','8c'],
+            solved:true,
+            solutionJson:true,
+            actionEvExtracted:true,
+            firstExtractableNode:node,
+            certifiedStudies:0,
+            note:'This tiny artificial turn fixture proves solver -> saved JSON -> per-action EV extraction. It is not part of the 240-root curriculum and must never be promoted as strategic authority.'
+          };
+          fs.writeFileSync('tiny-pipeline/truth.json',JSON.stringify(truth,null,2));
+          console.log(JSON.stringify(truth,null,2));
+          NODE
+
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cash-pro-lab-tiny-pipeline-smoke
+          path: tiny-pipeline
+          if-no-files-found: error
+          retention-days: 14
