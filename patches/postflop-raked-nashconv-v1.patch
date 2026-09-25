@@ -1,7 +1,7 @@
 diff --git a/engine/src/nlhe.rs b/engine/src/nlhe.rs
 --- a/engine/src/nlhe.rs
 +++ b/engine/src/nlhe.rs
-@@ -1,6 +1,8 @@
+@@ -777,6 +777,8 @@
      fn zero_sum(&self) -> bool {
 -        // An ICM spot is general-sum: the frozen field trades equity with the pair
 -        // whenever chips move, by a different amount at every terminal and not always
@@ -17,7 +17,7 @@ diff --git a/engine/src/nlhe.rs b/engine/src/nlhe.rs
 diff --git a/cli/src/solve.rs b/cli/src/solve.rs
 --- a/cli/src/solve.rs
 +++ b/cli/src/solve.rs
-@@ -1,7 +1,8 @@
+@@ -154,7 +154,8 @@
 -    // Under a tournament payoff map the headline metric is NashConv in CSTE chips,
 -    // not exploitability in chips: the game is general-sum. Same number, different
 -    // meaning, so it never wears the chip label.
