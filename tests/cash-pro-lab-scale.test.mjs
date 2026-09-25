@@ -9,7 +9,7 @@ import { buildOracleConsensus } from '../src/cash-pro-lab/oracle-consensus.js';
 import { createArtifactOracleProvider, createOracleArtifactIndex } from '../src/cash-pro-lab/oracle-artifact.js';
 
 const evidence=()=>Object.fromEntries(
-  ['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','legalOptions','actionHistory']
+  ['heroCards','board','heroPosition','startingStackBB','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','legalOptions','actionHistory']
     .map(field=>[field,{source:'solver-fixture',confidence:1}])
 );
 
@@ -22,7 +22,7 @@ function nodeForTicket(ticket){
   return createDecisionNode({
     handId:`scale-${ticket.ordinal}`,decisionId:`d-${ticket.ordinal}`,
     heroCards:['Ah','Kd'],board:['As','7c','2d'],street:'flop',heroPosition:'BTN',
-    effectiveStackBB:100,heroStackBB:100,potBB:10,toCallBB:2,activePlayers:2,
+    startingStackBB:100,effectiveStackBB:100,heroStackBB:100,potBB:10,toCallBB:2,activePlayers:2,
     legalActions:['FOLD','CALL','RAISE'],
     legalOptions:[
       {id:'FOLD',action:'FOLD'},
@@ -38,7 +38,7 @@ function nodeForTicket(ticket){
 function highImpactNode(){
   return createDecisionNode({
     handId:'hi',decisionId:'river-hi',heroCards:['Ah','Kd'],board:['As','7c','2d','3h','9s'],
-    street:'river',heroPosition:'BB',effectiveStackBB:100,heroStackBB:100,potBB:60,toCallBB:40,activePlayers:2,
+    street:'river',heroPosition:'BB',startingStackBB:100,effectiveStackBB:100,heroStackBB:100,potBB:60,toCallBB:40,activePlayers:2,
     legalActions:['FOLD','CALL','RAISE'],rakeProfile:'100z-high-rake',
     actionHistory:[{seq:1,street:'river',actorPosition:'BTN',action:'BET',amountBB:40}],
     evidence:evidence(),tags:['river-high-impact'],
@@ -93,6 +93,7 @@ test('scale runner counts only exact-state proved and teacher-audited nodes as s
   assert.equal(out.evSummary.totalEvLossBB,0);
   assert.equal(out.proofOptions.requireSizedAggression,true);
   assert.equal(out.proofOptions.requireLegalOptionsEvidence,true);
+  assert.equal(out.proofOptions.requireStartingStackEvidence,true);
   assert.equal(out.proofOptions.requireStrategyProfile,true);
   assert.match(out.note,/only STUDIED nodes/i);
 });
