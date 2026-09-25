@@ -25,13 +25,17 @@ jobs:
       - name: Install project dependencies
         run: npm install
 
-      - name: Materialize exactly one train high-rake root
+      - name: Materialize exactly one train high-rake root (resource smoke profile)
         run: |
           node scripts/cash-pro-lab-materialize-highrake-campaign.mjs \
             --split train \
             --max 1 \
+            --threads 1 \
+            --target-exploitability 5 \
+            --max-iterations 300 \
+            --report-every 25 \
             --out cash-pro-lab-highrake-one
-          node -e "const m=require('./cash-pro-lab-highrake-one/manifest.json'); if(m.jobs.length!==1) throw new Error('expected exactly one job'); console.log(JSON.stringify({job:m.jobs[0].id,root:m.jobs[0].solveRootFingerprint,board:m.jobs[0].job.root.board,exploitabilityTarget:m.jobs[0].job.convergence.targetExploitabilityPct,sourceCommit:m.execution.sourceCommit},null,2));"
+          node -e "const m=require('./cash-pro-lab-highrake-one/manifest.json'); if(m.jobs.length!==1) throw new Error('expected exactly one job'); console.log(JSON.stringify({job:m.jobs[0].id,root:m.jobs[0].solveRootFingerprint,board:m.jobs[0].job.root.board,compute:m.execution.computeOverride,convergence:m.jobs[0].job.convergence,sourceCommit:m.execution.sourceCommit},null,2));"
 
       - name: Fetch pinned high-rake solver source
         run: |
@@ -47,6 +51,8 @@ jobs:
           sha256sum /tmp/postflop/target/release/solver | tee cash-pro-lab-highrake-one/solver.sha256
 
       - name: Execute and validate one exact train root
+        id: solve
+        continue-on-error: true
         run: |
           node scripts/cash-pro-lab-run-highrake-postflop.mjs \
             --manifest cash-pro-lab-highrake-one/manifest.json \
@@ -55,12 +61,14 @@ jobs:
             --max 1
 
       - name: Build action-EV extractor pinned to same engine family
+        if: steps.solve.outcome == 'success'
         run: |
           cargo build --release --manifest-path tools/highrake-action-ev/Cargo.toml
           test -x tools/highrake-action-ev/target/release/cash-pro-lab-action-ev
           sha256sum tools/highrake-action-ev/target/release/cash-pro-lab-action-ev | tee cash-pro-lab-highrake-one/action-ev-extractor.sha256
 
       - name: Probe solution and extract root-node alternative EV when supported
+        if: steps.solve.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -87,6 +95,8 @@ jobs:
       - name: Write experiment truth summary
         if: always()
         shell: bash
+        env:
+          SOLVE_OUTCOME: ${{ steps.solve.outcome }}
         run: |
           node <<'NODE'
           const fs=require('fs'),path=require('path');
@@ -98,16 +108,20 @@ jobs:
           const evPath=path.join(base,'action-ev/node-0.json');
           const truth={
             version:'cash-pro-lab-first-real-highrake-experiment-v1',
+            purpose:'resource-smoke-pipeline-validation',
+            productionAuthority:false,
             plannedRoots:1,
             jobId:manifest.jobs[0]?.id??null,
             solveRootFingerprint:manifest.jobs[0]?.solveRootFingerprint??null,
             split:manifest.jobs[0]?.split??null,
             board:manifest.jobs[0]?.job?.root?.board??null,
+            computeOverride:manifest.execution?.computeOverride??null,
             solverSourceCommit:manifest.execution?.sourceCommit??null,
+            workflowSolveOutcome:process.env.SOLVE_OUTCOME||null,
             solverRun:run?{counts:run.counts,validatedStrategyOracleRoots:run.validatedStrategyOracleRoots,alternativeEvOracleRoots:run.alternativeEvOracleRoots,certifiedStudies:run.certifiedStudies}:null,
             actionEvNode0Extracted:fs.existsSync(evPath),
             certifiedStudies:0,
-            note:'A real external solve may establish validated strategy-oracle evidence. It is not a certified study until the independent-teacher and classroom EV gates pass.'
+            note:'This resource-smoke profile validates the external pipeline only. It must not replace the frozen production solve profile or be promoted as poker strategy authority.'
           };
           fs.writeFileSync(path.join(base,'experiment-truth.json'),JSON.stringify(truth,null,2));
           console.log(JSON.stringify(truth,null,2));
@@ -121,3 +135,7 @@ jobs:
           path: cash-pro-lab-highrake-one
           if-no-files-found: error
           retention-days: 14
+
+      - name: Fail workflow if solver smoke failed
+        if: steps.solve.outcome != 'success'
+        run: exit 1
