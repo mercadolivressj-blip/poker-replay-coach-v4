@@ -80,6 +80,6 @@ export function infer100zSrpFromNode(node={}){
   if(!opener||!defender)errors.push('preflop_positions_missing');
   if(errors.length)return{ok:false,errors,profile:RANGE_PROFILE_100Z_SRP};
   const derived=derive100zSrpRanges({openerPosition:opener,defenderPosition:defender});
-  if(!derived.ok)returnderived;
+  if(!derived.ok)return derived;
   return{...derived,nodeStrategyProfile:RANGE_PROFILE_100Z_SRP.profileId};
 }
