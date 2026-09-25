@@ -4,6 +4,7 @@ import {solvePushFoldConsensus} from '../solver/pushfold-consensus.js';
 import {pushFoldGameFromPreflopContext,attachEffectiveStackToContext} from '../solver/pushfold-context.js';
 import {buildBlindVsBlindPushFoldPacks} from './pushfold-pack-builder.js';
 import {validatePreflopContext} from './pack-context.js';
+import {sealPushFoldSuite} from './pushfold-suite-integrity.js';
 
 const uniq=x=>[...new Set(x)];
 const sorted=x=>[...x].sort();
@@ -58,7 +59,8 @@ export function buildVerifiedPushFoldSuiteFromConsensus({snapshot,audit,preflopC
   packs.push({depthBB,side:'SB',...built.sb},{depthBB,side:'BB',...built.bb});
   reports.push({depthBB,solverConsensus:true,equityStable:true,verificationReady:true,regretNashConv:Number(consensus.regret?.nashConv),fictitiousNashConv:Number(consensus.fictitious?.nashConv),agreement:consensus.agreement});
  }
- return{schema:'ssj-mtt-pushfold-suite-v1',certification:'solver-verified',game:'NLHE',format:'MTT',mode:'cEV',node:'blind_vs_blind',tableSize:Number(preflopContext.playersDealt),preflopContext:{...preflopContext},snapshotSha256:snapshot.sha256,equityAudit:{schema:audit.schema,snapshotShas:[...audit.snapshotShas],seeds:[...audit.seeds],iterationsPerPair:Number(audit.iterationsPerPair),evaluatorVersion:audit.evaluatorVersion,stability:audit.stability},depths:ds,reports,packs};
+ const suite={schema:'ssj-mtt-pushfold-suite-v1',certification:'solver-verified',game:'NLHE',format:'MTT',mode:'cEV',node:'blind_vs_blind',tableSize:Number(preflopContext.playersDealt),preflopContext:{...preflopContext},snapshotSha256:snapshot.sha256,equityAudit:{schema:audit.schema,snapshotShas:[...audit.snapshotShas],seeds:[...audit.seeds],iterationsPerPair:Number(audit.iterationsPerPair),evaluatorVersion:audit.evaluatorVersion,stability:audit.stability},depths:ds,reports,packs};
+ return sealPushFoldSuite(suite);
 }
 
 export function solveAndBuildVerifiedPushFoldSuite({snapshot,audit,preflopContext,depths,referenceDate='2026-09-24',solverOptions={}}={}){
