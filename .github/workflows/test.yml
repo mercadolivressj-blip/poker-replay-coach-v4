@@ -10,6 +10,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - run: bash -n scripts/cash-pro-lab-bootstrap-ubuntu.sh
       - run: npm install
       - run: npm test
       - run: cargo test --manifest-path tools/highrake-action-ev/Cargo.toml
