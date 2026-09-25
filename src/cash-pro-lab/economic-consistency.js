@@ -70,6 +70,7 @@ export function proveEconomicConsistency(node={},context={}){
   const potSemantics=String(context?.potSemantics||'');
   const opening=context?.openingCommitmentsByStreet&&typeof context.openingCommitmentsByStreet==='object'
     ? context.openingCommitmentsByStreet:{};
+  const exactContext=finite(initialPotBB)&&initialPotBB>=0&&amountSemantics==='delta'&&potSemantics==='includes-history-contributions';
 
   if(!finite(initialPotBB)||initialPotBB<0) errors.push('initial_pot_missing');
   if(amountSemantics!=='delta') errors.push('amount_semantics_not_delta');
@@ -78,13 +79,11 @@ export function proveEconomicConsistency(node={},context={}){
 
   let pot=finite(initialPotBB)?initialPotBB:0;
   let streetIndex=-1;
-  let street=null;
   let commitments={};
   const terminalActors=new Map();
   let previousSeq=-Infinity;
 
   const enterStreet=nextStreet=>{
-    street=nextStreet;
     streetIndex=STREETS.indexOf(nextStreet);
     commitments=cloneCommitments(opening?.[nextStreet]||{});
   };
@@ -149,7 +148,7 @@ export function proveEconomicConsistency(node={},context={}){
   return {
     version:'cash-pro-lab-economic-consistency-proof-v1',
     ok:errors.length===0,
-    exact:true,
+    exact:exactContext,
     redZone,
     reconstructed:{
       potBB:round(pot),
