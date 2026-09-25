@@ -38,17 +38,18 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
   const rejected=[];
   const eligible=[];
   const minConfidence=options.minOracleConfidence??0.60;
+  const requireDomainDescriptor=options.requireDomainDescriptor===true;
 
   for(const oracle of normalized){
     const reasons=[];
     const domainCheck=verifyOracleDomain(node,oracle.domain);
-    const legacyAllowed=options.allowLegacyDomainFlag===true&&oracle.claimedDomainVerified===true;
+    const legacyAllowed=!requireDomainDescriptor&&oracle.claimedDomainVerified===true;
     if(!domainCheck.ok&&!legacyAllowed) reasons.push(...domainCheck.reasons);
     if(oracle.confidence<minConfidence) reasons.push('confidence_too_low');
     if(!legal.includes(oracle.action)) reasons.push('oracle_action_illegal');
     const covered=legal.filter(a=>finite(oracle.evByAction[a]));
     if(covered.length<2) reasons.push('ev_coverage_insufficient');
-    const normalizedOracle={...oracle,domainVerified:domainCheck.ok,domainCheck};
+    const normalizedOracle={...oracle,domainVerified:domainCheck.ok,legacyDomainClaimUsed:legacyAllowed&&!domainCheck.ok,domainCheck};
     if(reasons.length) rejected.push({oracleId:oracle.oracleId,reasons:[...new Set(reasons)],domainCheck});
     else eligible.push(normalizedOracle);
   }
