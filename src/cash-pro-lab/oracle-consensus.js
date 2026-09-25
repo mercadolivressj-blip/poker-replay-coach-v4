@@ -14,6 +14,7 @@ function normalizeOracle(row={},legalActions=[]){
   return {
     oracleId:String(row.oracleId||row.source||'unknown'),
     source:String(row.source||row.oracleId||'unknown'),
+    family:String(row.family||row.source||row.oracleId||'unknown'),
     action:upper(row.action),
     confidence:finite(row.confidence)?clamp(row.confidence,0,1):0,
     claimedDomainVerified:row.domainVerified===true,
@@ -30,6 +31,14 @@ function weightedAverage(values=[]){
     num+=row.value*row.weight;den+=row.weight;
   }
   return den>0?num/den:null;
+}
+
+function blockedBase({highImpact,reason,required,eligible,rejected,legal,extra={}}){
+  return {
+    version:'cash-pro-lab-oracle-consensus-v1',blocked:true,highImpact,reason,required,
+    eligibleCount:eligible.length,eligible,rejected,
+    evByAction:Object.fromEntries(legal.map(a=>[a,null])),bestAction:null,confidence:0,...extra,
+  };
 }
 
 export function buildOracleConsensus(node={},oracleResults=[],options={}){
@@ -57,44 +66,39 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
   const highImpact=isHighImpactNode(node);
   const minOracles=highImpact?(options.minHighImpactOracles??2):(options.minOracles??1);
   if(eligible.length<minOracles){
-    return {
-      version:'cash-pro-lab-oracle-consensus-v1',
-      blocked:true,
-      highImpact,
-      reason:'insufficient_verified_oracles',
-      required:minOracles,
-      eligibleCount:eligible.length,
-      eligible,
-      rejected,
-      evByAction:Object.fromEntries(legal.map(a=>[a,null])),
-      bestAction:null,
-      confidence:0,
-    };
+    return blockedBase({highImpact,reason:'insufficient_verified_oracles',required:minOracles,eligible,rejected,legal});
+  }
+
+  if(highImpact&&options.requireIndependentFamilies===true){
+    const families=[...new Set(eligible.map(o=>o.family).filter(Boolean))];
+    const minFamilies=options.minHighImpactFamilies??2;
+    if(families.length<minFamilies){
+      return blockedBase({highImpact,reason:'insufficient_independent_oracles',required:minFamilies,eligible,rejected,legal,extra:{families}});
+    }
   }
 
   const evByAction={};
   const coverageByAction={};
+  const spreadByAction={};
   for(const action of legal){
+    const values=eligible.filter(o=>finite(o.evByAction[action])).map(o=>o.evByAction[action]);
     const rows=eligible.filter(o=>finite(o.evByAction[action])).map(o=>({value:o.evByAction[action],weight:o.confidence}));
     evByAction[action]=weightedAverage(rows);
     coverageByAction[action]=rows.length;
+    spreadByAction[action]=values.length>=2?Math.max(...values)-Math.min(...values):0;
   }
   const candidates=legal.filter(a=>finite(evByAction[a]));
   if(candidates.length<2){
-    return {
-      version:'cash-pro-lab-oracle-consensus-v1',
-      blocked:true,
-      highImpact,
-      reason:'consensus_ev_coverage_insufficient',
-      required:minOracles,
-      eligibleCount:eligible.length,
-      eligible,
-      rejected,
-      evByAction,
-      coverageByAction,
-      bestAction:null,
-      confidence:0,
-    };
+    return blockedBase({highImpact,reason:'consensus_ev_coverage_insufficient',required:minOracles,eligible,rejected,legal,extra:{evByAction,coverageByAction,spreadByAction}});
+  }
+
+  const maxEvSpreadBB=finite(options.maxEvSpreadBB)?options.maxEvSpreadBB:Infinity;
+  const divergentActions=candidates.filter(a=>spreadByAction[a]>maxEvSpreadBB);
+  if(divergentActions.length){
+    return blockedBase({
+      highImpact,reason:'oracle_ev_disagreement',required:minOracles,eligible,rejected,legal,
+      extra:{evByAction,coverageByAction,spreadByAction,divergentActions,maxEvSpreadBB},
+    });
   }
 
   candidates.sort((a,b)=>evByAction[b]-evByAction[a]);
@@ -105,6 +109,14 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
   const agreementWeight=eligible.reduce((sum,o)=>sum+(o.action===bestAction?o.confidence:0),0);
   const totalWeight=eligible.reduce((sum,o)=>sum+o.confidence,0);
   const actionAgreement=totalWeight>0?agreementWeight/totalWeight:0;
+  const minActionAgreement=finite(options.minActionAgreement)?options.minActionAgreement:0;
+  if(actionAgreement<minActionAgreement){
+    return blockedBase({
+      highImpact,reason:'oracle_action_disagreement',required:minOracles,eligible,rejected,legal,
+      extra:{evByAction,coverageByAction,spreadByAction,bestAction,bestEV,secondEV,marginBB,actionAgreement,minActionAgreement},
+    });
+  }
+
   const confidence=clamp((actionAgreement*0.55)+Math.min(1,Math.max(0,marginBB)/0.50)*0.45,0,1);
 
   return {
@@ -116,6 +128,7 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
     rejected,
     evByAction,
     coverageByAction,
+    spreadByAction,
     bestAction,
     bestEV,
     secondEV,
