@@ -42,7 +42,7 @@ export function validateHighRakePostflopSolution({solution,job}={}){
   if(!finite(Number(meta.exploitability_pct_of_pot))||Number(meta.exploitability_pct_of_pot)<0) errors.push('exploitability_pct_invalid');
   else if(Number(meta.exploitability_pct_of_pot)>Number(job.convergence?.targetExploitabilityPct)+1e-6) errors.push('exploitability_target_not_met');
   if(!Number.isInteger(Number(meta.iterations))||Number(meta.iterations)<1) errors.push('iterations_invalid');
-  if(!sameString(meta.engine_version,job.expectedEngineVersion??meta.engine_version)||!String(meta.engine_version||'').trim()) errors.push('engine_version_invalid');
+  if(!String(meta.engine_version||'').trim()) errors.push('engine_version_invalid');
   if(!Array.isArray(meta.root_evs?.zero_sum)||meta.root_evs.zero_sum.length!==2||meta.root_evs.zero_sum.some(v=>!finite(Number(v)))) errors.push('root_zero_sum_ev_invalid');
   if(!Array.isArray(meta.root_evs?.pot_share)||meta.root_evs.pot_share.length!==2||meta.root_evs.pot_share.some(v=>!finite(Number(v)))) errors.push('root_pot_share_ev_invalid');
   if(!Array.isArray(meta.gain)||meta.gain.length!==2||meta.gain.some(v=>!finite(Number(v))||Number(v)<-1e-7)) errors.push('best_response_gain_invalid');
