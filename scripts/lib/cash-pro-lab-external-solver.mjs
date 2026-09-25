@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const MANIFEST_VERSION='cash-pro-lab-external-solver-manifest-v1';
-const SIDECAR_VERSION='cash-pro-lab-raw-solver-artifact-v1';
+const SIDECAR_VERSION='cash-pro-lab-raw-solver-artifact-v2';
 
 export function sha256Hex(input){
   return crypto.createHash('sha256').update(input).digest('hex');
@@ -22,7 +22,7 @@ export function parseAndValidateRawSolverJson(rawText){
   return {ok:errors.length===0,errors,value};
 }
 
-export function buildRawArtifactSidecar({job,rawText,startedAt,finishedAt,exitCode,solverPath}={}){
+export function buildRawArtifactSidecar({job,rawText,commandText,solverBinarySha256,startedAt,finishedAt,exitCode,solverPath}={}){
   const parsed=parseAndValidateRawSolverJson(rawText);
   if(!parsed.ok) return {ok:false,errors:parsed.errors,sidecar:null};
   const errors=[];
@@ -30,6 +30,10 @@ export function buildRawArtifactSidecar({job,rawText,startedAt,finishedAt,exitCo
   if(!job?.solveRootFingerprint) errors.push('root_fingerprint_missing');
   if(!job?.solveRootFingerprintVersion) errors.push('root_fingerprint_version_missing');
   if(!job?.split) errors.push('split_missing');
+  if(!job?.strategyProfile) errors.push('strategy_profile_missing');
+  if(!job?.treeProfileKey) errors.push('tree_profile_key_missing');
+  if(typeof commandText!=='string'||!commandText.trim()) errors.push('command_text_missing');
+  if(!/^[a-f0-9]{64}$/.test(String(solverBinarySha256||''))) errors.push('solver_binary_sha256_missing');
   if(Number(exitCode)!==0) errors.push('solver_exit_nonzero');
   if(errors.length) return {ok:false,errors,sidecar:null};
   const bytes=Buffer.byteLength(rawText,'utf8');
@@ -42,9 +46,11 @@ export function buildRawArtifactSidecar({job,rawText,startedAt,finishedAt,exitCo
     split:String(job.split),
     solveRootFingerprint:String(job.solveRootFingerprint),
     solveRootFingerprintVersion:String(job.solveRootFingerprintVersion),
-    strategyProfile:String(job.strategyProfile||''),
-    treeProfileKey:String(job.treeProfileKey||''),
+    strategyProfile:String(job.strategyProfile),
+    treeProfileKey:String(job.treeProfileKey),
     outputFile:String(job.outputFile||''),
+    commandSha256:sha256Hex(commandText),
+    solverBinarySha256:String(solverBinarySha256),
     bytes,
     sha256:sha256Hex(rawText),
     startedAt:String(startedAt||''),
@@ -55,13 +61,13 @@ export function buildRawArtifactSidecar({job,rawText,startedAt,finishedAt,exitCo
       execution:'external-offline-process',
       autoDownloaded:false,
       binaryBundled:false,
-      note:'RAW_SOLVER_ARTIFACT means JSON was produced by the external process and passed only envelope/integrity checks. It is not yet a validated oracle or certified study.',
+      note:'RAW_SOLVER_ARTIFACT means JSON was produced by the exact hashed external process from the exact hashed command file and passed only envelope/integrity checks. It is not yet a validated oracle or certified study.',
     },
   };
   return {ok:true,errors:[],sidecar};
 }
 
-export function validateResumeArtifact({job,rawText,sidecar}={}){
+export function validateResumeArtifact({job,rawText,commandText,solverBinarySha256,sidecar}={}){
   const errors=[];
   const parsed=parseAndValidateRawSolverJson(rawText);
   errors.push(...parsed.errors);
@@ -73,7 +79,14 @@ export function validateResumeArtifact({job,rawText,sidecar}={}){
   if(String(sidecar?.split||'')!==String(job?.split||'')) errors.push('sidecar_split_mismatch');
   if(String(sidecar?.solveRootFingerprint||'')!==String(job?.solveRootFingerprint||'')) errors.push('sidecar_root_mismatch');
   if(String(sidecar?.solveRootFingerprintVersion||'')!==String(job?.solveRootFingerprintVersion||'')) errors.push('sidecar_root_version_mismatch');
+  if(String(sidecar?.strategyProfile||'')!==String(job?.strategyProfile||'')) errors.push('sidecar_strategy_profile_mismatch');
+  if(String(sidecar?.treeProfileKey||'')!==String(job?.treeProfileKey||'')) errors.push('sidecar_tree_profile_mismatch');
+  if(String(sidecar?.outputFile||'')!==String(job?.outputFile||'')) errors.push('sidecar_output_file_mismatch');
   if(typeof rawText==='string'&&sidecar?.sha256!==sha256Hex(rawText)) errors.push('sidecar_sha256_mismatch');
+  if(typeof commandText!=='string'||!commandText.trim()) errors.push('resume_command_text_missing');
+  else if(sidecar?.commandSha256!==sha256Hex(commandText)) errors.push('sidecar_command_sha256_mismatch');
+  if(!/^[a-f0-9]{64}$/.test(String(solverBinarySha256||''))) errors.push('resume_solver_binary_sha256_missing');
+  else if(sidecar?.solverBinarySha256!==solverBinarySha256) errors.push('sidecar_solver_binary_sha256_mismatch');
   return {ok:errors.length===0,errors:[...new Set(errors)]};
 }
 
@@ -93,6 +106,8 @@ export function validateExternalSolverManifest(manifest={}){
     else if(outputs.has(job.outputFile)) errors.push(`duplicate_output_file:${job.outputFile}`); else outputs.add(job.outputFile);
     if(!job?.solverOutputBasename||path.basename(job.solverOutputBasename)!==job.solverOutputBasename) errors.push(`solver_output_basename_invalid:${job?.id||'unknown'}`);
     if(!job?.solveRootFingerprint) errors.push(`root_fingerprint_missing:${job?.id||'unknown'}`);
+    if(!job?.strategyProfile) errors.push(`strategy_profile_missing:${job?.id||'unknown'}`);
+    if(!job?.treeProfileKey) errors.push(`tree_profile_key_missing:${job?.id||'unknown'}`);
   }
   return {ok:errors.length===0,errors:[...new Set(errors)]};
 }
@@ -127,18 +142,20 @@ export async function executeExternalSolverJob({manifestDir,job,solverPath,dryRu
   if(!fs.existsSync(commandPath)) return {status:'BLOCKED',reason:'command_file_missing',jobId:job.id};
   if(!fs.existsSync(absoluteSolver)) return {status:'BLOCKED',reason:'solver_binary_missing',jobId:job.id};
   if(!fs.statSync(absoluteSolver).isFile()) return {status:'BLOCKED',reason:'solver_binary_not_file',jobId:job.id};
+  const commandText=fs.readFileSync(commandPath,'utf8');
+  const solverBinarySha256=sha256Hex(fs.readFileSync(absoluteSolver));
 
   if(resume&&fs.existsSync(outputPath)&&fs.existsSync(sidecarPath)){
     try{
       const rawText=fs.readFileSync(outputPath,'utf8');
       const sidecar=JSON.parse(fs.readFileSync(sidecarPath,'utf8'));
-      const checked=validateResumeArtifact({job,rawText,sidecar});
-      if(checked.ok) return {status:'RESUMED',jobId:job.id,outputPath,sidecarPath,sha256:sidecar.sha256};
+      const checked=validateResumeArtifact({job,rawText,commandText,solverBinarySha256,sidecar});
+      if(checked.ok) return {status:'RESUMED',jobId:job.id,outputPath,sidecarPath,sha256:sidecar.sha256,solverBinarySha256,commandSha256:sidecar.commandSha256};
     }catch{/* stale or malformed evidence must be recomputed */}
   }
 
   if(dryRun){
-    return {status:'DRY_RUN',jobId:job.id,commandPath,solverPath:absoluteSolver,cwd:solverDir,outputPath};
+    return {status:'DRY_RUN',jobId:job.id,commandPath,solverPath:absoluteSolver,cwd:solverDir,outputPath,solverBinarySha256,commandSha256:sha256Hex(commandText)};
   }
 
   fs.mkdirSync(path.dirname(outputPath),{recursive:true});
@@ -162,14 +179,14 @@ export async function executeExternalSolverJob({manifestDir,job,solverPath,dryRu
     return {status:'FAILED',reason:'solver_output_missing',jobId:job.id,stdoutPath,stderrPath};
   }
   const rawText=fs.readFileSync(solverOutputPath,'utf8');
-  const sidecarResult=buildRawArtifactSidecar({job,rawText,startedAt,finishedAt,exitCode:result.code,solverPath:absoluteSolver});
+  const sidecarResult=buildRawArtifactSidecar({job,rawText,commandText,solverBinarySha256,startedAt,finishedAt,exitCode:result.code,solverPath:absoluteSolver});
   if(!sidecarResult.ok){
     return {status:'FAILED',reason:'raw_artifact_invalid',errors:sidecarResult.errors,jobId:job.id,stdoutPath,stderrPath};
   }
   fs.copyFileSync(solverOutputPath,outputPath);
   fs.writeFileSync(sidecarPath,JSON.stringify(sidecarResult.sidecar,null,2));
   fs.rmSync(solverOutputPath,{force:true});
-  return {status:'RAW_SOLVER_ARTIFACT',jobId:job.id,outputPath,sidecarPath,stdoutPath,stderrPath,sha256:sidecarResult.sidecar.sha256,certifiedStudy:false};
+  return {status:'RAW_SOLVER_ARTIFACT',jobId:job.id,outputPath,sidecarPath,stdoutPath,stderrPath,sha256:sidecarResult.sidecar.sha256,solverBinarySha256,commandSha256:sidecarResult.sidecar.commandSha256,certifiedStudy:false};
 }
 
 export const EXTERNAL_SOLVER_MANIFEST_VERSION=MANIFEST_VERSION;
