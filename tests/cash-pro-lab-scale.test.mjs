@@ -9,7 +9,7 @@ import { buildOracleConsensus } from '../src/cash-pro-lab/oracle-consensus.js';
 import { createArtifactOracleProvider, createOracleArtifactIndex } from '../src/cash-pro-lab/oracle-artifact.js';
 
 const evidence=()=>Object.fromEntries(
-  ['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','actionHistory']
+  ['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','legalOptions','actionHistory']
     .map(field=>[field,{source:'solver-fixture',confidence:1}])
 );
 
@@ -23,7 +23,13 @@ function nodeForTicket(ticket){
     handId:`scale-${ticket.ordinal}`,decisionId:`d-${ticket.ordinal}`,
     heroCards:['Ah','Kd'],board:['As','7c','2d'],street:'flop',heroPosition:'BTN',
     effectiveStackBB:100,heroStackBB:100,potBB:10,toCallBB:2,activePlayers:2,
-    legalActions:['FOLD','CALL','RAISE'],rakeProfile:'100z-high-rake',
+    legalActions:['FOLD','CALL','RAISE'],
+    legalOptions:[
+      {id:'FOLD',action:'FOLD'},
+      {id:'CALL',action:'CALL',amountBB:2},
+      {id:'RAISE:8',action:'RAISE',amountBB:8},
+    ],
+    rakeProfile:'100z-high-rake',strategyProfile:'fixture-gto-ranges-v1',
     actionHistory:[{seq:1,street:'flop',actorPosition:'BB',action:'BET',amountBB:2}],
     evidence:evidence(),tags:[`sample-${ticket.sampleIndex}`],
   });
@@ -72,7 +78,7 @@ test('sharding assigns every ticket to one deterministic worker',()=>{
   assert.ok(new Set(assignments).size>1);
 });
 
-test('scale runner counts only proved and teacher-audited nodes as studied',async()=>{
+test('scale runner counts only exact-state proved and teacher-audited nodes as studied',async()=>{
   const tickets=iterateCurriculumTickets({axes:singletonAxes,samplesPerCell:8,seed:'runner'});
   const out=await runCurriculumStream({
     tickets,split:null,nodeFactory:async ticket=>nodeForTicket(ticket),
@@ -85,6 +91,9 @@ test('scale runner counts only proved and teacher-audited nodes as studied',asyn
   assert.equal(out.studiedNodes,8);
   assert.equal(out.blockedNodes,0);
   assert.equal(out.evSummary.totalEvLossBB,0);
+  assert.equal(out.proofOptions.requireSizedAggression,true);
+  assert.equal(out.proofOptions.requireLegalOptionsEvidence,true);
+  assert.equal(out.proofOptions.requireStrategyProfile,true);
   assert.match(out.note,/only STUDIED nodes/i);
 });
 
@@ -106,6 +115,7 @@ test('strict consensus quarantines teachers whose action EVs disagree beyond tol
   ],{requireDomainDescriptor:true,requireIndependentFamilies:true,maxEvSpreadBB:.75});
   assert.equal(result.blocked,true);
   assert.equal(result.reason,'oracle_ev_disagreement');
+  assert.ok(result.divergentChoices.includes('CALL'));
   assert.ok(result.divergentActions.includes('CALL'));
 });
 
