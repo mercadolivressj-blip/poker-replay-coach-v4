@@ -5,21 +5,38 @@ const finite=(v)=>typeof v==='number'&&Number.isFinite(v);
 const upper=(v)=>String(v??'').trim().toUpperCase();
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 
-function normalizeOracle(row={},legalActions=[]){
-  const evByAction={};
-  for(const action of legalActions){
-    const value=row?.evByAction?.[action];
-    evByAction[action]=finite(value)?value:null;
+function legalOptions(node={}){
+  const rows=Array.isArray(node.legalOptions)&&node.legalOptions.length
+    ? node.legalOptions
+    : (node.legalActions||[]).map(action=>({id:action,action}));
+  return rows.map(o=>({id:String(o.id),action:upper(o.action),amountBB:finite(o.amountBB)?o.amountBB:null,allIn:o.allIn===true}));
+}
+
+function actionMultiplicity(options=[]){
+  const counts={};for(const o of options)counts[o.action]=(counts[o.action]||0)+1;return counts;
+}
+
+function normalizeOracle(row={},options=[]){
+  const multiplicity=actionMultiplicity(options);
+  const evByChoice={};
+  for(const option of options){
+    const direct=row?.evByChoice?.[option.id];
+    const legacy=row?.evByAction?.[option.action];
+    evByChoice[option.id]=finite(direct)?direct:(multiplicity[option.action]===1&&finite(legacy)?legacy:null);
   }
+  const action=upper(row.action);
+  let choiceId=String(row.choiceId||'');
+  if(!choiceId&&action&&multiplicity[action]===1) choiceId=options.find(o=>o.action===action)?.id||'';
   return {
     oracleId:String(row.oracleId||row.source||'unknown'),
     source:String(row.source||row.oracleId||'unknown'),
     family:String(row.family||row.source||row.oracleId||'unknown'),
-    action:upper(row.action),
+    action,
+    choiceId,
     confidence:finite(row.confidence)?clamp(row.confidence,0,1):0,
     claimedDomainVerified:row.domainVerified===true,
     domain:row.domain??null,
-    evByAction,
+    evByChoice,
     notes:Array.isArray(row.notes)?row.notes.map(String):[],
   };
 }
@@ -33,21 +50,25 @@ function weightedAverage(values=[]){
   return den>0?num/den:null;
 }
 
-function blockedBase({highImpact,reason,required,eligible,rejected,legal,extra={}}){
+function blockedBase({highImpact,reason,required,eligible,rejected,options,extra={}}){
   return {
     version:'cash-pro-lab-oracle-consensus-v1',blocked:true,highImpact,reason,required,
     eligibleCount:eligible.length,eligible,rejected,
-    evByAction:Object.fromEntries(legal.map(a=>[a,null])),bestAction:null,confidence:0,...extra,
+    evByChoice:Object.fromEntries(options.map(o=>[o.id,null])),evByAction:{},bestChoiceId:null,bestAction:null,confidence:0,...extra,
   };
 }
 
-export function buildOracleConsensus(node={},oracleResults=[],options={}){
-  const legal=Array.isArray(node.legalActions)?node.legalActions:[];
-  const normalized=(Array.isArray(oracleResults)?oracleResults:[]).map(r=>normalizeOracle(r,legal));
+export function buildOracleConsensus(node={},oracleResults=[],config={}){
+  const options=legalOptions(node);
+  const legal=[...new Set(options.map(o=>o.action))];
+  const multiplicity=actionMultiplicity(options);
+  const sizingSensitive=Object.values(multiplicity).some(n=>n>1);
+  const requireChoiceEV=config.requireChoiceEV===true||sizingSensitive;
+  const normalized=(Array.isArray(oracleResults)?oracleResults:[]).map(r=>normalizeOracle(r,options));
   const rejected=[];
   const eligible=[];
-  const minConfidence=options.minOracleConfidence??0.60;
-  const requireDomainDescriptor=options.requireDomainDescriptor===true;
+  const minConfidence=config.minOracleConfidence??0.60;
+  const requireDomainDescriptor=config.requireDomainDescriptor===true;
 
   for(const oracle of normalized){
     const reasons=[];
@@ -55,80 +76,87 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
     const legacyAllowed=!requireDomainDescriptor&&oracle.claimedDomainVerified===true;
     if(!domainCheck.ok&&!legacyAllowed) reasons.push('domain_unverified',...domainCheck.reasons);
     if(oracle.confidence<minConfidence) reasons.push('confidence_too_low');
-    if(!legal.includes(oracle.action)) reasons.push('oracle_action_illegal');
-    const covered=legal.filter(a=>finite(oracle.evByAction[a]));
-    if(covered.length<2) reasons.push('ev_coverage_insufficient');
+    if(oracle.choiceId&&!options.some(o=>o.id===oracle.choiceId)) reasons.push('oracle_choice_illegal');
+    if(!oracle.choiceId&&(!oracle.action||!legal.includes(oracle.action))) reasons.push('oracle_action_illegal');
+    const covered=options.filter(o=>finite(oracle.evByChoice[o.id]));
+    if(covered.length<2) reasons.push(requireChoiceEV?'choice_ev_coverage_insufficient':'ev_coverage_insufficient');
+    if(requireChoiceEV&&sizingSensitive&&!oracle.choiceId) reasons.push('oracle_sizing_choice_missing');
     const normalizedOracle={...oracle,domainVerified:domainCheck.ok,legacyDomainClaimUsed:legacyAllowed&&!domainCheck.ok,domainCheck};
     if(reasons.length) rejected.push({oracleId:oracle.oracleId,reasons:[...new Set(reasons)],domainCheck});
     else eligible.push(normalizedOracle);
   }
 
   const highImpact=isHighImpactNode(node);
-  const minOracles=highImpact?(options.minHighImpactOracles??2):(options.minOracles??1);
+  const minOracles=highImpact?(config.minHighImpactOracles??2):(config.minOracles??1);
   if(eligible.length<minOracles){
-    return blockedBase({highImpact,reason:'insufficient_verified_oracles',required:minOracles,eligible,rejected,legal});
+    return blockedBase({highImpact,reason:'insufficient_verified_oracles',required:minOracles,eligible,rejected,options,extra:{sizingSensitive,requireChoiceEV}});
   }
 
-  if(highImpact&&options.requireIndependentFamilies===true){
+  if(highImpact&&config.requireIndependentFamilies===true){
     const families=[...new Set(eligible.map(o=>o.family).filter(Boolean))];
-    const minFamilies=options.minHighImpactFamilies??2;
+    const minFamilies=config.minHighImpactFamilies??2;
     if(families.length<minFamilies){
-      return blockedBase({highImpact,reason:'insufficient_independent_oracles',required:minFamilies,eligible,rejected,legal,extra:{families}});
+      return blockedBase({highImpact,reason:'insufficient_independent_oracles',required:minFamilies,eligible,rejected,options,extra:{families,sizingSensitive,requireChoiceEV}});
     }
   }
 
-  const evByAction={};
-  const coverageByAction={};
-  const spreadByAction={};
-  for(const action of legal){
-    const values=eligible.filter(o=>finite(o.evByAction[action])).map(o=>o.evByAction[action]);
-    const rows=eligible.filter(o=>finite(o.evByAction[action])).map(o=>({value:o.evByAction[action],weight:o.confidence}));
-    evByAction[action]=weightedAverage(rows);
-    coverageByAction[action]=rows.length;
-    spreadByAction[action]=values.length>=2?Math.max(...values)-Math.min(...values):0;
+  const evByChoice={};
+  const coverageByChoice={};
+  const spreadByChoice={};
+  for(const option of options){
+    const values=eligible.filter(o=>finite(o.evByChoice[option.id])).map(o=>o.evByChoice[option.id]);
+    const rows=eligible.filter(o=>finite(o.evByChoice[option.id])).map(o=>({value:o.evByChoice[option.id],weight:o.confidence}));
+    evByChoice[option.id]=weightedAverage(rows);
+    coverageByChoice[option.id]=rows.length;
+    spreadByChoice[option.id]=values.length>=2?Math.max(...values)-Math.min(...values):0;
   }
-  const candidates=legal.filter(a=>finite(evByAction[a]));
+  const candidates=options.filter(o=>finite(evByChoice[o.id]));
   if(candidates.length<2){
-    return blockedBase({highImpact,reason:'consensus_ev_coverage_insufficient',required:minOracles,eligible,rejected,legal,extra:{evByAction,coverageByAction,spreadByAction}});
+    return blockedBase({highImpact,reason:'consensus_ev_coverage_insufficient',required:minOracles,eligible,rejected,options,extra:{evByChoice,coverageByChoice,spreadByChoice,sizingSensitive,requireChoiceEV}});
   }
 
-  const maxEvSpreadBB=finite(options.maxEvSpreadBB)?options.maxEvSpreadBB:Infinity;
-  const divergentActions=candidates.filter(a=>spreadByAction[a]>maxEvSpreadBB);
-  if(divergentActions.length){
-    return blockedBase({
-      highImpact,reason:'oracle_ev_disagreement',required:minOracles,eligible,rejected,legal,
-      extra:{evByAction,coverageByAction,spreadByAction,divergentActions,maxEvSpreadBB},
-    });
+  const maxEvSpreadBB=finite(config.maxEvSpreadBB)?config.maxEvSpreadBB:Infinity;
+  const divergentChoices=candidates.filter(o=>spreadByChoice[o.id]>maxEvSpreadBB).map(o=>o.id);
+  if(divergentChoices.length){
+    return blockedBase({highImpact,reason:'oracle_ev_disagreement',required:minOracles,eligible,rejected,options,extra:{evByChoice,coverageByChoice,spreadByChoice,divergentChoices,maxEvSpreadBB,sizingSensitive,requireChoiceEV}});
   }
 
-  candidates.sort((a,b)=>evByAction[b]-evByAction[a]);
-  const bestAction=candidates[0];
-  const bestEV=evByAction[bestAction];
-  const secondEV=evByAction[candidates[1]];
+  candidates.sort((a,b)=>evByChoice[b.id]-evByChoice[a.id]);
+  const bestChoice=candidates[0];
+  const bestChoiceId=bestChoice.id;
+  const bestAction=bestChoice.action;
+  const bestEV=evByChoice[bestChoiceId];
+  const secondEV=evByChoice[candidates[1].id];
   const marginBB=bestEV-secondEV;
-  const agreementWeight=eligible.reduce((sum,o)=>sum+(o.action===bestAction?o.confidence:0),0);
+  const agreementWeight=eligible.reduce((sum,o)=>sum+((o.choiceId===bestChoiceId||(!sizingSensitive&&o.action===bestAction))?o.confidence:0),0);
   const totalWeight=eligible.reduce((sum,o)=>sum+o.confidence,0);
   const actionAgreement=totalWeight>0?agreementWeight/totalWeight:0;
-  const minActionAgreement=finite(options.minActionAgreement)?options.minActionAgreement:0;
+  const minActionAgreement=finite(config.minActionAgreement)?config.minActionAgreement:0;
   if(actionAgreement<minActionAgreement){
-    return blockedBase({
-      highImpact,reason:'oracle_action_disagreement',required:minOracles,eligible,rejected,legal,
-      extra:{evByAction,coverageByAction,spreadByAction,bestAction,bestEV,secondEV,marginBB,actionAgreement,minActionAgreement},
-    });
+    return blockedBase({highImpact,reason:'oracle_action_disagreement',required:minOracles,eligible,rejected,options,extra:{evByChoice,coverageByChoice,spreadByChoice,bestChoiceId,bestAction,bestEV,secondEV,marginBB,actionAgreement,minActionAgreement,sizingSensitive,requireChoiceEV}});
   }
 
+  const evByAction={};
+  for(const action of legal){
+    const values=options.filter(o=>o.action===action&&finite(evByChoice[o.id])).map(o=>evByChoice[o.id]);
+    evByAction[action]=values.length?Math.max(...values):null;
+  }
   const confidence=clamp((actionAgreement*0.55)+Math.min(1,Math.max(0,marginBB)/0.50)*0.45,0,1);
 
   return {
     version:'cash-pro-lab-oracle-consensus-v1',
     blocked:false,
     highImpact,
+    sizingSensitive,
+    requireChoiceEV,
     eligibleCount:eligible.length,
     eligible,
     rejected,
+    evByChoice,
     evByAction,
-    coverageByAction,
-    spreadByAction,
+    coverageByChoice,
+    spreadByChoice,
+    bestChoiceId,
     bestAction,
     bestEV,
     secondEV,
