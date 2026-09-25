@@ -6,7 +6,7 @@ import { RANGE_PROFILE_100Z_SRP, derive100zSrpRanges, infer100zSrpFromNode } fro
 function srpNode(overrides={}){
   return createDecisionNode({
     handId:'range-fixture',decisionId:'flop-root',heroCards:['Ah','Kd'],board:['As','7c','2d'],street:'flop',heroPosition:'BB',
-    effectiveStackBB:100,heroStackBB:97.5,potBB:5.5,toCallBB:0,activePlayers:2,
+    startingStackBB:100,effectiveStackBB:97.5,heroStackBB:97.5,potBB:5.5,toCallBB:0,activePlayers:2,
     legalActions:['CHECK','BET'],
     legalOptions:[{id:'CHECK',action:'CHECK'},{id:'BET:1.8',action:'BET',amountBB:1.8}],
     rakeProfile:RANGE_PROFILE_100Z_SRP.rakeProfile,
@@ -41,7 +41,7 @@ test('SB RFI vs BB call assigns BB in position postflop',()=>{
   assert.equal(out.rangeOop,out.openerRange);
 });
 
-test('proper 100bb heads-up SRP node is accepted by frozen range profile',()=>{
+test('proper 100bb starting-stack heads-up SRP node is accepted with 97.5bb remaining',()=>{
   const out=infer100zSrpFromNode(srpNode());
   assert.equal(out.ok,true);
   assert.equal(out.openerPosition,'BTN');
@@ -50,10 +50,15 @@ test('proper 100bb heads-up SRP node is accepted by frozen range profile',()=>{
   assert.ok(out.rangeIp&&out.rangeOop);
 });
 
-test('50bb spot is rejected instead of inheriting 100bb ranges',()=>{
-  const out=infer100zSrpFromNode(srpNode({effectiveStackBB:50,heroStackBB:47.5}));
+test('50bb starting stack is rejected instead of inheriting 100bb ranges',()=>{
+  const out=infer100zSrpFromNode(srpNode({startingStackBB:50,effectiveStackBB:47.5,heroStackBB:47.5}));
   assert.equal(out.ok,false);
-  assert.ok(out.errors.includes('stack_not_100bb'));
+  assert.ok(out.errors.includes('starting_stack_not_100bb'));
+});
+
+test('100bb start with a smaller remaining flop stack remains in the 100z range profile',()=>{
+  const out=infer100zSrpFromNode(srpNode({startingStackBB:100,effectiveStackBB:65,heroStackBB:65}));
+  assert.equal(out.ok,true);
 });
 
 test('multiway spot is rejected from heads-up SRP profile',()=>{
