@@ -52,7 +52,7 @@ function optionId(action,amountBB,allIn,index){
 const normalizeLegalOptions=(inputOptions=[],legalActions=[])=>{
   const source=Array.isArray(inputOptions)&&inputOptions.length
     ? inputOptions
-    : legalActions.map(action=>({id:action,action,amountBB:action==='CALL'?null:null,allIn:action==='ALLIN'}));
+    : legalActions.map(action=>({id:action,action,allIn:action==='ALLIN'}));
   return source.map((row,index)=>{
     const action=upper(row?.action||row?.type||row?.id);
     const amountBB=num(row?.amountBB??row?.amount);
@@ -68,6 +68,48 @@ const normalizeLegalOptions=(inputOptions=[],legalActions=[])=>{
   });
 };
 
+function strategicHistory(history=[]){
+  return history.map(e=>({
+    seq:e.seq,
+    street:e.street,
+    actorPosition:e.actorPosition,
+    action:e.action,
+    amountBB:e.amountBB,
+    allIn:e.allIn,
+  }));
+}
+
+function strategicOptions(options=[]){
+  return options.map(o=>({
+    id:o.id,
+    action:o.action,
+    amountBB:o.amountBB,
+    potFraction:o.potFraction,
+    allIn:o.allIn,
+  }));
+}
+
+function strategicPayload(node={}){
+  return {
+    fingerprintVersion:'cash-pro-lab-strategic-fingerprint-v2',
+    game:node.game,
+    currency:node.currency,
+    heroCards:node.heroCards,
+    board:node.board,
+    street:node.street,
+    heroPosition:node.heroPosition,
+    effectiveStackBB:node.effectiveStackBB,
+    heroStackBB:node.heroStackBB,
+    potBB:node.potBB,
+    toCallBB:node.toCallBB,
+    activePlayers:node.activePlayers,
+    legalOptions:strategicOptions(node.legalOptions||[]),
+    actionHistory:strategicHistory(node.actionHistory||[]),
+    rakeProfile:node.rakeProfile,
+    strategyProfile:node.strategyProfile??null,
+  };
+}
+
 export function createDecisionNode(input={}){
   const heroCards=Array.isArray(input.heroCards)?input.heroCards.map(String):[];
   const board=Array.isArray(input.board)?input.board.map(String):[];
@@ -76,6 +118,7 @@ export function createDecisionNode(input={}){
   legalActions=[...new Set([...legalActions,...legalOptions.map(x=>x.action).filter(Boolean)])];
   const node={
     schemaVersion:'cash-pro-lab-node-v1',
+    fingerprintVersion:'cash-pro-lab-strategic-fingerprint-v2',
     game:'NLHE_CASH_6MAX',
     currency:'BB',
     handId:input.handId??null,
@@ -93,13 +136,24 @@ export function createDecisionNode(input={}){
     legalOptions,
     actionHistory:normalizeHistory(input.actionHistory),
     rakeProfile:input.rakeProfile?String(input.rakeProfile):null,
+    strategyProfile:input.strategyProfile?String(input.strategyProfile):null,
     opponentModel:input.opponentModel??null,
     evidence:normalizeEvidence(input.evidence),
     assumptions:Array.isArray(input.assumptions)?input.assumptions.map(String):[],
     tags:Array.isArray(input.tags)?input.tags.map(String):[],
   };
-  const fingerprintPayload={...node,evidence:node.evidence,decisionId:null};
-  node.fingerprint=`cpl-${fnv1a(stableStringify(fingerprintPayload))}`;
+  node.fingerprint=`cpl2-${fnv1a(stableStringify(strategicPayload(node)))}`;
+  const observationPayload={
+    fingerprintVersion:'cash-pro-lab-observation-fingerprint-v1',
+    strategicFingerprint:node.fingerprint,
+    handId:node.handId,
+    decisionId:node.decisionId,
+    evidence:node.evidence,
+    assumptions:node.assumptions,
+    tags:node.tags,
+    opponentModel:node.opponentModel,
+  };
+  node.observationFingerprint=`cplo-${fnv1a(stableStringify(observationPayload))}`;
   return node;
 }
 
@@ -144,6 +198,7 @@ export function proveDecisionNode(node={},options={}){
   if(history.some(e=>!ACTIONS.has(e.action)||!['preflop','flop','turn','river'].includes(e.street))) errors.push('action_history_invalid');
   if(history.some(e=>finite(e.amountBB)&&e.amountBB<0)) errors.push('action_amount_negative');
   if(options.requireRakeProfile!==false&&!node.rakeProfile) errors.push('rake_profile_missing');
+  if(options.requireStrategyProfile===true&&!node.strategyProfile) errors.push('strategy_profile_missing');
 
   if(options.requireSizedAggression===true){
     const aggressive=legalOptions.filter(o=>['BET','RAISE','ALLIN'].includes(o.action));
@@ -171,6 +226,7 @@ export function proveDecisionNode(node={},options={}){
     version:'cash-pro-lab-understanding-proof-v1',
     ok:errors.length===0,
     fingerprint:node.fingerprint??null,
+    observationFingerprint:node.observationFingerprint??null,
     criticalConfidence:confidences.length?Math.min(...confidences):0,
     highImpact:isHighImpactNode(node),
     exactSizingReady:errors.includes('aggressive_sizing_missing')===false&&errors.includes('legal_option_sizing_ambiguous')===false,
@@ -193,6 +249,10 @@ export function resolveLegalChoice(node={},choice={}){
     return candidates.find(o=>finite(o.amountBB)&&Math.abs(o.amountBB-choice.amountBB)<1e-6)||null;
   }
   return null;
+}
+
+export function strategicFingerprintPayload(node={}){
+  return strategicPayload(node);
 }
 
 export const CASH_PRO_LAB_ACTIONS=[...ACTIONS];
