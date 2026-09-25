@@ -31,6 +31,7 @@ const context={
 test('economic proof exactly reconstructs current pot and to-call from explicit delta semantics',()=>{
   const proof=proveEconomicConsistency(flopFacingBet(),context);
   assert.equal(proof.ok,true);
+  assert.equal(proof.exact,true);
   assert.equal(proof.reconstructed.potBB,8.5);
   assert.equal(proof.reconstructed.toCallBB,3);
   assert.deepEqual(proof.reconstructed.currentStreetCommitmentsBB,{BB:0,BTN:3});
@@ -95,13 +96,21 @@ test('understanding proof can require exact economics specifically for red-zone 
   });
   const blocked=proveDecisionNode(red,{requireEconomicConsistencyForRedZone:true});
   assert.equal(blocked.ok,false);
+  assert.equal(blocked.economicProof.exact,false);
   assert.ok(blocked.errors.includes('economic:initial_pot_missing'));
   assert.ok(blocked.errors.includes('economic:amount_semantics_not_delta'));
 
   const passed=proveDecisionNode(red,{
     requireEconomicConsistencyForRedZone:true,
-    economicContext:{initialPotBB:60,amountSemantics:'delta',potSemantics:'includes-history-contributions'},
+    economicContext:{
+      initialPotBB:60,
+      amountSemantics:'delta',
+      potSemantics:'includes-history-contributions',
+      openingCommitmentsByStreet:{river:{BTN:40,BB:0}},
+    },
   });
   assert.equal(passed.ok,true);
   assert.equal(passed.economicProof.ok,true);
+  assert.equal(passed.economicProof.exact,true);
+  assert.equal(passed.economicProof.reconstructed.toCallBB,40);
 });
