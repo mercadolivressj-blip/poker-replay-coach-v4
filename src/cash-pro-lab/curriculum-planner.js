@@ -33,6 +33,15 @@ function normalizedAxes(axes={}){
   return merged;
 }
 
+export function teacherLaneForAxes(axes={}){
+  const street=String(axes.street||'');
+  const activePlayers=Number(axes.activePlayers);
+  if(street==='preflop') return 'preflop';
+  if(['flop','turn','river'].includes(street)&&activePlayers===2) return 'postflop-heads-up';
+  if(['flop','turn','river'].includes(street)&&Number.isInteger(activePlayers)&&activePlayers>=3) return 'postflop-multiway';
+  return 'unsupported';
+}
+
 export function curriculumCellCount(axes={}){
   return Object.values(normalizedAxes(axes)).reduce((n,values)=>n*values.length,1);
 }
@@ -40,6 +49,29 @@ export function curriculumCellCount(axes={}){
 export function curriculumTicketCount({axes={},samplesPerCell=4}={}){
   if(!Number.isInteger(samplesPerCell)||samplesPerCell<1) throw new TypeError('samplesPerCell must be a positive integer');
   return curriculumCellCount(axes)*samplesPerCell;
+}
+
+export function curriculumLaneCounts({axes={},samplesPerCell=4}={}){
+  const resolved=normalizedAxes(axes);
+  const streets=resolved.street.map(String);
+  const players=resolved.activePlayers.map(Number);
+  const base=Object.entries(resolved)
+    .filter(([key])=>key!=='street'&&key!=='activePlayers')
+    .reduce((n,[,values])=>n*values.length,1);
+  const preflopCells=(streets.includes('preflop')?1:0)*players.length*base;
+  const postflopStreetCount=streets.filter(s=>['flop','turn','river'].includes(s)).length;
+  const huCells=postflopStreetCount*(players.includes(2)?1:0)*base;
+  const multiwayCells=postflopStreetCount*players.filter(p=>Number.isInteger(p)&&p>=3).length*base;
+  const classified=preflopCells+huCells+multiwayCells;
+  const total=curriculumCellCount(resolved);
+  const unsupportedCells=Math.max(0,total-classified);
+  const toRow=cells=>({cells,tickets:cells*samplesPerCell});
+  return {
+    preflop:toRow(preflopCells),
+    'postflop-heads-up':toRow(huCells),
+    'postflop-multiway':toRow(multiwayCells),
+    unsupported:toRow(unsupportedCells),
+  };
 }
 
 function splitForHash(hash,split={train:80,dev:10,holdout:10}){
@@ -69,6 +101,7 @@ export function* iterateCurriculumTickets({axes={},samplesPerCell=4,seed='cash-p
   for(const cell of cartesianEntries(entries)){
     const cellKey=stable(cell);
     const cellId=`cell-${fnv1a(cellKey).toString(16).padStart(8,'0')}`;
+    const teacherLane=teacherLaneForAxes(cell);
     for(let sampleIndex=0;sampleIndex<samplesPerCell;sampleIndex++){
       const sampleSeed=fnv1a(`${seed}|${cellKey}|${sampleIndex}`);
       yield {
@@ -78,6 +111,7 @@ export function* iterateCurriculumTickets({axes={},samplesPerCell=4,seed='cash-p
         sampleIndex,
         sampleSeed,
         split:splitForHash(sampleSeed,split),
+        teacherLane,
         axes:{...cell},
       };
     }
@@ -99,13 +133,14 @@ export function curriculumManifest(options={}){
   const axes=normalizedAxes(options.axes||{});
   const samplesPerCell=options.samplesPerCell??4;
   return {
-    version:'cash-pro-lab-curriculum-manifest-v1',
+    version:'cash-pro-lab-curriculum-manifest-v2',
     axes,
     cells:curriculumCellCount(axes),
     samplesPerCell,
     tickets:curriculumTicketCount({axes,samplesPerCell}),
+    teacherLanes:curriculumLaneCounts({axes,samplesPerCell}),
     seed:String(options.seed??'cash-pro-lab-v1'),
     split:options.split??{train:80,dev:10,holdout:10},
-    note:'Tickets are curriculum targets, not solver-certified poker nodes. A ticket becomes a study only after node construction, Understanding Proof, domain-verified teacher consensus and EV audit.',
+    note:'Tickets are curriculum targets, not solver-certified poker nodes. Teacher lanes are isolated. A ticket becomes a study only after node construction, exact-state Understanding Proof, domain-verified teacher consensus and EV audit.',
   };
 }
