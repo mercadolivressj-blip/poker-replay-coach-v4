@@ -1,9 +1,9 @@
 {
   "name": "ssj-cash-pro-lab",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/test-cash-pro-lab.mjs"
+    "test": "node tests/test-cash-pro-lab.mjs && node tests/test-combo-range.mjs"
   }
 }
