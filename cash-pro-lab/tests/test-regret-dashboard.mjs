@@ -21,8 +21,10 @@ function record(i,{clean=false}={}){
   let selected=best;
   if(!clean){
     // Inject deterministic mistakes, heavier on river, so the dashboard must find the leak.
+    // Use FOLD as the injected mistake because the point of this fixture is to prove that
+    // materially expensive errors trip the promotion gate; this is not a strategy claim.
     const wrong=(street==='river' && i%9===3) || (street!=='river' && i%41===7);
-    if(wrong) selected=best==='RAISE'?'FOLD':'RAISE';
+    if(wrong) selected='FOLD';
   }
   return {
     id:`d${i}`,street,position:positions[i%positions.length],depthBucket:depths[i%depths.length],
