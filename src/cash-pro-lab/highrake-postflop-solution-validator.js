@@ -1,5 +1,6 @@
 const finite=v=>typeof v==='number'&&Number.isFinite(v);
 const near=(a,b,tol=1e-6)=>finite(Number(a))&&finite(Number(b))&&Math.abs(Number(a)-Number(b))<=tol;
+const EXPECTED_METRIC='nashconv_pct_of_pot';
 
 function actionCount(node){return Array.isArray(node?.actions)?node.actions.length:0;}
 function strategyShape(node){
@@ -16,17 +17,12 @@ function strategyShape(node){
 }
 function sameString(a,b){return String(a??'')===String(b??'');}
 
-export function validateHighRakePostflopSolution({solution,job}={}){
+function validateEnvelope({formatVersion,config={},meta={},nodeCount,job={}}={}){
   const errors=[];
-  if(!solution||typeof solution!=='object'||Array.isArray(solution)) errors.push('solution_not_object');
-  if(!job||typeof job!=='object') errors.push('job_missing');
-  if(errors.length) return {ok:false,errors,authority:null};
-
-  const config=solution.config||{};
-  const meta=solution.meta||{};
   const expected=job.root||{};
   const expectedRake=job.rake||{};
-  if(!Number.isInteger(solution.format_version)||solution.format_version<1||solution.format_version>3) errors.push('format_version_unsupported');
+  if(job?.convergence?.metric!==EXPECTED_METRIC) errors.push('convergence_metric_not_nashconv');
+  if(!Number.isInteger(formatVersion)||formatVersion<1||formatVersion>3) errors.push('format_version_unsupported');
   if(!sameString(config.board,expected.board?.join(' '))) errors.push('config_board_mismatch');
   if(!sameString(config.oop_range,job.expectedRanges?.oop)) errors.push('config_oop_range_mismatch');
   if(!sameString(config.ip_range,job.expectedRanges?.ip)) errors.push('config_ip_range_mismatch');
@@ -38,16 +34,54 @@ export function validateHighRakePostflopSolution({solution,job}={}){
   if(!near(config.target_exploitability,job.convergence?.targetExploitabilityPct)) errors.push('target_exploitability_mismatch');
 
   if(meta.payoff_unit!=='chips') errors.push('payoff_unit_not_chips');
-  if(!finite(Number(meta.exploitability_chips))||Number(meta.exploitability_chips)<0) errors.push('exploitability_chips_invalid');
-  if(!finite(Number(meta.exploitability_pct_of_pot))||Number(meta.exploitability_pct_of_pot)<0) errors.push('exploitability_pct_invalid');
-  else if(Number(meta.exploitability_pct_of_pot)>Number(job.convergence?.targetExploitabilityPct)+1e-6) errors.push('exploitability_target_not_met');
+  const chips=Number(meta.exploitability_chips);
+  const pct=Number(meta.exploitability_pct_of_pot);
+  if(!finite(chips)||chips<0) errors.push('nashconv_chips_invalid');
+  if(!finite(pct)||pct<0) errors.push('nashconv_pct_invalid');
+  else if(pct>Number(job.convergence?.targetExploitabilityPct)+1e-6) errors.push('nashconv_target_not_met');
   if(!Number.isInteger(Number(meta.iterations))||Number(meta.iterations)<1) errors.push('iterations_invalid');
   if(!String(meta.engine_version||'').trim()) errors.push('engine_version_invalid');
   if(!Array.isArray(meta.root_evs?.zero_sum)||meta.root_evs.zero_sum.length!==2||meta.root_evs.zero_sum.some(v=>!finite(Number(v)))) errors.push('root_zero_sum_ev_invalid');
   if(!Array.isArray(meta.root_evs?.pot_share)||meta.root_evs.pot_share.length!==2||meta.root_evs.pot_share.some(v=>!finite(Number(v)))) errors.push('root_pot_share_ev_invalid');
   if(!Array.isArray(meta.gain)||meta.gain.length!==2||meta.gain.some(v=>!finite(Number(v))||Number(v)<-1e-7)) errors.push('best_response_gain_invalid');
+  else if(finite(chips)&&Math.abs(Number(meta.gain[0])+Number(meta.gain[1])-chips)>1e-4) errors.push('nashconv_gain_sum_mismatch');
+  const pot=Number(expected.potBB);
+  if(finite(chips)&&finite(pct)&&finite(pot)&&pot>0&&Math.abs((100*chips/pot)-pct)>1e-3) errors.push('nashconv_pct_chip_mismatch');
+  if(!Number.isInteger(nodeCount)||nodeCount<1) errors.push('node_count_invalid');
+  return errors;
+}
 
-  if(!Number.isInteger(solution.node_count)||solution.node_count<1) errors.push('node_count_invalid');
+function authorityFrom({ok,meta}={}){
+  const pct=finite(Number(meta?.exploitability_pct_of_pot))?Number(meta.exploitability_pct_of_pot):null;
+  return {
+    highRakeDomain:ok,
+    strategyOracleReady:ok,
+    evAlternativeOracleReady:false,
+    certifiedStudy:false,
+    convergenceMetric:EXPECTED_METRIC,
+    measuredConvergencePct:pct,
+    measuredExploitabilityPct:pct,
+    iterations:Number.isInteger(Number(meta?.iterations))?Number(meta.iterations):null,
+    reason:ok
+      ?'Exact high-rake config, non-negative NashConv convergence and strategy structure validated. Alternative-action EV and certified-study authority remain separate gates.'
+      :'Solution failed exact-config, raked NashConv convergence or structure validation.',
+  };
+}
+
+export function validateHighRakePostflopSolution({solution,job}={}){
+  const errors=[];
+  if(!solution||typeof solution!=='object'||Array.isArray(solution)) errors.push('solution_not_object');
+  if(!job||typeof job!=='object') errors.push('job_missing');
+  if(errors.length) return {ok:false,errors,authority:null};
+
+  errors.push(...validateEnvelope({
+    formatVersion:solution.format_version,
+    config:solution.config||{},
+    meta:solution.meta||{},
+    nodeCount:solution.node_count,
+    job,
+  }));
+
   if(!Array.isArray(solution.nodes)||!solution.nodes.length) errors.push('decision_nodes_missing');
   else{
     const seen=new Set();
@@ -62,21 +96,39 @@ export function validateHighRakePostflopSolution({solution,job}={}){
   if(!Array.isArray(solution.root_combos)||solution.root_combos.length!==2||solution.root_combos.some(x=>!Array.isArray(x)||!x.length)) errors.push('root_combos_invalid');
 
   const unique=[...new Set(errors)];
-  const strategyOracleReady=unique.length===0;
+  const ok=unique.length===0;
   return {
-    version:'cash-pro-lab-highrake-postflop-solution-validation-v1',
-    ok:strategyOracleReady,
+    version:'cash-pro-lab-highrake-postflop-solution-validation-v2',
+    ok,
     errors:unique,
-    authority:{
-      highRakeDomain:strategyOracleReady,
-      strategyOracleReady,
-      evAlternativeOracleReady:false,
-      certifiedStudy:false,
-      measuredExploitabilityPct:finite(Number(meta.exploitability_pct_of_pot))?Number(meta.exploitability_pct_of_pot):null,
-      iterations:Number.isInteger(Number(meta.iterations))?Number(meta.iterations):null,
-      reason:strategyOracleReady
-        ?'Exact config and convergence envelope validated. Per-action alternative EV vectors are not persisted by the upstream solution schema, so EV-alternative authority remains blocked.'
-        :'Solution failed exact-config, convergence or structure validation.',
-    },
+    authority:authorityFrom({ok,meta:solution.meta}),
+  };
+}
+
+export function validateHighRakePostflopProof({proof,job}={}){
+  const errors=[];
+  if(!proof||typeof proof!=='object'||Array.isArray(proof)) errors.push('proof_not_object');
+  if(!job||typeof job!=='object') errors.push('job_missing');
+  if(errors.length) return {ok:false,errors,authority:null};
+  if(proof.version!=='cash-pro-lab-solution-stream-proof-v1') errors.push('proof_version_invalid');
+  if(proof.structural_ok!==true) errors.push('proof_structure_not_ok');
+  errors.push(...validateEnvelope({
+    formatVersion:proof.format_version,
+    config:proof.config||{},
+    meta:proof.meta||{},
+    nodeCount:proof.node_count,
+    job,
+  }));
+  if(!Number.isInteger(Number(proof.decision_nodes))||Number(proof.decision_nodes)<1) errors.push('proof_decision_nodes_invalid');
+  if(!Number.isInteger(Number(proof.strategy_entries))||Number(proof.strategy_entries)<1) errors.push('proof_strategy_entries_invalid');
+  if(!Array.isArray(proof.root_combo_counts)||proof.root_combo_counts.length!==2||proof.root_combo_counts.some(v=>!Number.isInteger(Number(v))||Number(v)<1)) errors.push('proof_root_combo_counts_invalid');
+
+  const unique=[...new Set(errors)];
+  const ok=unique.length===0;
+  return {
+    version:'cash-pro-lab-highrake-postflop-stream-validation-v1',
+    ok,
+    errors:unique,
+    authority:authorityFrom({ok,meta:proof.meta}),
   };
 }
