@@ -118,7 +118,8 @@ export function buildOracleConsensus(node={},oracleResults=[],config={}){
   const maxEvSpreadBB=finite(config.maxEvSpreadBB)?config.maxEvSpreadBB:Infinity;
   const divergentChoices=candidates.filter(o=>spreadByChoice[o.id]>maxEvSpreadBB).map(o=>o.id);
   if(divergentChoices.length){
-    return blockedBase({highImpact,reason:'oracle_ev_disagreement',required:minOracles,eligible,rejected,options,extra:{evByChoice,coverageByChoice,spreadByChoice,divergentChoices,maxEvSpreadBB,sizingSensitive,requireChoiceEV}});
+    const divergentActions=[...new Set(divergentChoices.map(id=>options.find(o=>o.id===id)?.action).filter(Boolean))];
+    return blockedBase({highImpact,reason:'oracle_ev_disagreement',required:minOracles,eligible,rejected,options,extra:{evByChoice,coverageByChoice,spreadByChoice,divergentChoices,divergentActions,maxEvSpreadBB,sizingSensitive,requireChoiceEV}});
   }
 
   candidates.sort((a,b)=>evByChoice[b.id]-evByChoice[a.id]);
