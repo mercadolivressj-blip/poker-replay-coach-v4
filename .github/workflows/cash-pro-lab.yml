@@ -1,0 +1,19 @@
+name: Cash Pro Lab
+
+on:
+  push:
+    branches:
+      - 'cash-pro-lab-*'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run Cash Pro Lab regressions
+        working-directory: cash-pro-lab
+        run: npm test
