@@ -1,7 +1,18 @@
-import {allTwoCardCombos,assertUniqueCards,splitCombo} from './cards.mjs';
+import {allTwoCardCombos,assertUniqueCards,splitCombo,canonicalCombo} from './cards.mjs';
 import {expandHandClass,normalizeHandClass} from './hand-classes.mjs';
 
 const clamp01=x=>Math.max(0,Math.min(1,Number(x)));
+
+function rangeShell({weights,origins=new Map(),source,status,depthBb,position,node,version='combo-range-v0.3'}){
+  return {
+    version,
+    source,status,depthBb,position,node,
+    decisionCertified:status==='certified' && Boolean(source) && depthBb!=null && Boolean(position) && Boolean(node),
+    weights,
+    origins,
+    deadCards:[]
+  };
+}
 
 export function createComboRange({
   entries=[],
@@ -22,19 +33,29 @@ export function createComboRange({
       origins.set(combo,hc);
     }
   }
-  return {
-    version:'combo-range-v0.2',
-    source,status,depthBb,position,node,
-    decisionCertified:status==='certified' && Boolean(source) && depthBb!=null && Boolean(position) && Boolean(node),
-    weights,
-    origins,
-    deadCards:[]
-  };
+  return rangeShell({weights,origins,source,status,depthBb,position,node});
+}
+
+export function createExplicitComboRange({
+  combos=[],source='explicit-lab-fixture',status='lab-only',depthBb=null,position=null,node=null
+}={}){
+  const weights=new Map(),origins=new Map();
+  for(const row of combos){
+    const raw=String(row.combo||'').trim();
+    if(raw.length!==4) throw new Error(`invalid_combo:${raw}`);
+    const combo=canonicalCombo(raw.slice(0,2),raw.slice(2,4));
+    if(weights.has(combo)) throw new Error(`duplicate_explicit_combo:${combo}`);
+    const weight=clamp01(row.weight??1);
+    if(weight<=0) continue;
+    weights.set(combo,weight);
+    origins.set(combo,row.origin||'explicit');
+  }
+  return rangeShell({weights,origins,source,status,depthBb,position,node});
 }
 
 export function fullDeckRange(meta={}){
   const weights=new Map(allTwoCardCombos().map(c=>[c,1]));
-  return {version:'combo-range-v0.2',source:'all-combos',status:'lab-only',decisionCertified:false,weights,origins:new Map(),deadCards:[],...meta};
+  return rangeShell({weights,origins:new Map(),source:'all-combos',status:'lab-only',depthBb:null,position:null,node:null,...meta});
 }
 
 export function cloneRange(range){
