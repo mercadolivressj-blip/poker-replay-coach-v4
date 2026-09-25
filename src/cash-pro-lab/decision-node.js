@@ -41,7 +41,7 @@ const normalizeHistory=(history=[])=>Array.isArray(history)?history.map((e,index
   allIn:e?.allIn===true||upper(e?.action)==='ALLIN',
   source:e?.source??null,
   confidence:finite(e?.confidence)?e.confidence:null,
-}):[];
+})):[];
 
 export function createDecisionNode(input={}){
   const heroCards=Array.isArray(input.heroCards)?input.heroCards.map(String):[];
