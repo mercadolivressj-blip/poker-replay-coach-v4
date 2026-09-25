@@ -21,7 +21,7 @@ function safeName(value){return String(value||'job').replace(/[^A-Za-z0-9._-]+/g
 export function materializeCurrent100zSrpCampaign({split=null}={}){
   const plan=planReusableSolveRoots(iterateStrategicCurriculum({lanes:['postflop-heads-up']}));
   const errors=[];
-  if(!plan.splitIntegrity?.valid) errors.push('planner_split_integrity_failed');
+  if(plan.valid!==true) errors.push('planner_split_integrity_failed');
   const jobs=[];
   const concrete=new Map();
   const bySplit={train:0,dev:0,holdout:0,unknown:0};
@@ -107,10 +107,12 @@ export function materializeCurrent100zSrpCampaign({split=null}={}){
     errors:[...new Set(errors)],
     campaign:CURRENT_100Z_SRP_CAMPAIGN_PROFILE,
     planner:{
+      version:plan.version,
+      valid:plan.valid,
       uniqueAbstractRoots:plan.uniqueSolveRoots,
       eligibleTickets:plan.eligibleTickets,
       compressionRatio:plan.compressionRatio,
-      splitIntegrity:plan.splitIntegrity,
+      splitIntegrity:{...plan.splitIntegrity,valid:plan.valid},
     },
     materialized:{
       jobs:jobs.length,
