@@ -30,8 +30,12 @@ function riverNode(overrides={}){
   });
 }
 
-const oracleA={oracleId:'solver-a',source:'solver',action:'CALL',confidence:0.95,domainVerified:true,evByAction:{FOLD:0,CALL:1.20,RAISE:-2.80}};
-const oracleB={oracleId:'solver-b',source:'benchmark',action:'CALL',confidence:0.90,domainVerified:true,evByAction:{FOLD:0,CALL:1.00,RAISE:-2.40}};
+const oracleDomain={
+  game:'NLHE_CASH_6MAX',currency:'BB',stackBB:{min:75,max:85},rakeProfiles:['100z-high-rake'],
+  streets:['river'],playerMode:'heads-up',minPlayers:2,maxPlayers:2,evUnit:'BB',evSemantics:'action-ev-from-node',
+};
+const oracleA={oracleId:'solver-a',source:'solver',action:'CALL',confidence:0.95,domain:oracleDomain,evByAction:{FOLD:0,CALL:1.20,RAISE:-2.80}};
+const oracleB={oracleId:'solver-b',source:'benchmark',action:'CALL',confidence:0.90,domain:oracleDomain,evByAction:{FOLD:0,CALL:1.00,RAISE:-2.40}};
 
 test('classroom studies batches and ranks accumulated river EV loss',async()=>{
   const nodes=[
@@ -65,6 +69,32 @@ test('classroom records teacher-consensus blocks instead of forcing a high-impac
   assert.equal(out.studiedNodes,0);
   assert.equal(out.blockedNodes,1);
   assert.equal(out.blockedByPhase.TEACHER_CONSENSUS,1);
+});
+
+test('classroom rejects a solver whose stack domain does not contain the spot',async()=>{
+  const wrongStack={...oracleB,oracleId:'solver-wrong-stack',domain:{...oracleDomain,stackBB:{min:95,max:105}}};
+  const out=await runCashClassroom({
+    nodes:[riverNode()],
+    student:async()=>({action:'CALL'}),
+    oracleProvider:async()=>[oracleA,wrongStack],
+  });
+  assert.equal(out.studiedNodes,0);
+  assert.equal(out.blockedByPhase.TEACHER_CONSENSUS,1);
+  const rejected=out.evaluations[0].consensus.rejected.find(r=>r.oracleId==='solver-wrong-stack');
+  assert.ok(rejected);
+  assert.ok(rejected.reasons.includes('domain_stack_mismatch'));
+});
+
+test('classroom rejects a bare domainVerified claim without a domain descriptor',async()=>{
+  const claimOnly={...oracleB,oracleId:'claim-only',domain:null,domainVerified:true};
+  const out=await runCashClassroom({
+    nodes:[riverNode()],
+    student:async()=>({action:'CALL'}),
+    oracleProvider:async()=>[oracleA,claimOnly],
+  });
+  assert.equal(out.studiedNodes,0);
+  const rejected=out.evaluations[0].consensus.rejected.find(r=>r.oracleId==='claim-only');
+  assert.ok(rejected.reasons.includes('domain_descriptor_missing'));
 });
 
 test('oracle provider failure becomes a blocked lesson and does not crash the classroom',async()=>{
