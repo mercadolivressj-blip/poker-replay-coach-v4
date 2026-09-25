@@ -44,7 +44,7 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
     const reasons=[];
     const domainCheck=verifyOracleDomain(node,oracle.domain);
     const legacyAllowed=!requireDomainDescriptor&&oracle.claimedDomainVerified===true;
-    if(!domainCheck.ok&&!legacyAllowed) reasons.push(...domainCheck.reasons);
+    if(!domainCheck.ok&&!legacyAllowed) reasons.push('domain_unverified',...domainCheck.reasons);
     if(oracle.confidence<minConfidence) reasons.push('confidence_too_low');
     if(!legal.includes(oracle.action)) reasons.push('oracle_action_illegal');
     const covered=legal.filter(a=>finite(oracle.evByAction[a]));
