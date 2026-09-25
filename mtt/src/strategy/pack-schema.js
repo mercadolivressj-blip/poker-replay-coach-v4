@@ -43,7 +43,10 @@ export function validatePackMeta(meta={}){
  if(contextPolicy==='exact-preflop-forced'){
   const c=validatePreflopContext(meta.preflopContext||{});for(const e of c.errors)errors.push(`preflop_context_${e}`);
  }
- if(String(meta.sourceType)==='internal-pushfold-solver'&&contextPolicy!=='exact-preflop-forced')errors.push('pushfold_solver_requires_exact_context');
+ if(String(meta.sourceType)==='internal-pushfold-solver'){
+  if(contextPolicy!=='exact-preflop-forced')errors.push('pushfold_solver_requires_exact_context');
+  if(!SHA.test(String(meta.snapshotSha256||'')))errors.push('pushfold_solver_requires_snapshot_sha256');
+ }
  return{valid:errors.length===0,errors};
 }
 
