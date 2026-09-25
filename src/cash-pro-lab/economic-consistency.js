@@ -101,6 +101,7 @@ export function proveEconomicConsistency(node={},context={}){
     if(!finite(seq)||seq<=previousSeq) errors.push(`history_sequence_not_strict:${i}`);
     if(finite(seq)) previousSeq=seq;
     if(terminalActors.has(actor)) errors.push(`actor_acted_after_${terminalActors.get(actor)}:${actor}:${i}`);
+    if(POSITIONS.has(actor)&&commitments[actor]===undefined) commitments[actor]=0;
 
     const before=commitments[actor]??0;
     const maxBefore=maxCommitment(commitments);
