@@ -1,0 +1,123 @@
+name: cash-pro-lab-one-real-highrake-solve
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cash-pro-lab-v1
+    paths:
+      - .github/workflows/cash-pro-lab-one-real-highrake-solve.yml
+
+permissions:
+  contents: read
+
+jobs:
+  solve-one-train-root:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install project dependencies
+        run: npm install
+
+      - name: Materialize exactly one train high-rake root
+        run: |
+          node scripts/cash-pro-lab-materialize-highrake-campaign.mjs \
+            --split train \
+            --max 1 \
+            --out cash-pro-lab-highrake-one
+          node -e "const m=require('./cash-pro-lab-highrake-one/manifest.json'); if(m.jobs.length!==1) throw new Error('expected exactly one job'); console.log(JSON.stringify({job:m.jobs[0].id,root:m.jobs[0].solveRootFingerprint,board:m.jobs[0].job.root.board,exploitabilityTarget:m.jobs[0].job.convergence.targetExploitabilityPct,sourceCommit:m.execution.sourceCommit},null,2));"
+
+      - name: Fetch pinned high-rake solver source
+        run: |
+          COMMIT=$(node -p "require('./cash-pro-lab-highrake-one/manifest.json').execution.sourceCommit")
+          git clone --filter=blob:none https://github.com/ucsandman/postflop.git /tmp/postflop
+          git -C /tmp/postflop checkout "$COMMIT"
+          test "$(git -C /tmp/postflop rev-parse HEAD)" = "$COMMIT"
+
+      - name: Build pinned high-rake solver
+        run: |
+          cargo build --release --manifest-path /tmp/postflop/Cargo.toml --bin solver
+          test -x /tmp/postflop/target/release/solver
+          sha256sum /tmp/postflop/target/release/solver | tee cash-pro-lab-highrake-one/solver.sha256
+
+      - name: Execute and validate one exact train root
+        run: |
+          node scripts/cash-pro-lab-run-highrake-postflop.mjs \
+            --manifest cash-pro-lab-highrake-one/manifest.json \
+            --solver /tmp/postflop/target/release/solver \
+            --split train \
+            --max 1
+
+      - name: Build action-EV extractor pinned to same engine family
+        run: |
+          cargo build --release --manifest-path tools/highrake-action-ev/Cargo.toml
+          test -x tools/highrake-action-ev/target/release/cash-pro-lab-action-ev
+          sha256sum tools/highrake-action-ev/target/release/cash-pro-lab-action-ev | tee cash-pro-lab-highrake-one/action-ev-extractor.sha256
+
+      - name: Probe solution and extract root-node alternative EV when supported
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT=$(node -p "require('./cash-pro-lab-highrake-one/manifest.json').jobs[0].outputFile")
+          SOLUTION="cash-pro-lab-highrake-one/$OUTPUT"
+          test -f "$SOLUTION"
+          node -e "const fs=require('fs');const s=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));console.log(JSON.stringify({topLevel:Object.keys(s),meta:s.meta||null},null,2));" "$SOLUTION" | tee cash-pro-lab-highrake-one/solution-schema-probe.json
+          mkdir -p cash-pro-lab-highrake-one/action-ev
+          set +e
+          tools/highrake-action-ev/target/release/cash-pro-lab-action-ev \
+            "$SOLUTION" 0 cash-pro-lab-highrake-one/action-ev/node-0.json 0.0001 \
+            >cash-pro-lab-highrake-one/action-ev/node-0.stdout.log \
+            2>cash-pro-lab-highrake-one/action-ev/node-0.stderr.log
+          CODE=$?
+          set -e
+          printf '%s\n' "$CODE" > cash-pro-lab-highrake-one/action-ev/node-0.exit-code.txt
+          if [ "$CODE" -eq 0 ]; then
+            node -e "const r=require('./cash-pro-lab-highrake-one/action-ev/node-0.json'); console.log(JSON.stringify({actionEvExtraction:'SUCCESS',keys:Object.keys(r)},null,2));"
+          else
+            echo "Node 0 was not extractable; strategy-oracle validation remains the authority achieved by this experiment."
+            cat cash-pro-lab-highrake-one/action-ev/node-0.stderr.log || true
+          fi
+
+      - name: Write experiment truth summary
+        if: always()
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs'),path=require('path');
+          const base='cash-pro-lab-highrake-one';
+          const manifest=JSON.parse(fs.readFileSync(path.join(base,'manifest.json'),'utf8'));
+          const runDir=path.join(base,'runs');
+          const runs=fs.existsSync(runDir)?fs.readdirSync(runDir).filter(x=>x.endsWith('.json')).sort():[];
+          const run=runs.length?JSON.parse(fs.readFileSync(path.join(runDir,runs.at(-1)),'utf8')):null;
+          const evPath=path.join(base,'action-ev/node-0.json');
+          const truth={
+            version:'cash-pro-lab-first-real-highrake-experiment-v1',
+            plannedRoots:1,
+            jobId:manifest.jobs[0]?.id??null,
+            solveRootFingerprint:manifest.jobs[0]?.solveRootFingerprint??null,
+            split:manifest.jobs[0]?.split??null,
+            board:manifest.jobs[0]?.job?.root?.board??null,
+            solverSourceCommit:manifest.execution?.sourceCommit??null,
+            solverRun:run?{counts:run.counts,validatedStrategyOracleRoots:run.validatedStrategyOracleRoots,alternativeEvOracleRoots:run.alternativeEvOracleRoots,certifiedStudies:run.certifiedStudies}:null,
+            actionEvNode0Extracted:fs.existsSync(evPath),
+            certifiedStudies:0,
+            note:'A real external solve may establish validated strategy-oracle evidence. It is not a certified study until the independent-teacher and classroom EV gates pass.'
+          };
+          fs.writeFileSync(path.join(base,'experiment-truth.json'),JSON.stringify(truth,null,2));
+          console.log(JSON.stringify(truth,null,2));
+          NODE
+
+      - name: Upload study evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cash-pro-lab-one-real-highrake-solve
+          path: cash-pro-lab-highrake-one
+          if-no-files-found: error
+          retention-days: 14
