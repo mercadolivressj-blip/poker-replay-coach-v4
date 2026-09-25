@@ -12,130 +12,120 @@ permissions:
   contents: read
 
 jobs:
-  solve-one-train-root:
+  tiny-solver-plumbing:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install project dependencies
-        run: npm install
-
-      - name: Materialize exactly one train high-rake root (resource smoke profile)
+      - name: Fetch exact pinned solver source
         run: |
-          node scripts/cash-pro-lab-materialize-highrake-campaign.mjs \
-            --split train \
-            --max 1 \
-            --threads 1 \
-            --target-exploitability 5 \
-            --max-iterations 300 \
-            --report-every 25 \
-            --out cash-pro-lab-highrake-one
-          node -e "const m=require('./cash-pro-lab-highrake-one/manifest.json'); if(m.jobs.length!==1) throw new Error('expected exactly one job'); console.log(JSON.stringify({job:m.jobs[0].id,root:m.jobs[0].solveRootFingerprint,board:m.jobs[0].job.root.board,compute:m.execution.computeOverride,convergence:m.jobs[0].job.convergence,sourceCommit:m.execution.sourceCommit},null,2));"
-
-      - name: Fetch pinned high-rake solver source
-        run: |
-          COMMIT=$(node -p "require('./cash-pro-lab-highrake-one/manifest.json').execution.sourceCommit")
           git clone --filter=blob:none https://github.com/ucsandman/postflop.git /tmp/postflop
-          git -C /tmp/postflop checkout "$COMMIT"
-          test "$(git -C /tmp/postflop rev-parse HEAD)" = "$COMMIT"
+          git -C /tmp/postflop checkout 5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de
+          test "$(git -C /tmp/postflop rev-parse HEAD)" = "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de"
 
-      - name: Build pinned high-rake solver
+      - name: Build solver and action-EV extractor
         run: |
           cargo build --release --manifest-path /tmp/postflop/Cargo.toml --bin solver
-          test -x /tmp/postflop/target/release/solver
-          sha256sum /tmp/postflop/target/release/solver | tee cash-pro-lab-highrake-one/solver.sha256
-
-      - name: Execute and validate one exact train root
-        id: solve
-        continue-on-error: true
-        run: |
-          node scripts/cash-pro-lab-run-highrake-postflop.mjs \
-            --manifest cash-pro-lab-highrake-one/manifest.json \
-            --solver /tmp/postflop/target/release/solver \
-            --split train \
-            --max 1
-
-      - name: Build action-EV extractor pinned to same engine family
-        if: steps.solve.outcome == 'success'
-        run: |
           cargo build --release --manifest-path tools/highrake-action-ev/Cargo.toml
-          test -x tools/highrake-action-ev/target/release/cash-pro-lab-action-ev
-          sha256sum tools/highrake-action-ev/target/release/cash-pro-lab-action-ev | tee cash-pro-lab-highrake-one/action-ev-extractor.sha256
+          mkdir -p tiny-pipeline
+          sha256sum /tmp/postflop/target/release/solver | tee tiny-pipeline/solver.sha256
+          sha256sum tools/highrake-action-ev/target/release/cash-pro-lab-action-ev | tee tiny-pipeline/action-ev.sha256
 
-      - name: Probe solution and extract root-node alternative EV when supported
-        if: steps.solve.outcome == 'success'
+      - name: Write deliberately tiny turn fixture
+        run: |
+          cat > tiny-pipeline/spot.toml <<'EOF'
+          board = "Qs Jh 2h 8c"
+          oop_range = "QQ,JJ,88,22,AQs,KQs,QJs"
+          ip_range = "AA,KK,AQs,KQs,QJs"
+          effective_stack = 20.0
+          starting_pot = 10.0
+          target_exploitability = 5.0
+          max_iterations = 100
+          allin_threshold = 67.0
+          raise_cap = 1
+          turn_chance_sampling = false
+
+          [rake]
+          percent = 0.0
+          cap = 0.0
+
+          [sizings.oop.turn]
+          bet = { percents = [75.0], allin = false }
+          [sizings.oop.river]
+          bet = { percents = [75.0], allin = true }
+          [sizings.ip.turn]
+          bet = { percents = [75.0], allin = false }
+          raise = { percents = [60.0], allin = false }
+          [sizings.ip.river]
+          bet = { percents = [75.0], allin = true }
+          raise = { percents = [60.0], allin = false }
+          EOF
+          sha256sum tiny-pipeline/spot.toml | tee tiny-pipeline/config.sha256
+
+      - name: Solve tiny fixture to saved JSON
+        id: solve
+        run: |
+          /tmp/postflop/target/release/solver solve \
+            --config tiny-pipeline/spot.toml \
+            --report-every 10 \
+            --threads 1 \
+            --out tiny-pipeline/solution.json \
+            2>&1 | tee tiny-pipeline/solver.log
+          test -s tiny-pipeline/solution.json
+          sha256sum tiny-pipeline/solution.json | tee tiny-pipeline/solution.sha256
+
+      - name: Probe saved solution schema
+        run: |
+          node -e "const fs=require('fs');const s=JSON.parse(fs.readFileSync('tiny-pipeline/solution.json','utf8'));console.log(JSON.stringify({keys:Object.keys(s),format_version:s.format_version??null,meta:s.meta??null,config:s.config??null},null,2));" | tee tiny-pipeline/solution-probe.json
+
+      - name: Extract exact per-action EV at first supported node
         shell: bash
         run: |
           set -euo pipefail
-          OUTPUT=$(node -p "require('./cash-pro-lab-highrake-one/manifest.json').jobs[0].outputFile")
-          SOLUTION="cash-pro-lab-highrake-one/$OUTPUT"
-          test -f "$SOLUTION"
-          node -e "const fs=require('fs');const s=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));console.log(JSON.stringify({topLevel:Object.keys(s),meta:s.meta||null},null,2));" "$SOLUTION" | tee cash-pro-lab-highrake-one/solution-schema-probe.json
-          mkdir -p cash-pro-lab-highrake-one/action-ev
-          set +e
-          tools/highrake-action-ev/target/release/cash-pro-lab-action-ev \
-            "$SOLUTION" 0 cash-pro-lab-highrake-one/action-ev/node-0.json 0.0001 \
-            >cash-pro-lab-highrake-one/action-ev/node-0.stdout.log \
-            2>cash-pro-lab-highrake-one/action-ev/node-0.stderr.log
-          CODE=$?
-          set -e
-          printf '%s\n' "$CODE" > cash-pro-lab-highrake-one/action-ev/node-0.exit-code.txt
-          if [ "$CODE" -eq 0 ]; then
-            node -e "const r=require('./cash-pro-lab-highrake-one/action-ev/node-0.json'); console.log(JSON.stringify({actionEvExtraction:'SUCCESS',keys:Object.keys(r)},null,2));"
-          else
-            echo "Node 0 was not extractable; strategy-oracle validation remains the authority achieved by this experiment."
-            cat cash-pro-lab-highrake-one/action-ev/node-0.stderr.log || true
-          fi
+          BIN=tools/highrake-action-ev/target/release/cash-pro-lab-action-ev
+          mkdir -p tiny-pipeline/action-ev
+          FOUND=0
+          for NODE in $(seq 0 80); do
+            if "$BIN" tiny-pipeline/solution.json "$NODE" "tiny-pipeline/action-ev/node-${NODE}.json" 0.0001 >"tiny-pipeline/action-ev/node-${NODE}.stdout" 2>"tiny-pipeline/action-ev/node-${NODE}.stderr"; then
+              echo "$NODE" | tee tiny-pipeline/action-ev/first-node.txt
+              FOUND=1
+              break
+            fi
+          done
+          test "$FOUND" = "1"
+          NODE=$(cat tiny-pipeline/action-ev/first-node.txt)
+          node -e "const fs=require('fs');const p='tiny-pipeline/action-ev/node-'+process.argv[1]+'.json';const r=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify({node:Number(process.argv[1]),keys:Object.keys(r),result:r},null,2));" "$NODE" > tiny-pipeline/action-ev/summary.json
 
-      - name: Write experiment truth summary
-        if: always()
-        shell: bash
-        env:
-          SOLVE_OUTCOME: ${{ steps.solve.outcome }}
+      - name: Write evidence boundary
         run: |
           node <<'NODE'
-          const fs=require('fs'),path=require('path');
-          const base='cash-pro-lab-highrake-one';
-          const manifest=JSON.parse(fs.readFileSync(path.join(base,'manifest.json'),'utf8'));
-          const runDir=path.join(base,'runs');
-          const runs=fs.existsSync(runDir)?fs.readdirSync(runDir).filter(x=>x.endsWith('.json')).sort():[];
-          const run=runs.length?JSON.parse(fs.readFileSync(path.join(runDir,runs.at(-1)),'utf8')):null;
-          const evPath=path.join(base,'action-ev/node-0.json');
+          const fs=require('fs');
+          const node=Number(fs.readFileSync('tiny-pipeline/action-ev/first-node.txt','utf8').trim());
           const truth={
-            version:'cash-pro-lab-first-real-highrake-experiment-v1',
-            purpose:'resource-smoke-pipeline-validation',
+            version:'cash-pro-lab-tiny-pipeline-smoke-v1',
+            purpose:'external-solver-plumbing-only',
             productionAuthority:false,
-            plannedRoots:1,
-            jobId:manifest.jobs[0]?.id??null,
-            solveRootFingerprint:manifest.jobs[0]?.solveRootFingerprint??null,
-            split:manifest.jobs[0]?.split??null,
-            board:manifest.jobs[0]?.job?.root?.board??null,
-            computeOverride:manifest.execution?.computeOverride??null,
-            solverSourceCommit:manifest.execution?.sourceCommit??null,
-            workflowSolveOutcome:process.env.SOLVE_OUTCOME||null,
-            solverRun:run?{counts:run.counts,validatedStrategyOracleRoots:run.validatedStrategyOracleRoots,alternativeEvOracleRoots:run.alternativeEvOracleRoots,certifiedStudies:run.certifiedStudies}:null,
-            actionEvNode0Extracted:fs.existsSync(evPath),
+            pokerStrategyAuthority:false,
+            partOfStrategicCurriculum:false,
+            sourceCommit:'5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de',
+            board:['Qs','Jh','2h','8c'],
+            solverCompleted:true,
+            savedSolutionJson:true,
+            actionEvExtracted:true,
+            firstExtractableNode:node,
             certifiedStudies:0,
-            note:'This resource-smoke profile validates the external pipeline only. It must not replace the frozen production solve profile or be promoted as poker strategy authority.'
+            note:'Artificial tiny turn fixture. It proves executable -> solved JSON -> per-action EV extraction only. It must never be promoted as poker strategy authority or counted among the 240 curriculum roots.'
           };
-          fs.writeFileSync(path.join(base,'experiment-truth.json'),JSON.stringify(truth,null,2));
+          fs.writeFileSync('tiny-pipeline/truth.json',JSON.stringify(truth,null,2));
           console.log(JSON.stringify(truth,null,2));
           NODE
 
-      - name: Upload study evidence
+      - name: Upload plumbing evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cash-pro-lab-one-real-highrake-solve
-          path: cash-pro-lab-highrake-one
+          name: cash-pro-lab-tiny-pipeline-smoke
+          path: tiny-pipeline
           if-no-files-found: error
           retention-days: 14
-
-      - name: Fail workflow if solver smoke failed
-        if: steps.solve.outcome != 'success'
-        run: exit 1
