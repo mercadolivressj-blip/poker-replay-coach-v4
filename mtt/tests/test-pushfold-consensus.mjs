@@ -7,6 +7,7 @@ import {decideFromRegisteredPack} from '../src/decision/decision-engine.js';
 import {equityAuditFixture} from '../src/math/equity-stability.js';
 
 const SNAP='b'.repeat(64);
+const OTHER='c'.repeat(64);
 const individual={smallBlindBB:.5,anteBB:.125,anteType:'individual',playersDealt:8,forcedPreflopPotBB:2.5};
 const gi=pushFoldGameFromPreflopContext(attachEffectiveStackToContext(individual,10));
 assert.equal(gi.heroForcedBB,.625);assert.equal(gi.villainForcedBB,1.125);assert.equal(gi.deadMoneyBB,.75);assert.equal(gi.potBeforeBB,2.5);
@@ -22,20 +23,23 @@ assert.equal(consensus.solverConsensus,true,JSON.stringify(consensus.agreement))
 assert.equal(consensus.equityStable,false);
 assert.equal(consensus.verificationReady,false);
 assert.equal(consensus.recommendedCertification,'solver-derived');
-assert.throws(()=>buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP,promoteVerified:true}),/equity_stability_required/);
+assert.throws(()=>buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP,promoteVerified:true,requireFull169:false}),/equity_stability_required/);
 
-consensus=solvePushFoldConsensus({game:gi,equityMatrix:M,equityAudit:equityAuditFixture(true),hands,regretIterations:12000,burnIn:1000,fictitiousIterations:8000,maxNashConv:.05,maxMeanFrequencyDiff:.08,maxFrequencyDiff:.2});
+consensus=solvePushFoldConsensus({game:gi,equityMatrix:M,equityAudit:{...equityAuditFixture(true),snapshotShas:[SNAP]},hands,regretIterations:12000,burnIn:1000,fictitiousIterations:8000,maxNashConv:.05,maxMeanFrequencyDiff:.08,maxFrequencyDiff:.2});
 assert.equal(consensus.verificationReady,true);
 assert.equal(consensus.recommendedCertification,'solver-verified');
 assert.throws(()=>buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10}),/snapshot_sha256_required/);
+assert.throws(()=>buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP}),/incomplete_169/);
+assert.throws(()=>buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:OTHER,promoteVerified:true,requireFull169:false}),/snapshot_not_in_equity_audit/);
 
-const derived=buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP});
+const derived=buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP,requireFull169:false});
 assert.equal(derived.sb.meta.certification,'solver-derived');
 assert.equal(derived.bb.meta.certification,'solver-derived');
 assert.equal(derived.sb.meta.snapshotSha256,SNAP);
-assert.equal(Object.keys(derived.sb.chart).length,169);
-assert.equal(Object.keys(derived.bb.chart).length,169);
-const verified=buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP,promoteVerified:true});
+assert.equal(derived.sb.meta.profileCoverage.complete169,false);
+assert.equal(Object.keys(derived.sb.chart).length,2);
+assert.equal(Object.keys(derived.bb.chart).length,2);
+const verified=buildBlindVsBlindPushFoldPacks({consensus,preflopContext:individual,effectiveStackBB:10,equitySnapshotSha256:SNAP,promoteVerified:true,requireFull169:false});
 assert.equal(verified.sb.meta.certification,'solver-verified');
 
 clearPacks();registerPack(derived.sb.meta,derived.sb.chart);
