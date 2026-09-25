@@ -43,10 +43,37 @@ const normalizeHistory=(history=[])=>Array.isArray(history)?history.map((e,index
   confidence:finite(e?.confidence)?e.confidence:null,
 })):[];
 
+function optionId(action,amountBB,allIn,index){
+  if(allIn||action==='ALLIN') return 'ALLIN';
+  if(finite(amountBB)&&(action==='BET'||action==='RAISE')) return `${action}:${amountBB.toFixed(4)}`;
+  return action||`OPTION-${index+1}`;
+}
+
+const normalizeLegalOptions=(inputOptions=[],legalActions=[])=>{
+  const source=Array.isArray(inputOptions)&&inputOptions.length
+    ? inputOptions
+    : legalActions.map(action=>({id:action,action,amountBB:action==='CALL'?null:null,allIn:action==='ALLIN'}));
+  return source.map((row,index)=>{
+    const action=upper(row?.action||row?.type||row?.id);
+    const amountBB=num(row?.amountBB??row?.amount);
+    const allIn=row?.allIn===true||action==='ALLIN';
+    return {
+      id:String(row?.id||optionId(action,amountBB,allIn,index)),
+      action,
+      amountBB,
+      potFraction:finite(row?.potFraction)?row.potFraction:null,
+      allIn,
+      source:row?.source?String(row.source):null,
+    };
+  });
+};
+
 export function createDecisionNode(input={}){
   const heroCards=Array.isArray(input.heroCards)?input.heroCards.map(String):[];
   const board=Array.isArray(input.board)?input.board.map(String):[];
-  const legalActions=[...new Set((Array.isArray(input.legalActions)?input.legalActions:[]).map(upper).filter(Boolean))];
+  let legalActions=[...new Set((Array.isArray(input.legalActions)?input.legalActions:[]).map(upper).filter(Boolean))];
+  const legalOptions=normalizeLegalOptions(input.legalOptions,legalActions);
+  legalActions=[...new Set([...legalActions,...legalOptions.map(x=>x.action).filter(Boolean)])];
   const node={
     schemaVersion:'cash-pro-lab-node-v1',
     game:'NLHE_CASH_6MAX',
@@ -63,6 +90,7 @@ export function createDecisionNode(input={}){
     toCallBB:num(input.toCallBB),
     activePlayers:Number.isInteger(input.activePlayers)?input.activePlayers:null,
     legalActions,
+    legalOptions,
     actionHistory:normalizeHistory(input.actionHistory),
     rakeProfile:input.rakeProfile?String(input.rakeProfile):null,
     opponentModel:input.opponentModel??null,
@@ -79,7 +107,7 @@ export function isHighImpactNode(node={}){
   const eff=num(node.effectiveStackBB),call=num(node.toCallBB),pot=num(node.potBB);
   const stackFraction=finite(eff)&&eff>0&&finite(call)?call/eff:0;
   const potFraction=finite(pot)&&pot>0&&finite(call)?call/pot:0;
-  return node.street==='river'&&call>0 || stackFraction>=0.25 || potFraction>=0.75 || (node.legalActions||[]).includes('ALLIN');
+  return node.street==='river'&&call>0 || stackFraction>=0.25 || potFraction>=0.75 || (node.legalActions||[]).includes('ALLIN') || (node.legalOptions||[]).some(o=>o?.allIn===true);
 }
 
 export function proveDecisionNode(node={},options={}){
@@ -87,6 +115,7 @@ export function proveDecisionNode(node={},options={}){
   const hero=Array.isArray(node.heroCards)?node.heroCards:[];
   const board=Array.isArray(node.board)?node.board:[];
   const legal=Array.isArray(node.legalActions)?node.legalActions:[];
+  const legalOptions=Array.isArray(node.legalOptions)?node.legalOptions:[];
   const history=Array.isArray(node.actionHistory)?node.actionHistory:[];
   const allCards=[...hero,...board];
 
@@ -105,13 +134,27 @@ export function proveDecisionNode(node={},options={}){
   if(finite(node.toCallBB)&&finite(node.heroStackBB)&&node.toCallBB>node.heroStackBB+1e-9) errors.push('to_call_exceeds_stack');
   if(!Number.isInteger(node.activePlayers)||node.activePlayers<2||node.activePlayers>6) errors.push('active_players_invalid');
   if(legal.length<1||legal.some(a=>!ACTIONS.has(a))) errors.push('legal_actions_invalid');
+  if(legalOptions.length<1) errors.push('legal_options_missing');
+  if(legalOptions.some(o=>!o||!o.id||!ACTIONS.has(o.action))) errors.push('legal_options_invalid');
+  if(new Set(legalOptions.map(o=>o.id)).size!==legalOptions.length) errors.push('legal_option_id_duplicate');
+  if(legalOptions.some(o=>!legal.includes(o.action))) errors.push('legal_option_action_mismatch');
+  if(legalOptions.some(o=>finite(o.amountBB)&&o.amountBB<0)) errors.push('legal_option_amount_negative');
   if(node.toCallBB>0&&legal.includes('CHECK')) errors.push('legal_actions_to_call_inconsistent');
   if(node.toCallBB===0&&legal.includes('CALL')) errors.push('legal_actions_to_call_inconsistent');
   if(history.some(e=>!ACTIONS.has(e.action)||!['preflop','flop','turn','river'].includes(e.street))) errors.push('action_history_invalid');
   if(history.some(e=>finite(e.amountBB)&&e.amountBB<0)) errors.push('action_amount_negative');
   if(options.requireRakeProfile!==false&&!node.rakeProfile) errors.push('rake_profile_missing');
 
+  if(options.requireSizedAggression===true){
+    const aggressive=legalOptions.filter(o=>['BET','RAISE','ALLIN'].includes(o.action));
+    if(aggressive.some(o=>!o.allIn&&!finite(o.amountBB))) errors.push('aggressive_sizing_missing');
+    const byAction=new Map();
+    for(const o of aggressive){const a=byAction.get(o.action)||[];a.push(o);byAction.set(o.action,a);}
+    for(const rows of byAction.values()) if(rows.length>1&&rows.some(o=>!o.allIn&&!finite(o.amountBB))) errors.push('legal_option_sizing_ambiguous');
+  }
+
   const critical=['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','actionHistory'];
+  if(options.requireLegalOptionsEvidence===true) critical.push('legalOptions');
   const confidences=[];
   for(const field of critical){
     const ev=node.evidence?.[field];
@@ -130,9 +173,26 @@ export function proveDecisionNode(node={},options={}){
     fingerprint:node.fingerprint??null,
     criticalConfidence:confidences.length?Math.min(...confidences):0,
     highImpact:isHighImpactNode(node),
+    exactSizingReady:errors.includes('aggressive_sizing_missing')===false&&errors.includes('legal_option_sizing_ambiguous')===false,
     errors:[...new Set(errors)],
     warnings:[...new Set(warnings)],
   };
+}
+
+export function resolveLegalChoice(node={},choice={}){
+  const options=Array.isArray(node.legalOptions)?node.legalOptions:[];
+  const choiceId=String(choice?.choiceId||choice?.id||'');
+  if(choiceId){
+    const exact=options.find(o=>o.id===choiceId);
+    if(exact) return exact;
+  }
+  const action=upper(choice?.action);
+  const candidates=options.filter(o=>o.action===action);
+  if(candidates.length===1) return candidates[0];
+  if(candidates.length>1&&finite(choice?.amountBB)){
+    return candidates.find(o=>finite(o.amountBB)&&Math.abs(o.amountBB-choice.amountBB)<1e-6)||null;
+  }
+  return null;
 }
 
 export const CASH_PRO_LAB_ACTIONS=[...ACTIONS];
