@@ -6,6 +6,11 @@ import { createSolverTreeProfile, treeProfileKey } from './solver-tree-profile.j
 export const HIGHRake_POSTFLOP_ENGINE=Object.freeze({
   family:'ucsandman/postflop',
   sourceCommit:'5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de',
+  localPatch:Object.freeze({
+    id:'cash-pro-lab-raked-nashconv-v1',
+    file:'patches/postflop-raked-nashconv-v1.patch',
+  }),
+  convergenceMetric:'nashconv_pct_of_pot',
   license:'MIT',
   cli:'solver solve --config <spot.toml> --report-every <n> --out <solution.json>',
 });
@@ -135,7 +140,7 @@ export function buildHighRakePostflopFlopJob({root={},treeProfile,outputFile=nul
       treeProfileKey:treeProfileKey(profile),
       expectedRanges:{oop:root.rangeOop,ip:root.rangeIp},
       rake:{...rake,sourceBaselineVersion:BASELINE_META.version,sourceSnapshotSha256:BASELINE_META.snapshotSha256},
-      convergence:{targetExploitabilityPct:targetExploitability,maxIterations,reportEvery,threads,turnChanceSampling:false},
+      convergence:{metric:HIGHRake_POSTFLOP_ENGINE.convergenceMetric,targetExploitabilityPct:targetExploitability,maxIterations,reportEvery,threads,turnChanceSampling:false},
       root:{board:[...root.board],potBB:root.potBB,startingStackBB:root.startingStackBB,effectiveStackBB:root.effectiveStackBB,oopPosition:root.oopPosition,ipPosition:root.ipPosition},
       outputFile:filename,
       configToml,
@@ -145,12 +150,12 @@ export function buildHighRakePostflopFlopJob({root={},treeProfile,outputFile=nul
         highRakeDomain:true,
         strategyOracleCandidate:true,
         evAlternativeOracleCandidate:false,
-        reason:'The saved solution carries measured exploitability and per-node strategies, but the persisted v1-v3 solution schema does not store per-action EV vectors for every combo.',
+        reason:'The locally patched pinned engine measures raked-cash convergence as non-negative NashConv (sum of unilateral best-response gains). The saved strategy remains only a candidate until exact config, structure and convergence are independently validated.',
       },
       provenance:{
         builderVersion:'cash-pro-lab-highrake-postflop-job-v1',
         sourceRef:root.sourceRef??null,
-        note:'External offline high-rake solve specification. It is not a certified study until the returned solution matches this exact config, convergence gate and downstream independent-teacher audit.',
+        note:'External offline high-rake solve specification using a deterministic local convergence patch over the pinned upstream commit. It is not a certified study until the returned solution matches this exact config, streaming structure proof, convergence gate and downstream independent-teacher audit.',
       },
     },
   };
