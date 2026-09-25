@@ -12,6 +12,7 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: npm test
+      - run: cargo test --manifest-path tools/highrake-action-ev/Cargo.toml
       - run: python3 -m py_compile tests/offline_video*.py tools/offline_vision/*.py
       - run: node tests/runtime-contract.test.mjs
       - run: node tests/brain-v1.test.mjs
