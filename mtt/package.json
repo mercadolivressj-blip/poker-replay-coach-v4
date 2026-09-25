@@ -1,6 +1,6 @@
 {
   "name":"ssj-mtt-brain",
-  "version":"0.14.0",
+  "version":"0.15.0",
   "private":true,
   "type":"module",
   "scripts":{"test":"node tests/test-core.mjs && node tests/test-strategy-kernel.mjs && node tests/test-icm-terminal.mjs && node tests/test-holdem-evaluator.mjs && node tests/test-tournament-snapshot.mjs && node tests/test-coverage-audit.mjs && node tests/test-range-combos.mjs && node tests/test-terminal-chip-ev.mjs && node tests/test-deterministic-equity.mjs && node tests/test-fast-evaluator.mjs && node tests/test-pushfold-solver.mjs && node tests/test-pushfold-game.mjs && node tests/test-pack-context.mjs && node tests/test-preflop-routing.mjs && node tests/test-pushfold-consensus.mjs && node tests/test-equity-stability.mjs && node tests/test-equity-matrix-snapshot.mjs && node tests/test-equity-shards.mjs && node tests/test-equity-snapshot-audit.mjs","build:equity-snapshot":"node scripts/build-equity-snapshot.mjs","build:equity-shard":"node scripts/build-equity-shard.mjs","merge:equity-shards":"node scripts/merge-equity-shards.mjs","merge:equity-shard-dir":"node scripts/merge-equity-shard-dir.mjs","audit:equity-snapshots":"node scripts/audit-equity-snapshots.mjs"}
