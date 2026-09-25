@@ -1,4 +1,5 @@
 import { isHighImpactNode } from './decision-node.js';
+import { verifyOracleDomain } from './oracle-domain.js';
 
 const finite=(v)=>typeof v==='number'&&Number.isFinite(v);
 const upper=(v)=>String(v??'').trim().toUpperCase();
@@ -15,7 +16,7 @@ function normalizeOracle(row={},legalActions=[]){
     source:String(row.source||row.oracleId||'unknown'),
     action:upper(row.action),
     confidence:finite(row.confidence)?clamp(row.confidence,0,1):0,
-    domainVerified:row.domainVerified===true,
+    claimedDomainVerified:row.domainVerified===true,
     domain:row.domain??null,
     evByAction,
     notes:Array.isArray(row.notes)?row.notes.map(String):[],
@@ -40,13 +41,16 @@ export function buildOracleConsensus(node={},oracleResults=[],options={}){
 
   for(const oracle of normalized){
     const reasons=[];
-    if(!oracle.domainVerified) reasons.push('domain_unverified');
+    const domainCheck=verifyOracleDomain(node,oracle.domain);
+    const legacyAllowed=options.allowLegacyDomainFlag===true&&oracle.claimedDomainVerified===true;
+    if(!domainCheck.ok&&!legacyAllowed) reasons.push(...domainCheck.reasons);
     if(oracle.confidence<minConfidence) reasons.push('confidence_too_low');
     if(!legal.includes(oracle.action)) reasons.push('oracle_action_illegal');
     const covered=legal.filter(a=>finite(oracle.evByAction[a]));
     if(covered.length<2) reasons.push('ev_coverage_insufficient');
-    if(reasons.length) rejected.push({oracleId:oracle.oracleId,reasons});
-    else eligible.push(oracle);
+    const normalizedOracle={...oracle,domainVerified:domainCheck.ok,domainCheck};
+    if(reasons.length) rejected.push({oracleId:oracle.oracleId,reasons:[...new Set(reasons)],domainCheck});
+    else eligible.push(normalizedOracle);
   }
 
   const highImpact=isHighImpactNode(node);
