@@ -1,4 +1,4 @@
-import { BASELINE_META, baselineChart } from '../strategy-v1/ranges-100z.js';
+import { BASELINE_META, baselineChart, baselineRfiPositions, baselineVsNodes } from '../strategy-v1/ranges-100z.js';
 
 const POSTFLOP_ORDER=['SB','BB','UTG','HJ','CO','BTN'];
 const OPENERS=new Set(['UTG','HJ','CO','BTN','SB']);
@@ -59,6 +59,25 @@ export function derive100zSrpRanges({openerPosition,defenderPosition}={}){
     rangeIp:ipPosition===opener?openerRange:defenderRange,
     rangeOop:oopPosition===opener?openerRange:defenderRange,
   };
+}
+
+export function supported100zSrpMatchups(){
+  const rfi=new Set(baselineRfiPositions().map(String));
+  const out=[];
+  for(const key of baselineVsNodes()){
+    const [defenderPosition,openerPosition]=String(key).split(':');
+    if(!rfi.has(openerPosition))continue;
+    const derived=derive100zSrpRanges({openerPosition,defenderPosition});
+    if(!derived.ok)continue;
+    out.push(Object.freeze({
+      key:`${openerPosition}:${defenderPosition}`,
+      openerPosition,
+      defenderPosition,
+      ipPosition:derived.ipPosition,
+      oopPosition:derived.oopPosition,
+    }));
+  }
+  return out.sort((a,b)=>a.key.localeCompare(b.key));
 }
 
 export function infer100zSrpFromNode(node={}){
