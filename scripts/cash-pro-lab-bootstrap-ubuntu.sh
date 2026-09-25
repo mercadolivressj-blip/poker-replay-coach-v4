@@ -6,19 +6,18 @@ BRANCH="cash-pro-lab-v1"
 INSTALL_DIR="${CASH_PRO_LAB_DIR:-$HOME/poker-replay-coach-v4}"
 
 log(){ printf '\n[cash-pro-lab] %s\n' "$*"; }
-need_sudo(){ [[ "$(id -u)" -ne 0 ]]; }
-APT="apt-get"
-if need_sudo; then
+SUDO=()
+if [[ "$(id -u)" -ne 0 ]]; then
   if ! command -v sudo >/dev/null 2>&1; then
     echo "sudo_missing_and_not_root" >&2
     exit 2
   fi
-  APT="sudo apt-get"
+  SUDO=(sudo)
 fi
 
 log "Installing Ubuntu build dependencies"
-$APT update
-DEBIAN_FRONTEND=noninteractive $APT install -y \
+"${SUDO[@]}" apt-get update
+DEBIAN_FRONTEND=noninteractive "${SUDO[@]}" apt-get install -y \
   ca-certificates curl git build-essential pkg-config libssl-dev jq
 
 node_major=0
@@ -27,8 +26,8 @@ if command -v node >/dev/null 2>&1; then
 fi
 if [[ "$node_major" -lt 22 ]]; then
   log "Installing Node.js 22.x"
-  curl -fsSL https://deb.nodesource.com/setup_22.x | ${SUDO:-} bash -
-  DEBIAN_FRONTEND=noninteractive $APT install -y nodejs
+  curl -fsSL https://deb.nodesource.com/setup_22.x | "${SUDO[@]}" bash -
+  DEBIAN_FRONTEND=noninteractive "${SUDO[@]}" apt-get install -y nodejs
 fi
 
 if ! command -v cargo >/dev/null 2>&1; then
