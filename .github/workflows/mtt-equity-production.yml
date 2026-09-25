@@ -1,0 +1,100 @@
+name: MTT Production Equity Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations_per_pair:
+        description: Monte Carlo boards per canonical hand-class pair
+        required: true
+        default: '20000'
+        type: string
+      max_mean_pair_range:
+        description: Maximum allowed mean cross-seed equity range
+        required: true
+        default: '0.012'
+        type: string
+      max_pair_range:
+        description: Maximum allowed worst cross-seed equity range
+        required: true
+        default: '0.040'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  SHARD_COUNT: '16'
+
+jobs:
+  shard:
+    name: equity-${{ matrix.seed_key }}-${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        seed_key: [a, b]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build deterministic equity shard
+        working-directory: mtt
+        shell: bash
+        run: |
+          SEED="ssj-mtt-equity-prod-${{ matrix.seed_key }}"
+          npm run build:equity-shard -- \
+            --shard-count=${SHARD_COUNT} \
+            --shard-index=${{ matrix.shard }} \
+            --iterations=${{ inputs.iterations_per_pair }} \
+            --seed="$SEED" \
+            --out="artifacts/equity-${{ matrix.seed_key }}-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: equity-${{ matrix.seed_key }}-${{ matrix.shard }}
+          path: mtt/artifacts/equity-${{ matrix.seed_key }}-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 14
+
+  merge-and-audit:
+    name: merge-and-audit
+    needs: shard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download seed A shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: equity-a-*
+          path: mtt/artifacts/shards-a
+          merge-multiple: true
+      - name: Download seed B shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: equity-b-*
+          path: mtt/artifacts/shards-b
+          merge-multiple: true
+      - name: Merge seed A snapshot
+        working-directory: mtt
+        run: npm run merge:equity-shard-dir -- --dir=artifacts/shards-a --out=artifacts/equity-snapshot-a.json
+      - name: Merge seed B snapshot
+        working-directory: mtt
+        run: npm run merge:equity-shard-dir -- --dir=artifacts/shards-b --out=artifacts/equity-snapshot-b.json
+      - name: Audit independent snapshots
+        working-directory: mtt
+        run: npm run audit:equity-snapshots -- --inputs=artifacts/equity-snapshot-a.json,artifacts/equity-snapshot-b.json --max-mean-diff=${{ inputs.max_mean_pair_range }} --max-max-diff=${{ inputs.max_pair_range }} --out=artifacts/equity-stability-audit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mtt-production-equity-audit
+          path: |
+            mtt/artifacts/equity-snapshot-a.json
+            mtt/artifacts/equity-snapshot-b.json
+            mtt/artifacts/equity-stability-audit.json
+          if-no-files-found: warn
+          retention-days: 30
