@@ -67,11 +67,13 @@ export function buildRegretDashboard(records=[]){
   };
 }
 
+// Conservative laboratory promotion thresholds. These are engineering gates, not claims
+// about a real-world win rate. A candidate that misses them stays in the lab.
 export function promotionGate(dashboard,{
-  maxAvgRegretBB=.06,
-  maxMaterialRate=.06,
-  maxSevereRate=.01,
-  maxUnauditableRate=.02,
+  maxAvgRegretBB=.02,
+  maxMaterialRate=.03,
+  maxSevereRate=.005,
+  maxUnauditableRate=.01,
   minAuditedDecisions=5000
 }={}){
   const d=dashboard?.overall||{};
