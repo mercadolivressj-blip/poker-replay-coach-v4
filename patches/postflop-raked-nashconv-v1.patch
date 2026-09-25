@@ -1,0 +1,64 @@
+diff --git a/engine/src/nlhe.rs b/engine/src/nlhe.rs
+--- a/engine/src/nlhe.rs
++++ b/engine/src/nlhe.rs
+@@
+     fn zero_sum(&self) -> bool {
+-        // An ICM spot is general-sum: the frozen field trades equity with the pair
+-        // whenever chips move, by a different amount at every terminal and not always
+-        // in the same direction. See the module docs.
+-        self.icm.is_none()
++        // Rake makes terminal utility sums depend on the terminal pot, so a raked
++        // cash game is not zero-sum for best-response accounting. Returning false
++        // makes br::exploitability report NashConv (the sum of unilateral gains)
++        // instead of the rake-shifted BR-value sum that can become negative.
++        // ICM is also general-sum for the reasons documented above.
++        self.icm.is_none() && self.cfg.rake.percent == 0.0
+     }
+diff --git a/cli/src/solve.rs b/cli/src/solve.rs
+--- a/cli/src/solve.rs
++++ b/cli/src/solve.rs
+@@
+-    // Under a tournament payoff map the headline metric is NashConv in CSTE chips,
+-    // not exploitability in chips: the game is general-sum. Same number, different
+-    // meaning, so it never wears the chip label.
+-    let (metric, unit) = match cfg.tournament {
+-        None => ("exploitability", "chips"),
+-        Some(_) => ("NashConv", "cste chips"),
++    // Rake and tournament payoffs both make the game non-zero-sum for best-response
++    // accounting. In those domains the correct convergence metric is NashConv: the
++    // sum of both players' unilateral gains against the current profile.
++    let (metric, unit) = match (&cfg.tournament, cfg.rake.percent > 0.0) {
++        (None, false) => ("exploitability", "chips"),
++        (None, true) => ("NashConv", "chips"),
++        (Some(_), _) => ("NashConv", "cste chips"),
+     };
+@@
+-    match &cfg.tournament {
+-        // Chips: the game is zero-sum, so this number is a genuine bound on what
+-        // either player can win by deviating.
+-        None => println!(
++    match (&cfg.tournament, cfg.rake.percent > 0.0) {
++        // Rake-free chips: the game is zero-sum, so this number is a genuine bound
++        // on what either player can win by deviating.
++        (None, false) => println!(
+             "exploitability: {:.6} chips  {:.4}% of pot  [measured]",
+             report.chips, report.pct_of_pot
+         ),
++        // Raked cash: report NashConv, not the rake-shifted sum of BR values.
++        (None, true) => {
++            println!(
++                "NashConv: {:.6} chips  {:.4}% of pot  [measured]",
++                report.chips, report.pct_of_pot
++            );
++            println!(
++                "  (both players' unilateral best-response gains, summed; rake makes the game non-zero-sum)"
++            );
++        }
+         // Tournament equity: the game is general-sum (the frozen field trades
+         // equity), so the same slot holds NashConv and is never called
+         // exploitability. See the `engine::br` module docs.
+-        Some(_) => {
++        (Some(_), _) => {
+             println!("payoff unit: cste (chip-scaled tournament equity)");
+             println!(
+                 "NashConv: {:.6} cste chips  {:.4}% of pot  [measured]",
