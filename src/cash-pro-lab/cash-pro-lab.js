@@ -1,4 +1,4 @@
-import { createDecisionNode, proveDecisionNode } from './decision-node.js';
+import { createDecisionNode, proveDecisionNode, resolveLegalChoice } from './decision-node.js';
 import { buildOracleConsensus } from './oracle-consensus.js';
 import { auditDecisionEV } from './ev-auditor.js';
 
@@ -13,13 +13,29 @@ function freezeClone(value){
   return value;
 }
 
-function legalMix(mix,legal){
+function normalizeChoiceMix(mix,node){
+  if(!mix||typeof mix!=='object'||Array.isArray(mix)) return null;
+  const ids=new Set((node.legalOptions||[]).map(o=>o.id));
+  let total=0,count=0;const out={};
+  for(const [id,rawWeight] of Object.entries(mix)){
+    const weight=Number(rawWeight);
+    if(!ids.has(id)||!Number.isFinite(weight)||weight<0) return null;
+    if(weight===0) continue;
+    out[id]=weight;total+=weight;count++;
+  }
+  if(count<2||Math.abs(total-1)>1e-6) return null;
+  return out;
+}
+
+function normalizeActionMix(mix,node){
   if(!mix||typeof mix!=='object'||Array.isArray(mix)) return null;
   let total=0,count=0;const out={};
   for(const [rawAction,rawWeight] of Object.entries(mix)){
     const action=upper(rawAction),weight=Number(rawWeight);
-    if(!legal.includes(action)||!Number.isFinite(weight)||weight<0) return null;
+    if(!Number.isFinite(weight)||weight<0) return null;
     if(weight===0) continue;
+    const candidates=(node.legalOptions||[]).filter(o=>o.action===action);
+    if(candidates.length!==1) return null;
     out[action]=weight;total+=weight;count++;
   }
   if(count<2||Math.abs(total-1)>1e-6) return null;
@@ -44,18 +60,28 @@ export async function evaluateCashDecision({input,node,student,oracles=[],proofO
     return {version:'cash-pro-lab-evaluation-v1',status:'BLOCKED',phase:'STUDENT_OUTPUT',node:canonical,proof,student:studentResult,consensus:null,audit:null};
   }
 
-  const studentAction=upper(studentResult?.action);
-  const actionMix=legalMix(studentResult?.actionMix,canonical.legalActions);
-  if(!actionMix&&!canonical.legalActions.includes(studentAction)){
-    return {version:'cash-pro-lab-evaluation-v1',status:'BLOCKED',phase:'STUDENT_LEGALITY',node:canonical,proof,student:{...studentResult,action:studentAction},consensus:null,audit:null};
+  const explicitChoiceMix=normalizeChoiceMix(studentResult?.choiceMix,canonical);
+  const actionMix=explicitChoiceMix?null:normalizeActionMix(studentResult?.actionMix,canonical);
+  const choice=explicitChoiceMix||actionMix?null:resolveLegalChoice(canonical,studentResult);
+  if(!explicitChoiceMix&&!actionMix&&!choice){
+    const action=upper(studentResult?.action);
+    const sameAction=(canonical.legalOptions||[]).filter(o=>o.action===action);
+    const phase=sameAction.length>1?'STUDENT_SIZING':'STUDENT_LEGALITY';
+    return {version:'cash-pro-lab-evaluation-v1',status:'BLOCKED',phase,node:canonical,proof,student:{...studentResult,action},consensus:null,audit:null};
   }
 
   const consensus=buildOracleConsensus(canonical,oracles,consensusOptions);
   if(consensus.blocked){
-    return {version:'cash-pro-lab-evaluation-v1',status:'BLOCKED',phase:'TEACHER_CONSENSUS',node:canonical,proof,student:{...studentResult,action:studentAction||null,actionMix},consensus,audit:null};
+    return {version:'cash-pro-lab-evaluation-v1',status:'BLOCKED',phase:'TEACHER_CONSENSUS',node:canonical,proof,student:{...studentResult,choiceId:choice?.id??studentResult?.choiceId??null,choiceMix:explicitChoiceMix,actionMix},consensus,audit:null};
   }
 
-  const normalizedStudent={...studentResult,action:studentAction||null,actionMix};
+  const normalizedStudent={
+    ...studentResult,
+    action:choice?.action??upper(studentResult?.action)||null,
+    choiceId:choice?.id??studentResult?.choiceId??null,
+    choiceMix:explicitChoiceMix,
+    actionMix,
+  };
   const audit=auditDecisionEV(canonical,normalizedStudent,consensus);
   if(audit.blocked){
     return {version:'cash-pro-lab-evaluation-v1',status:'BLOCKED',phase:'EV_AUDIT',node:canonical,proof,student:normalizedStudent,consensus,audit};
@@ -74,8 +100,10 @@ export async function evaluateCashDecision({input,node,student,oracles=[],proofO
       fingerprint:canonical.fingerprint,
       highImpact:audit.highImpact,
       studentAction:audit.studentAction,
-      studentActionMix:audit.studentActionMix,
+      studentChoiceId:audit.studentChoiceId,
+      studentChoiceMix:audit.studentChoiceMix,
       teacherAction:audit.bestAction,
+      teacherChoiceId:audit.bestChoiceId,
       evLossBB:audit.evLossBB,
       severity:audit.severity,
       needsReview:audit.severity==='major'||audit.severity==='catastrophic'||audit.highImpact,
