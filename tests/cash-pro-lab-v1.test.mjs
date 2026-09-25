@@ -6,6 +6,7 @@ import { auditDecisionEV } from '../src/cash-pro-lab/ev-auditor.js';
 import { evaluateCashDecision } from '../src/cash-pro-lab/cash-pro-lab.js';
 import { certifyChallenger } from '../src/cash-pro-lab/promotion-gate.js';
 import { telemetryTurnsToDecisionNodes } from '../src/cash-pro-lab/telemetry-adapter.js';
+import { createCashBrainStudent } from '../src/cash-pro-lab/student-adapter.js';
 
 const evidence=(source='solver-fixture',confidence=1)=>Object.fromEntries(
   ['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','actionHistory']
@@ -76,21 +77,13 @@ test('EV auditor measures costly disagreement instead of accuracy only',()=>{
 });
 
 test('full lab blocks an illegal student action before teacher comparison',async()=>{
-  const result=await evaluateCashDecision({
-    node:riverNode(),
-    student:async()=>({action:'ALLIN'}),
-    oracles:[oracleA,oracleB],
-  });
+  const result=await evaluateCashDecision({node:riverNode(),student:async()=>({action:'ALLIN'}),oracles:[oracleA,oracleB]});
   assert.equal(result.status,'BLOCKED');
   assert.equal(result.phase,'STUDENT_LEGALITY');
 });
 
 test('full lab produces a studied lesson only after proof and teacher consensus',async()=>{
-  const result=await evaluateCashDecision({
-    node:riverNode(),
-    student:async()=>({action:'CALL',engine:'fixture-student'}),
-    oracles:[oracleA,oracleB],
-  });
+  const result=await evaluateCashDecision({node:riverNode(),student:async()=>({action:'CALL',engine:'fixture-student'}),oracles:[oracleA,oracleB]});
   assert.equal(result.status,'STUDIED');
   assert.equal(result.phase,'COMPLETE');
   assert.equal(result.audit.bestAction,'CALL');
@@ -101,10 +94,7 @@ test('full lab produces a studied lesson only after proof and teacher consensus'
 test('challenger never auto-promotes and is blocked by safety violations',()=>{
   const champion=[{fingerprint:'a',blocked:false,evLossBB:0.5,highImpact:true,severity:'material',exactMatch:false}];
   const challenger=[{fingerprint:'a',blocked:false,evLossBB:0.1,highImpact:true,severity:'material',exactMatch:true}];
-  const result=certifyChallenger({
-    championAudits:champion,challengerAudits:challenger,
-    violations:{illegalActions:1},options:{minNodes:1},
-  });
+  const result=certifyChallenger({championAudits:champion,challengerAudits:challenger,violations:{illegalActions:1},options:{minNodes:1}});
   assert.equal(result.eligibleForHumanReview,false);
   assert.equal(result.autoPromote,false);
   assert.ok(result.reasons.includes('illegal_action_violation'));
@@ -119,18 +109,9 @@ test('clean challenger can only become eligible for human review, never auto-pro
 });
 
 function telemetryFixture(validated=true){
-  const turn={
-    handId:7,epoch:3,street:'river',mediaTime:12.5,
-    snapshot:{state:{heroCards:['Kh','3s'],board:['Kd','4s','2h','7c','3h'],heroPosition:'BB',heroStack:80,pot:60,toCall:40,legalActions:['FOLD','CALL','RAISE'],activePlayers:2}},
-  };
+  const turn={handId:7,epoch:3,street:'river',mediaTime:12.5,snapshot:{state:{heroCards:['Kh','3s'],board:['Kd','4s','2h','7c','3h'],heroPosition:'BB',heroStack:80,pot:60,toCall:40,legalActions:['FOLD','CALL','RAISE'],activePlayers:2}}};
   if(validated) turn.validation={ok:true};
-  return {
-    turns:[turn],
-    decisions:[],
-    events:[
-      {type:'action',handId:7,mediaTime:10.0,street:'river',seatId:'right-high',action:'BET',amount:40,confidence:0.99},
-    ],
-  };
+  return {turns:[turn],decisions:[],events:[{type:'action',handId:7,mediaTime:10.0,street:'river',seatId:'right-high',action:'BET',amount:40,confidence:0.99}]};
 }
 
 test('telemetry adapter refuses to certify a turn without runtime validation evidence',()=>{
@@ -155,4 +136,44 @@ test('telemetry adapter blocks when big blind is unavailable instead of inventin
   assert.ok(row.adapterErrors.includes('big_blind_missing'));
   assert.equal(row.proof.ok,false);
   assert.ok(row.proof.errors.includes('effective_stack_missing'));
+});
+
+test('cash brain student receives canonical BB state and structured external ledger',async()=>{
+  let seen=null;
+  const student=createCashBrainStudent({brain:(state,context)=>{seen={state,context};return{actionCode:'CALL',confidence:0.7,engine:'fake-brain',reason:'fixture'};}});
+  const out=await student(riverNode());
+  assert.equal(out.blocked,false);
+  assert.equal(out.action,'CALL');
+  assert.equal(seen.state.pot,60);
+  assert.equal(seen.state.toCall,40);
+  assert.equal(seen.context.ledger.actions.length,10);
+  assert.equal(seen.context.ledger.preflopAggressor,'BTN');
+});
+
+test('student adapter blocks mixed strategy when the brain does not expose weights',async()=>{
+  const student=createCashBrainStudent({brain:()=>({actionCode:'MIXED',mixed:true,mixedActionCodes:['CALL','FOLD'],confidence:0.5})});
+  const out=await student(riverNode());
+  assert.equal(out.blocked,true);
+  assert.equal(out.reason,'mixed_strategy_weights_missing');
+});
+
+test('explicit mixed strategy is scored by expected EV, not guessed as one action',async()=>{
+  const result=await evaluateCashDecision({
+    node:riverNode(),
+    student:async()=>({actionMix:{CALL:0.75,FOLD:0.25},engine:'weighted-fixture'}),
+    oracles:[oracleA,oracleB],
+  });
+  assert.equal(result.status,'STUDIED');
+  assert.equal(result.audit.studentAction,'MIXED');
+  assert.ok(result.audit.evLossBB>0.20&&result.audit.evLossBB<0.40);
+});
+
+test('malformed mixed weights are blocked instead of normalized silently',async()=>{
+  const result=await evaluateCashDecision({
+    node:riverNode(),
+    student:async()=>({actionMix:{CALL:0.4,FOLD:0.4}}),
+    oracles:[oracleA,oracleB],
+  });
+  assert.equal(result.status,'BLOCKED');
+  assert.equal(result.phase,'STUDENT_LEGALITY');
 });
