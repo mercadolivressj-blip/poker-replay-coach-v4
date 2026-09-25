@@ -2,6 +2,13 @@ import { evaluateCashDecision } from './cash-pro-lab.js';
 import { summarizeEVAudits } from './ev-auditor.js';
 import { buildLeakReport } from './leak-report.js';
 
+const STRICT_CONSENSUS={
+  requireDomainDescriptor:true,
+  requireIndependentFamilies:true,
+  maxEvSpreadBB:0.75,
+  minActionAgreement:0.55,
+};
+
 function mergeCounts(target={},source={}){
   for(const [key,value] of Object.entries(source||{})) target[key]=(target[key]||0)+(Number(value)||0);
   return target;
@@ -13,7 +20,7 @@ export async function runCurriculumStream({
   student,
   oracleProvider,
   proofOptions={},
-  consensusOptions={requireDomainDescriptor:true},
+  consensusOptions={},
   split='train',
   maxTickets=Infinity,
   checkpointEvery=1000,
@@ -25,6 +32,7 @@ export async function runCurriculumStream({
   if(typeof student!=='function') throw new TypeError('student must be a function');
   if(typeof oracleProvider!=='function') throw new TypeError('oracleProvider must be a function');
   if(!(maxTickets>0)) throw new TypeError('maxTickets must be above zero');
+  const resolvedConsensusOptions={...STRICT_CONSENSUS,...consensusOptions};
 
   let seen=0,processed=0,studied=0,blocked=0,nodeFactoryBlocked=0,oracleProviderBlocked=0;
   const blockedByPhase={};
@@ -66,7 +74,7 @@ export async function runCurriculumStream({
       continue;
     }
 
-    const evaluation=await evaluateCashDecision({node,student,oracles,proofOptions,consensusOptions});
+    const evaluation=await evaluateCashDecision({node,student,oracles,proofOptions,consensusOptions:resolvedConsensusOptions});
     processed++;
     if(evaluation.status==='STUDIED'){
       studied++;
@@ -85,6 +93,7 @@ export async function runCurriculumStream({
   return {
     version:'cash-pro-lab-scale-run-v1',
     requestedSplit:split,
+    consensusOptions:resolvedConsensusOptions,
     ticketsSeen:seen,
     processedNodes:processed,
     studiedNodes:studied,
@@ -96,6 +105,6 @@ export async function runCurriculumStream({
     leakReport:buildLeakReport(retained.filter(r=>r?.node)),
     retainedEvaluations:retained,
     retentionLimit:retainEvaluations,
-    note:'This runner is bounded-memory orchestration. Ticket count is not equivalent to solver-certified studies; only STUDIED nodes passed proof, teacher-domain verification and EV audit.',
+    note:'This runner is bounded-memory orchestration. Ticket count is not equivalent to solver-certified studies; only STUDIED nodes passed proof, teacher-domain verification, teacher-disagreement gates and EV audit.',
   };
 }
