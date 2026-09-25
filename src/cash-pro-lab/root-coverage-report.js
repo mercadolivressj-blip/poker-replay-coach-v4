@@ -1,5 +1,7 @@
 import { strategicCurriculumManifest, iterateStrategicCurriculum } from './strategic-curriculum.js';
 import { planReusableSolveRoots } from './solve-root-planner.js';
+import { BASELINE_META } from '../strategy-v1/ranges-100z.js';
+import { HIGHRake_POSTFLOP_ENGINE } from './highrake-postflop-job-builder.js';
 
 function splitRootCounts(roots=[]){
   const out={train:0,dev:0,holdout:0,unknown:0};
@@ -33,18 +35,21 @@ export function buildCurrentTeacherCoverageReport({maxTickets=Infinity}={}){
   const eligible=plan.eligibleTickets;
   const rootsBySplit=splitRootCounts(plan.roots);
   const matchups=supportedMatchups(plan.roots);
+  const rakePercent=Number(String(BASELINE_META.rake||'').replace('%',''));
+  const rakeCapBB=Number(BASELINE_META.rakeCapBB);
   return {
-    version:'cash-pro-lab-current-teacher-coverage-v1',
-    currentTeacher:'frozen-100z-SRP-range-profile + external-TexasSolver-job-path',
+    version:'cash-pro-lab-current-teacher-coverage-v2',
     curriculum:{
       totalTickets:entireTotal,
       huTickets:huTotal,
       preflopTickets:curriculum.lanes.preflop.tickets,
       multiwayTickets:curriculum.lanes['postflop-multiway'].tickets,
     },
-    exactDomain:{
+    routableRootDomain:{
+      status:'CONFIGURABLE_NOT_EXECUTED',
+      description:'Frozen 100z preflop ranges + explicit 100bb SRP economics can be materialized into postflop high-rake solve configs. This is routing coverage, not solved-teacher coverage.',
       ticketsSeen:plan.ticketsSeen,
-      eligibleTickets:eligible,
+      routableTickets:eligible,
       huCoverage:huTotal?eligible/huTotal:0,
       wholeCurriculumCoverage:entireTotal?eligible/entireTotal:0,
       uniqueSolveRoots:plan.uniqueSolveRoots,
@@ -52,6 +57,28 @@ export function buildCurrentTeacherCoverageReport({maxTickets=Infinity}={}){
       compressionRatio:plan.compressionRatio,
       rootsBySplit,
       supportedPaths:matchups,
+      rakeTarget:{percent:rakePercent,capBB:rakeCapBB,sourceBaselineVersion:BASELINE_META.version},
+    },
+    teacherAuthority:{
+      highRakeStrategyTeacher:{
+        provider:HIGHRake_POSTFLOP_ENGINE.family,
+        providerSourceCommit:HIGHRake_POSTFLOP_ENGINE.sourceCommit,
+        configuredCandidateTickets:eligible,
+        configuredCandidateRoots:plan.uniqueSolveRoots,
+        executedRoots:0,
+        validatedStrategyOracleRoots:0,
+        validatedStrategyOracleTickets:0,
+        alternativeEvOracleRoots:0,
+        certifiedStudies:0,
+        exactHighRakeAuthority:false,
+        reason:'Authority stays false until external solutions are executed and pass exact config, rake, structure and measured-exploitability validation. Alternative-EV authority additionally requires per-action EV evidence.',
+      },
+      legacyTexasSolver:{
+        role:'independent no-rake structural/parity teacher only',
+        postflopRakeSupportedByCurrentPath:false,
+        exactHighRakeAuthority:false,
+        certifiedStudies:0,
+      },
     },
     blocked:{
       tickets:Math.max(0,plan.ticketsSeen-eligible),
@@ -60,17 +87,20 @@ export function buildCurrentTeacherCoverageReport({maxTickets=Infinity}={}){
     splitIntegrity:{...plan.splitIntegrity,valid:plan.valid},
     claims:{
       plannedTickets:entireTotal,
-      currentExactDomainTickets:eligible,
+      routableHighRakeConfigTickets:eligible,
+      executedHighRakeSolverTrees:0,
+      validatedHighRakeStrategyTickets:0,
       certifiedStudies:0,
-      solverTreesExecutedByThisReport:0,
+      legacyTexasSolverHighRakeAuthority:false,
     },
     nextCoveragePriorities:[
-      'execute and validate external 100bb SRP solver roots',
-      'add independent second teacher family for high-impact nodes',
+      'execute a small pilot of exact 5% / 2.5bb-cap high-rake roots and validate solution envelopes',
+      'extract or independently compute per-action alternative EVs before enabling EV-loss teaching from the high-rake solver',
+      'add an independent rake-capable second teacher family for high-impact consensus',
       'add exact 100bb 3bet-pot range profile and teacher lane',
       'add stack-specific preflop/postflop teachers before enabling 20/30/40/50/75/150/200bb',
       'add a genuine multiway teacher before certifying multiway tickets',
     ],
-    note:'Coverage means exact-domain tickets that can be routed to the current 100z SRP teacher path. It is not a count of completed solver studies. certifiedStudies remains zero until external outputs are ingested and each decision passes proof, independent teacher consensus and EV audit.',
+    note:'Routing/configuration coverage and teacher authority are deliberately separate. No external solve has been counted here. A ticket becomes studied only after exact-state proof, validated solver evidence, required independent-teacher consensus and EV audit.',
   };
 }
