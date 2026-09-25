@@ -49,11 +49,12 @@ four=applyPreflopAction(four,{position:'BTN',action:'RAISE',raiseToBB:6.5});
 four=applyPreflopAction(four,{position:'UTG',action:'RAISE',raiseToBB:12});
 n=preflopNodeState(four,'BTN');assert.equal(n.node,'VS_4BET');assert.equal(n.pressureLevel,3);assert.equal(n.lastAggressor,'UTG');
 
-// All-in call is not misclassified as another raise level.
+// All-in call is not misclassified as another raise level. It is still dead money after the open,
+// so an unacted player correctly sees a squeeze opportunity rather than a fake 3-bet node.
 let callJam=createPreflopEconomy({tableSize:8,stacksBB:{UTG:20,UTG1:20,LJ:20,HJ:20,CO:20,BTN:20,SB:20,BB:2},anteBB:.125,anteType:'individual'});
 callJam=applyPreflopAction(callJam,{position:'UTG',action:'RAISE',raiseToBB:2.2});
 callJam=applyPreflopAction(callJam,{position:'BB',action:'ALLIN'});
-n=preflopNodeState(callJam,'HJ');assert.equal(n.aggressionCount,1);assert.equal(n.node,'VS_OPEN');
+n=preflopNodeState(callJam,'HJ');assert.equal(n.aggressionCount,1);assert.equal(n.node,'SQUEEZE_OPPORTUNITY');assert.deepEqual(n.coldCallersAfterOpen,['BB']);
 
 assert.match(preflopNodeKey(three,'UTG'),/^VS_3BET\|UTG\|p2\|R$/);
 
