@@ -5,6 +5,7 @@ import { buildOracleConsensus } from '../src/cash-pro-lab/oracle-consensus.js';
 import { auditDecisionEV } from '../src/cash-pro-lab/ev-auditor.js';
 import { evaluateCashDecision } from '../src/cash-pro-lab/cash-pro-lab.js';
 import { certifyChallenger } from '../src/cash-pro-lab/promotion-gate.js';
+import { telemetryTurnsToDecisionNodes } from '../src/cash-pro-lab/telemetry-adapter.js';
 
 const evidence=(source='solver-fixture',confidence=1)=>Object.fromEntries(
   ['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','actionHistory']
@@ -115,4 +116,43 @@ test('clean challenger can only become eligible for human review, never auto-pro
   const result=certifyChallenger({championAudits:champion,challengerAudits:challenger,options:{minNodes:1}});
   assert.equal(result.eligibleForHumanReview,true);
   assert.equal(result.autoPromote,false);
+});
+
+function telemetryFixture(validated=true){
+  const turn={
+    handId:7,epoch:3,street:'river',mediaTime:12.5,
+    snapshot:{state:{heroCards:['Kh','3s'],board:['Kd','4s','2h','7c','3h'],heroPosition:'BB',heroStack:80,pot:60,toCall:40,legalActions:['FOLD','CALL','RAISE'],activePlayers:2}},
+  };
+  if(validated) turn.validation={ok:true};
+  return {
+    turns:[turn],
+    decisions:[],
+    events:[
+      {type:'action',handId:7,mediaTime:10.0,street:'river',seatId:'right-high',action:'BET',amount:40,confidence:0.99},
+    ],
+  };
+}
+
+test('telemetry adapter refuses to certify a turn without runtime validation evidence',()=>{
+  const [row]=telemetryTurnsToDecisionNodes(telemetryFixture(false),{bigBlind:1,rakeProfile:'100z-high-rake'});
+  assert.equal(row.runtimeValidated,false);
+  assert.ok(row.adapterErrors.includes('runtime_validation_missing'));
+  assert.equal(row.proof.ok,false);
+  assert.ok(row.proof.errors.some(e=>e.startsWith('evidence_low_confidence:')));
+});
+
+test('validated telemetry can become a proved decision node without guessing missing money units',()=>{
+  const [row]=telemetryTurnsToDecisionNodes(telemetryFixture(true),{bigBlind:1,rakeProfile:'100z-high-rake'});
+  assert.equal(row.runtimeValidated,true);
+  assert.equal(row.node.potBB,60);
+  assert.equal(row.node.toCallBB,40);
+  assert.equal(row.node.effectiveStackBB,80);
+  assert.equal(row.proof.ok,true);
+});
+
+test('telemetry adapter blocks when big blind is unavailable instead of inventing BB conversion',()=>{
+  const [row]=telemetryTurnsToDecisionNodes(telemetryFixture(true),{rakeProfile:'100z-high-rake'});
+  assert.ok(row.adapterErrors.includes('big_blind_missing'));
+  assert.equal(row.proof.ok,false);
+  assert.ok(row.proof.errors.includes('effective_stack_missing'));
 });
