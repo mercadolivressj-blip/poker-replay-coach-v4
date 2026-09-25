@@ -3,14 +3,14 @@ import test from 'node:test';
 import { createDecisionNode } from '../src/cash-pro-lab/decision-node.js';
 
 const evidence=(observedAt,confidence=1)=>Object.fromEntries(
-  ['heroCards','board','heroPosition','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','legalOptions','actionHistory']
+  ['heroCards','board','heroPosition','startingStackBB','effectiveStackBB','potBB','toCallBB','activePlayers','legalActions','legalOptions','actionHistory']
     .map(field=>[field,{source:'replay-verified',confidence,observedAt}])
 );
 
 function base(overrides={}){
   return createDecisionNode({
     handId:'h1',decisionId:'d1',heroCards:['Ah','Kd'],board:['As','7c','2d'],street:'flop',heroPosition:'BTN',
-    effectiveStackBB:100,heroStackBB:100,potBB:10,toCallBB:2,activePlayers:2,
+    startingStackBB:100,effectiveStackBB:97.5,heroStackBB:97.5,potBB:10,toCallBB:2,activePlayers:2,
     legalActions:['FOLD','CALL','RAISE'],
     legalOptions:[{id:'FOLD',action:'FOLD'},{id:'CALL',action:'CALL',amountBB:2},{id:'RAISE:8',action:'RAISE',amountBB:8}],
     rakeProfile:'100z-high-rake',strategyProfile:'ranges-v1',
@@ -28,7 +28,13 @@ test('same strategic spot keeps the same fingerprint across replay provenance an
   });
   assert.equal(a.fingerprint,b.fingerprint);
   assert.notEqual(a.observationFingerprint,b.observationFingerprint);
-  assert.equal(a.fingerprintVersion,'cash-pro-lab-strategic-fingerprint-v2');
+  assert.equal(a.fingerprintVersion,'cash-pro-lab-strategic-fingerprint-v3');
+});
+
+test('different starting stack profile produces a different strategic fingerprint even at same current stack',()=>{
+  const a=base({startingStackBB:100,effectiveStackBB:60,heroStackBB:60});
+  const b=base({startingStackBB:75,effectiveStackBB:60,heroStackBB:60});
+  assert.notEqual(a.fingerprint,b.fingerprint);
 });
 
 test('different legal sizing tree produces a different strategic fingerprint',()=>{
