@@ -1,3 +1,5 @@
+import { classifyRedZone, proveEconomicConsistency } from './economic-consistency.js';
+
 const ACTIONS=new Set(['FOLD','CHECK','CALL','BET','RAISE','ALLIN']);
 const POSITIONS=new Set(['UTG','HJ','CO','BTN','SB','BB']);
 const CARD=/^[2-9TJQKA][hdcs]$/;
@@ -227,6 +229,15 @@ export function proveDecisionNode(node={},options={}){
   if(node.assumptions?.length) warnings.push('contains_assumptions');
   if(isHighImpactNode(node)&&node.assumptions?.length) errors.push('high_impact_assumptions_not_allowed');
 
+  const redZone=classifyRedZone(node);
+  const economicRequired=options.requireEconomicConsistency===true || (options.requireEconomicConsistencyForRedZone===true&&redZone.redZone);
+  const economicProof=(economicRequired||options.economicContext)
+    ? proveEconomicConsistency(node,options.economicContext||{})
+    : null;
+  if(economicRequired&&economicProof&&!economicProof.ok){
+    for(const error of economicProof.errors) errors.push(`economic:${error}`);
+  }
+
   return {
     version:'cash-pro-lab-understanding-proof-v1',
     ok:errors.length===0,
@@ -234,6 +245,8 @@ export function proveDecisionNode(node={},options={}){
     observationFingerprint:node.observationFingerprint??null,
     criticalConfidence:confidences.length?Math.min(...confidences):0,
     highImpact:isHighImpactNode(node),
+    redZone,
+    economicProof,
     exactSizingReady:errors.includes('aggressive_sizing_missing')===false&&errors.includes('legal_option_sizing_ambiguous')===false,
     errors:[...new Set(errors)],
     warnings:[...new Set(warnings)],
