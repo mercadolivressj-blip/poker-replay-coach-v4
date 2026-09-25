@@ -1,9 +1,9 @@
 {
   "name": "ssj-cash-pro-lab",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/test-cash-pro-lab.mjs && node tests/test-combo-range.mjs && node tests/test-river-combo-line.mjs && node tests/test-adversarial-river.mjs && node tests/test-regret-dashboard.mjs"
+    "test": "node tests/test-cash-pro-lab.mjs && node tests/test-combo-range.mjs && node tests/test-river-combo-line.mjs && node tests/test-adversarial-river.mjs && node tests/test-regret-dashboard.mjs && node tests/test-player-identity.mjs"
   }
 }
