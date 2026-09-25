@@ -9,6 +9,7 @@ export async function runCashClassroom({nodes=[],student,oracleProvider,proofOpt
 
   const evaluations=[];
   const blockedByPhase={};
+  const strictConsensusOptions={...consensusOptions,requireDomainDescriptor:true};
   for(const node of nodes){
     let oracles=[];
     try{
@@ -23,7 +24,7 @@ export async function runCashClassroom({nodes=[],student,oracleProvider,proofOpt
       blockedByPhase[row.phase]=(blockedByPhase[row.phase]||0)+1;
       continue;
     }
-    const row=await evaluateCashDecision({node,student,oracles,proofOptions,consensusOptions});
+    const row=await evaluateCashDecision({node,student,oracles,proofOptions,consensusOptions:strictConsensusOptions});
     evaluations.push(row);
     if(row.status==='BLOCKED') blockedByPhase[row.phase]=(blockedByPhase[row.phase]||0)+1;
   }
