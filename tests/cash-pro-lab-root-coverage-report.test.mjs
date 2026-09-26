@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { buildCurrentTeacherCoverageReport } from '../src/cash-pro-lab/root-coverage-report.js';
+
+test('coverage report separates routable high-rake configs from executed teacher authority',()=>{
+  const report=buildCurrentTeacherCoverageReport();
+  assert.equal(report.version,'cash-pro-lab-current-teacher-coverage-v2');
+  assert.equal(report.curriculum.totalTickets,3139200);
+  assert.equal(report.curriculum.huTickets,1382400);
+  assert.ok(report.routableRootDomain.routableTickets>0);
+  assert.ok(report.routableRootDomain.routableTickets<report.curriculum.huTickets);
+  assert.ok(report.routableRootDomain.uniqueSolveRoots>0);
+  assert.ok(report.routableRootDomain.compressionRatio>10);
+  assert.equal(report.routableRootDomain.rootsBySplit.unknown,0);
+  assert.deepEqual(report.routableRootDomain.rakeTarget,{percent:5,capBB:2.5,sourceBaselineVersion:'cash6max-100z-highrake-v1'});
+  assert.equal(report.splitIntegrity.valid,true);
+  assert.equal(report.splitIntegrity.leakageRoots,0);
+  assert.equal(report.splitIntegrity.splitGroupLeakageRoots,0);
+  assert.equal(report.teacherAuthority.highRakeStrategyTeacher.executedRoots,0);
+  assert.equal(report.teacherAuthority.highRakeStrategyTeacher.validatedStrategyOracleRoots,0);
+  assert.equal(report.teacherAuthority.highRakeStrategyTeacher.exactHighRakeAuthority,false);
+  assert.equal(report.teacherAuthority.legacyTexasSolver.postflopRakeSupportedByCurrentPath,false);
+  assert.equal(report.teacherAuthority.legacyTexasSolver.exactHighRakeAuthority,false);
+  assert.equal(report.claims.routableHighRakeConfigTickets,21600);
+  assert.equal(report.claims.executedHighRakeSolverTrees,0);
+  assert.equal(report.claims.validatedHighRakeStrategyTickets,0);
+  assert.equal(report.claims.certifiedStudies,0);
+  assert.ok(report.routableRootDomain.supportedPaths.length>0);
+  console.log('CASH_PRO_LAB_COVERAGE_REPORT='+JSON.stringify(report));
+});

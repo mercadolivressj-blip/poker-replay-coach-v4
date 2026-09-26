@@ -1,0 +1,149 @@
+name: cash-pro-lab-tiny-pipeline-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cash-pro-lab-v1
+    paths:
+      - .github/workflows/cash-pro-lab-tiny-pipeline-smoke.yml
+      - patches/postflop-raked-nashconv-v1.patch
+      - tools/highrake-action-ev/**
+      - scripts/cash-pro-lab-local-pc-worker.mjs
+      - scripts/lib/cash-pro-lab-highrake-runner.mjs
+      - src/cash-pro-lab/highrake-postflop-job-builder.js
+      - src/cash-pro-lab/highrake-postflop-solution-validator.js
+
+permissions:
+  contents: read
+
+jobs:
+  tiny-pipeline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and patch exact pinned solver source
+        run: |
+          git clone --filter=blob:none https://github.com/ucsandman/postflop.git /tmp/postflop
+          git -C /tmp/postflop checkout 5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de
+          test "$(git -C /tmp/postflop rev-parse HEAD)" = "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de"
+          git -C /tmp/postflop apply --check "$GITHUB_WORKSPACE/patches/postflop-raked-nashconv-v1.patch"
+          git -C /tmp/postflop apply "$GITHUB_WORKSPACE/patches/postflop-raked-nashconv-v1.patch"
+          grep -F 'self.icm.is_none() && self.cfg.rake.percent == 0.0' /tmp/postflop/engine/src/nlhe.rs
+
+      - name: Build solver, EV extractor and stream proof
+        run: |
+          cargo build --release --manifest-path /tmp/postflop/Cargo.toml --bin solver
+          cargo build --release --manifest-path tools/highrake-action-ev/Cargo.toml --bin cash-pro-lab-action-ev
+          cargo build --release --manifest-path tools/highrake-action-ev/Cargo.toml --bin solution-proof
+          mkdir -p tiny-pipeline
+          sha256sum /tmp/postflop/target/release/solver > tiny-pipeline/solver.sha256
+          sha256sum tools/highrake-action-ev/target/release/cash-pro-lab-action-ev > tiny-pipeline/action-ev.sha256
+          sha256sum tools/highrake-action-ev/target/release/solution-proof > tiny-pipeline/solution-proof.sha256
+          sha256sum patches/postflop-raked-nashconv-v1.patch > tiny-pipeline/solver-patch.sha256
+
+      - name: Write deliberately tiny raked river fixture
+        run: |
+          cat > tiny-pipeline/spot.toml <<'EOF'
+          board = "Ks 7d 2c 8h 3d"
+          oop_range = "KK,A4s,A5s"
+          ip_range = "TT,JJ"
+          effective_stack = 10.0
+          starting_pot = 10.0
+          target_exploitability = 100.0
+          max_iterations = 1
+          allin_threshold = 1.5
+          raise_cap = 0
+          turn_chance_sampling = false
+
+          [rake]
+          percent = 5.0
+          cap = 2.5
+
+          [sizings.oop.river]
+          bet = { percents = [100.0] }
+          [sizings.ip.river]
+          bet = { percents = [100.0] }
+          EOF
+          sha256sum tiny-pipeline/spot.toml > tiny-pipeline/config.sha256
+
+      - name: Solve raked fixture and require non-negative NashConv
+        run: |
+          /tmp/postflop/target/release/solver solve \
+            --config tiny-pipeline/spot.toml \
+            --report-every 1 \
+            --threads 1 \
+            --out tiny-pipeline/solution.json \
+            2>&1 | tee tiny-pipeline/solver.log
+          test -s tiny-pipeline/solution.json
+          grep -E 'iter +1 +NashConv ' tiny-pipeline/solver.log
+          node <<'NODE'
+          const fs=require('fs');
+          const log=fs.readFileSync('tiny-pipeline/solver.log','utf8');
+          const m=log.match(/iter\s+1\s+NashConv\s+([-+0-9.eE]+)\s+chips\s+([-+0-9.eE]+)% of pot/);
+          if(!m) throw new Error('missing NashConv checkpoint');
+          const chips=Number(m[1]),pct=Number(m[2]);
+          if(!Number.isFinite(chips)||chips<0||!Number.isFinite(pct)||pct<0) throw new Error(`invalid NashConv ${chips} ${pct}`);
+          fs.writeFileSync('tiny-pipeline/nashconv.json',JSON.stringify({chips,pct},null,2));
+          NODE
+
+      - name: Stream-prove saved solution structure
+        run: |
+          tools/highrake-action-ev/target/release/solution-proof tiny-pipeline/solution.json tiny-pipeline/solution-proof.json
+          node -e "const p=require('./tiny-pipeline/solution-proof.json');if(!p.structural_ok||p.version!=='cash-pro-lab-solution-stream-proof-v1'||p.decision_nodes<1)process.exit(2);console.log(JSON.stringify(p,null,2));"
+
+      - name: Extract per-action EV at first extractable node
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=tools/highrake-action-ev/target/release/cash-pro-lab-action-ev
+          FOUND=0
+          mkdir -p tiny-pipeline/action-ev
+          for NODE in $(seq 0 40); do
+            if "$BIN" tiny-pipeline/solution.json "$NODE" "tiny-pipeline/action-ev/node-${NODE}.json" 0.0001 >"tiny-pipeline/action-ev/node-${NODE}.stdout" 2>"tiny-pipeline/action-ev/node-${NODE}.stderr"; then
+              echo "$NODE" | tee tiny-pipeline/action-ev/first-node.txt
+              FOUND=1
+              break
+            fi
+          done
+          test "$FOUND" = "1"
+          NODE=$(cat tiny-pipeline/action-ev/first-node.txt)
+          node -e "const fs=require('fs');const p='tiny-pipeline/action-ev/node-'+process.argv[1]+'.json';const r=JSON.parse(fs.readFileSync(p,'utf8'));console.log(JSON.stringify({node:Number(process.argv[1]),keys:Object.keys(r),result:r},null,2));" "$NODE" > tiny-pipeline/action-ev/summary.json
+
+      - name: Write smoke truth
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const node=Number(fs.readFileSync('tiny-pipeline/action-ev/first-node.txt','utf8').trim());
+          const nash=JSON.parse(fs.readFileSync('tiny-pipeline/nashconv.json','utf8'));
+          const proof=JSON.parse(fs.readFileSync('tiny-pipeline/solution-proof.json','utf8'));
+          const truth={
+            version:'cash-pro-lab-tiny-pipeline-smoke-v2',
+            purpose:'patched-raked-convergence-and-stream-validation-plumbing',
+            productionAuthority:false,
+            pokerStrategyAuthority:false,
+            sourceCommit:'5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de',
+            localPatchId:'cash-pro-lab-raked-nashconv-v1',
+            rake:{percent:5,cap:2.5},
+            convergenceMetric:'nashconv_pct_of_pot',
+            measuredNashConv:nash,
+            streamProof:{structuralOk:proof.structural_ok,nodeCount:proof.node_count,decisionNodes:proof.decision_nodes},
+            solved:true,
+            actionEvExtracted:true,
+            firstExtractableNode:node,
+            certifiedStudies:0,
+            note:'Tiny artificial river fixture proves pinned source + deterministic rake patch -> non-negative NashConv -> saved JSON -> bounded-memory structural proof -> action-EV extraction. It is not part of the 240-root curriculum and has no strategic authority.'
+          };
+          fs.writeFileSync('tiny-pipeline/truth.json',JSON.stringify(truth,null,2));
+          console.log(JSON.stringify(truth,null,2));
+          NODE
+
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cash-pro-lab-tiny-pipeline-smoke-v2
+          path: tiny-pipeline
+          if-no-files-found: error
+          retention-days: 14

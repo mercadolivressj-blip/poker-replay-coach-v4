@@ -1,0 +1,10 @@
+[package]
+name = "cash-pro-lab-action-ev"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+engine = { git = "https://github.com/ucsandman/postflop", rev = "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de", package = "engine", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

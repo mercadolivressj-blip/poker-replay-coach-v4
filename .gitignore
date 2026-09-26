@@ -10,3 +10,4 @@ fixtures/public/
 tests/.tmp-system-ocr/
 tests/tmp-*.mjs
 tests/redact-public.mjs
+.cash-pro-lab/
