@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { validateHighRakeManifest } from './lib/cash-pro-lab-highrake-runner.mjs';
+import { validateHighRakeManifest } from './lib/cash-pro-lab-highrake-runner-v2.mjs';
 import { assessProbeCurve, parseNashConvCheckpoint } from '../src/cash-pro-lab/probe-convergence-guard.js';
 
 const repoRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
