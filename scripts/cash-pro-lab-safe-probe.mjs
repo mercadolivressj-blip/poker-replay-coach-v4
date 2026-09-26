@@ -35,11 +35,11 @@ function loadState(){return jsonRead(path.join(workspace,'worker-state.json'),{v
 function saveState(state){state.updatedAt=now();jsonWrite(path.join(workspace,'worker-state.json'),state);}
 
 fs.mkdirSync(workspace,{recursive:true});
-const maxIterations=intArg('--iterations',300);
-const reportEvery=intArg('--report-every',50);
+const maxIterations=intArg('--iterations',250);
+const reportEvery=intArg('--report-every',25);
 const allowLong=has('--allow-long');
-if(maxIterations>600&&!allowLong){
-  throw new Error(`safe_probe_iteration_guard:${maxIterations}>600:use_--allow-long_only_after_reviewing_a_short_curve`);
+if(maxIterations>500&&!allowLong){
+  throw new Error(`safe_probe_iteration_guard:${maxIterations}>500:use_--allow-long_only_after_reviewing_a_short_curve`);
 }
 if(reportEvery>100) throw new Error('safe_probe_report_every_guard:max_100');
 
