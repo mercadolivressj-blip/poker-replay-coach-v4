@@ -8,7 +8,7 @@ import { create100zSrpFlopSolveRoot } from '../src/cash-pro-lab/solve-root.js';
 import { RANGE_PROFILE_100Z_SRP } from '../src/cash-pro-lab/range-profile-100z.js';
 import { CURRENT_100Z_SRP_PREFLOP_MODEL_KEY, CURRENT_100Z_SRP_TREE_PROFILE } from '../src/cash-pro-lab/solver-campaign-profile.js';
 import { buildHighRakePostflopFlopJob } from '../src/cash-pro-lab/highrake-postflop-job-builder.js';
-import { archiveSolutionFile, buildValidatedHighRakeSidecar, sha256GzipContent, validateHighRakeManifest, validateHighRakeResume } from '../scripts/lib/cash-pro-lab-highrake-runner.mjs';
+import { archiveSolutionFile, buildValidatedHighRakeSidecar, sha256GzipContent, validateHighRakeManifest, validateHighRakeResume } from '../scripts/lib/cash-pro-lab-highrake-runner-v2.mjs';
 
 const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
 function row(){

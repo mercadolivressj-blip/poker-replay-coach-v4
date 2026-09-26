@@ -41,18 +41,20 @@ function proofFor(job,overrides={}){
   };
 }
 
-test('high-rake builder binds 5 percent / 2.5bb rake to patched NashConv engine',()=>{
+test('high-rake builder binds 5 percent / 2.5bb rake to resumable NashConv engine',()=>{
   const job=build();
   assert.equal(job.rake.percent,5);
   assert.equal(job.rake.cap,2.5);
   assert.equal(job.rake.sourceBaselineVersion,'cash6max-100z-highrake-v1');
-  assert.equal(job.engine.localPatch.id,'cash-pro-lab-raked-nashconv-v1');
+  assert.equal(job.engine.localPatch.id,'cash-pro-lab-raked-checkpoint-v2');
+  assert.equal(job.engine.localPatch.kind,'deterministic-rewrite-script');
   assert.equal(job.convergence.metric,'nashconv_pct_of_pot');
   assert.match(job.configToml,/\[rake\]\npercent = 5\.0\ncap = 2\.5/);
   assert.match(job.configToml,/turn_chance_sampling = false/);
   assert.match(job.configToml,/target_exploitability = 0\.25/);
   assert.match(job.configToml,/\[sizings\.oop\.flop\]/);
   assert.match(job.configToml,/bet = \{ percents = \[33\.0, 75\.0\], allin = true \}/);
+  assert.deepEqual(job.invocation.args.slice(-4),['--checkpoint','<checkpoint>','--resume','<checkpoint>']);
   assert.equal(job.authority.highRakeDomain,true);
   assert.equal(job.authority.strategyOracleCandidate,true);
   assert.equal(job.authority.evAlternativeOracleCandidate,false);
@@ -77,7 +79,7 @@ test('wrong rake, chance sampling, negative/weak NashConv or malformed strategy 
   const wrongRake=validateHighRakePostflopSolution({solution:solutionFor(job,{config:{rake:{percent:0,cap:0}}}),job});
   assert.equal(wrongRake.ok,false);
   assert.ok(wrongRake.errors.includes('config_rake_percent_mismatch'));
-  const sampled=validateHighRakePostflopSolution({solution:solutionFor(job,{config:{turn_chance_sampling:true}}),job});
+  const sampled=validateHighRakePostflopSolution({solution:solutionFor(job,{config:{turn_chance_sampling:true}}}),job});
   assert.equal(sampled.ok,false);
   assert.ok(sampled.errors.includes('chance_sampling_must_be_false'));
   const weak=validateHighRakePostflopSolution({solution:solutionFor(job,{meta:{exploitability_chips:0.03,exploitability_pct_of_pot:100*0.03/job.root.potBB,gain:[0.015,0.015]}}),job});

@@ -1,0 +1,372 @@
+diff --git a/engine/src/cfr.rs b/engine/src/cfr.rs
+--- a/engine/src/cfr.rs
++++ b/engine/src/cfr.rs
+@@ -45,7 +45,11 @@
+ //! The best-response walk in [`crate::br`] is still sequential; with a coarse
+ //! `report_every` it is a small share of a solve.
+ 
++use std::fs::{self, File};
++use std::io::{self, BufReader, BufWriter, Read, Write};
++use std::path::{Path, PathBuf};
+ use std::slice;
+ 
+ #[cfg(feature = "parallel")]
+@@ -287,6 +291,89 @@ impl Array {
+     }
+ }
+ 
++const CHECKPOINT_MAGIC: [u8; 8] = *b"PFCFRCP1";
++const CHECKPOINT_VERSION: u32 = 1;
++const CHECKPOINT_ENDIAN: u32 = 0x0102_0304;
++const FNV_OFFSET: u64 = 0xcbf29ce484222325;
++const FNV_PRIME: u64 = 0x00000100000001B3;
++
++fn write_u32(w: &mut impl Write, v: u32) -> io::Result<()> {
++    w.write_all(&v.to_le_bytes())
++}
++
++fn write_u64(w: &mut impl Write, v: u64) -> io::Result<()> {
++    w.write_all(&v.to_le_bytes())
++}
++
++fn read_u32(r: &mut impl Read) -> io::Result<u32> {
++    let mut b = [0u8; 4];
++    r.read_exact(&mut b)?;
++    Ok(u32::from_le_bytes(b))
++}
++
++fn read_u64(r: &mut impl Read) -> io::Result<u64> {
++    let mut b = [0u8; 8];
++    r.read_exact(&mut b)?;
++    Ok(u64::from_le_bytes(b))
++}
++
++fn f32_bytes(v: &[f32]) -> &[u8] {
++    unsafe { slice::from_raw_parts(v.as_ptr().cast::<u8>(), std::mem::size_of_val(v)) }
++}
++
++fn f32_bytes_mut(v: &mut [f32]) -> &mut [u8] {
++    unsafe { slice::from_raw_parts_mut(v.as_mut_ptr().cast::<u8>(), std::mem::size_of_val(v)) }
++}
++
++fn i16_bytes(v: &[i16]) -> &[u8] {
++    unsafe { slice::from_raw_parts(v.as_ptr().cast::<u8>(), std::mem::size_of_val(v)) }
++}
++
++fn i16_bytes_mut(v: &mut [i16]) -> &mut [u8] {
++    unsafe { slice::from_raw_parts_mut(v.as_mut_ptr().cast::<u8>(), std::mem::size_of_val(v)) }
++}
++
++fn write_array(w: &mut impl Write, a: &Array) -> io::Result<()> {
++    match a {
++        Array::F32(v) => w.write_all(f32_bytes(v)),
++        Array::I16 { data, scales } => {
++            w.write_all(i16_bytes(data))?;
++            w.write_all(f32_bytes(scales))
++        }
++    }
++}
++
++fn read_array(r: &mut impl Read, a: &mut Array) -> io::Result<()> {
++    match a {
++        Array::F32(v) => r.read_exact(f32_bytes_mut(v)),
++        Array::I16 { data, scales } => {
++            r.read_exact(i16_bytes_mut(data))?;
++            r.read_exact(f32_bytes_mut(scales))
++        }
++    }
++}
++
++fn checkpoint_shape_fingerprint(offsets: &[u32], sizes: &[u32]) -> u64 {
++    let mut h = FNV_OFFSET;
++    for &v in offsets.iter().chain(sizes.iter()) {
++        for b in v.to_le_bytes() {
++            h ^= b as u64;
++            h = h.wrapping_mul(FNV_PRIME);
++        }
++    }
++    h
++}
++
+ /// Raw-pointer form of an [`Array`], carried by [`Store`] across parallel tasks.
+ #[derive(Clone, Copy)]
+ enum ArrayPtr {
+@@ -613,6 +700,137 @@ impl<G: Game> Solver<G> {
+     pub fn storage_entries(&self) -> usize {
+         self.regrets.entries()
+     }
++
++    /// Atomically persists the exact DCFR continuation state. Unlike a [`Solution`],
++    /// this includes cumulative regrets and cumulative strategy sums, so restoring it
++    /// continues at the next iteration instead of merely inspecting the average policy.
++    /// `config_fingerprint` is supplied by the CLI after normalising convergence-only
++    /// knobs; a checkpoint from another game/config is rejected even if its tree happens
++    /// to have the same shape.
++    pub fn save_checkpoint(
++        &self,
++        path: impl AsRef<Path>,
++        config_fingerprint: u64,
++    ) -> Result<(), String> {
++        if cfg!(target_endian = "big") {
++            return Err("solver checkpoints currently require a little-endian target".into());
++        }
++        let path = path.as_ref();
++        let mut tmp_os = path.as_os_str().to_os_string();
++        tmp_os.push(".tmp");
++        let tmp = PathBuf::from(tmp_os);
++        let _ = fs::remove_file(&tmp);
++
++        let write_result = (|| -> Result<(), String> {
++            let file = File::create(&tmp)
++                .map_err(|e| format!("cannot create checkpoint {tmp:?}: {e}"))?;
++            let mut w = BufWriter::new(file);
++            w.write_all(&CHECKPOINT_MAGIC).map_err(|e| e.to_string())?;
++            write_u32(&mut w, CHECKPOINT_VERSION).map_err(|e| e.to_string())?;
++            write_u32(&mut w, CHECKPOINT_ENDIAN).map_err(|e| e.to_string())?;
++            let mode = match self.mode { StorageMode::F32 => 0u32, StorageMode::I16 => 1u32 };
++            write_u32(&mut w, mode).map_err(|e| e.to_string())?;
++            write_u32(&mut w, 0).map_err(|e| e.to_string())?;
++            write_u64(&mut w, self.iteration).map_err(|e| e.to_string())?;
++            write_u64(&mut w, self.offsets.len() as u64).map_err(|e| e.to_string())?;
++            write_u64(&mut w, self.regrets.entries() as u64).map_err(|e| e.to_string())?;
++            write_u64(&mut w, checkpoint_shape_fingerprint(&self.offsets, &self.sizes))
++                .map_err(|e| e.to_string())?;
++            write_u64(&mut w, config_fingerprint).map_err(|e| e.to_string())?;
++            write_u64(&mut w, self.regrets.bytes() as u64).map_err(|e| e.to_string())?;
++            write_u64(&mut w, self.strat_sum.bytes() as u64).map_err(|e| e.to_string())?;
++            write_array(&mut w, &self.regrets).map_err(|e| e.to_string())?;
++            write_array(&mut w, &self.strat_sum).map_err(|e| e.to_string())?;
++            w.flush().map_err(|e| format!("checkpoint flush failed: {e}"))?;
++            w.get_ref().sync_all().map_err(|e| format!("checkpoint fsync failed: {e}"))?;
++            drop(w);
++            fs::rename(&tmp, path)
++                .map_err(|e| format!("cannot publish checkpoint {tmp:?} -> {path:?}: {e}"))?;
++            if let Some(parent) = path.parent() {
++                if let Ok(dir) = File::open(parent) {
++                    let _ = dir.sync_all();
++                }
++            }
++            Ok(())
++        })();
++        if write_result.is_err() {
++            let _ = fs::remove_file(&tmp);
++        }
++        write_result
++    }
++
++    /// Restores a checkpoint written by [`Solver::save_checkpoint`]. The caller first
++    /// constructs the deterministic game normally; mode, node count, storage entries,
++    /// layout fingerprint and the CLI's config fingerprint must all match before any
++    /// payload is accepted.
++    pub fn restore_checkpoint(
++        &mut self,
++        path: impl AsRef<Path>,
++        expected_config_fingerprint: u64,
++    ) -> Result<(), String> {
++        if cfg!(target_endian = "big") {
++            return Err("solver checkpoints currently require a little-endian target".into());
++        }
++        let path = path.as_ref();
++        let file = File::open(path)
++            .map_err(|e| format!("cannot open checkpoint {path:?}: {e}"))?;
++        let mut r = BufReader::new(file);
++        let mut magic = [0u8; 8];
++        r.read_exact(&mut magic).map_err(|e| format!("checkpoint header: {e}"))?;
++        if magic != CHECKPOINT_MAGIC { return Err("checkpoint magic mismatch".into()); }
++        let version = read_u32(&mut r).map_err(|e| e.to_string())?;
++        if version != CHECKPOINT_VERSION { return Err(format!("checkpoint version {version} unsupported")); }
++        let endian = read_u32(&mut r).map_err(|e| e.to_string())?;
++        if endian != CHECKPOINT_ENDIAN { return Err("checkpoint endian marker mismatch".into()); }
++        let mode = read_u32(&mut r).map_err(|e| e.to_string())?;
++        let _reserved = read_u32(&mut r).map_err(|e| e.to_string())?;
++        let want_mode = match self.mode { StorageMode::F32 => 0u32, StorageMode::I16 => 1u32 };
++        if mode != want_mode { return Err(format!("checkpoint storage mode {mode} != solver mode {want_mode}")); }
++        let iteration = read_u64(&mut r).map_err(|e| e.to_string())?;
++        let nodes = read_u64(&mut r).map_err(|e| e.to_string())?;
++        let entries = read_u64(&mut r).map_err(|e| e.to_string())?;
++        let shape = read_u64(&mut r).map_err(|e| e.to_string())?;
++        let config_fingerprint = read_u64(&mut r).map_err(|e| e.to_string())?;
++        let regrets_bytes = read_u64(&mut r).map_err(|e| e.to_string())?;
++        let strat_bytes = read_u64(&mut r).map_err(|e| e.to_string())?;
++
++        if nodes != self.offsets.len() as u64 { return Err("checkpoint node count mismatch".into()); }
++        if entries != self.regrets.entries() as u64 { return Err("checkpoint storage entry count mismatch".into()); }
++        if shape != checkpoint_shape_fingerprint(&self.offsets, &self.sizes) { return Err("checkpoint tree layout mismatch".into()); }
++        if config_fingerprint != expected_config_fingerprint { return Err("checkpoint config fingerprint mismatch".into()); }
++        if regrets_bytes != self.regrets.bytes() as u64 || strat_bytes != self.strat_sum.bytes() as u64 {
++            return Err("checkpoint payload byte count mismatch".into());
++        }
++
++        read_array(&mut r, &mut self.regrets).map_err(|e| format!("checkpoint regrets payload: {e}"))?;
++        read_array(&mut r, &mut self.strat_sum).map_err(|e| format!("checkpoint strategy payload: {e}"))?;
++        let mut extra = [0u8; 1];
++        if r.read(&mut extra).map_err(|e| e.to_string())? != 0 {
++            return Err("checkpoint has trailing bytes".into());
++        }
++        self.iteration = iteration;
++        self.scratch.top = 0;
++        self.codec.clear();
++        Ok(())
++    }
+ 
+     /// DCFR discounting, applied once per full iteration `t` (1-based):
+     /// positive regrets by `t^a / (t^a + 1)`, negative by `t^b / (t^b + 1)`, and the
+ diff --git a/engine/src/nlhe.rs b/engine/src/nlhe.rs
+--- a/engine/src/nlhe.rs
++++ b/engine/src/nlhe.rs
+@@ -777,10 +777,12 @@ impl Game for NlheGame {
+     fn zero_sum(&self) -> bool {
+-        // An ICM spot is general-sum: the frozen field trades equity with the pair
+-        // whenever chips move, by a different amount at every terminal and not always
+-        // in the same direction. See the module docs.
+-        self.icm.is_none()
++        // Rake depends on the terminal pot, so a raked cash game's utility sum is not
++        // one constant across all terminals. Report convergence as NashConv (sum of
++        // unilateral gains) instead of treating the rake-shifted BR-value sum as
++        // zero-sum exploitability. ICM is also genuinely general-sum.
++        self.icm.is_none() && self.cfg.rake.percent == 0.0
+     }
+ }
+ diff --git a/cli/src/solve.rs b/cli/src/solve.rs
+--- a/cli/src/solve.rs
++++ b/cli/src/solve.rs
+@@ -74,6 +74,19 @@ pub struct SolveArgs {
+     #[arg(long = "report-every", default_value_t = 100)]
+     report_every: u64,
++    /// Require this many consecutive measured checkpoints at/below the target before
++    /// stopping. A resumed checkpoint conservatively restarts the streak from its own
++    /// current measurement.
++    #[arg(long = "target-confirmations", default_value_t = 1)]
++    target_confirmations: u64,
++    /// Atomically overwrite this exact-resume checkpoint after every measured chunk.
++    /// It contains cumulative regrets and strategy sums, not just the average policy.
++    #[arg(long)]
++    checkpoint: Option<PathBuf>,
++    /// Restore an exact-resume checkpoint before continuing the solve.
++    #[arg(long)]
++    resume: Option<PathBuf>,
+     /// Rayon global thread pool size (default: all logical CPUs). The CFR
+     /// traversal parallelizes across chance-node outcomes; results are
+     /// bit-identical for every thread count.
+@@ -94,6 +107,9 @@ pub fn run(args: SolveArgs) -> Result<(), String> {
+     if args.report_every == 0 {
+         return Err("--report-every must be at least 1 (it drives the stop-condition check)".into());
+     }
++    if args.target_confirmations == 0 {
++        return Err("--target-confirmations must be at least 1".into());
++    }
+ 
+     let text = std::fs::read_to_string(&args.config)
+         .map_err(|e| format!("cannot read {:?}: {e}", args.config))?;
+@@ -145,27 +161,58 @@ pub fn run(args: SolveArgs) -> Result<(), String> {
+ 
+     let game = NlheGame::new(&cfg)?;
+     let params = DcfrParams::from_config(&cfg);
++    let checkpoint_fingerprint = checkpoint_config_fingerprint(&cfg)?;
+     let mut solver = Solver::new_with_storage(game, args.storage.into());
++    if let Some(path) = &args.resume {
++        solver.restore_checkpoint(path, checkpoint_fingerprint)?;
++        println!("resumed checkpoint {} at iteration {}", path.display(), solver.iterations());
++    }
+     print_tree_stats(&solver);
+ 
+-    // Under a tournament payoff map the headline metric is NashConv in CSTE chips,
+-    // not exploitability in chips: the game is general-sum. Same number, different
+-    // meaning, so it never wears the chip label.
+-    let (metric, unit) = match cfg.tournament {
+-        None => ("exploitability", "chips"),
+-        Some(_) => ("NashConv", "cste chips"),
++    let (metric, unit) = match (&cfg.tournament, cfg.rake.percent > 0.0) {
++        (None, false) => ("exploitability", "chips"),
++        (None, true) => ("NashConv", "chips"),
++        (Some(_), _) => ("NashConv", "cste chips"),
+     };
+     let start = Instant::now();
+-    let mut done = 0u64;
++    let mut done = solver.iterations();
++    if done > cfg.max_iterations {
++        return Err(format!("checkpoint iteration {done} exceeds max_iterations {}", cfg.max_iterations));
++    }
+     let mut last_pct = f32::INFINITY;
+-    while done < cfg.max_iterations {
++    let mut target_streak = 0u64;
++    if done > 0 {
++        let report = solver.exploitability();
++        last_pct = report.pct_of_pot;
++        if (last_pct as f64) <= cfg.target_exploitability { target_streak = 1; }
++        println!(
++            "resume iter {done:>8}  {metric} {:.6} {unit}  {:.4}% of pot  [measured]",
++            report.chips, report.pct_of_pot
++        );
++    }
++    while done < cfg.max_iterations && target_streak < args.target_confirmations {
+         let chunk = args.report_every.min(cfg.max_iterations - done);
++        let mut measured = None;
+         solver.run(chunk, &params, chunk, |i, chips, pct| {
+-            println!("iter {i:>8}  {metric} {chips:.6} {unit}  {pct:.4}% of pot  [measured]");
+-            last_pct = pct;
++            measured = Some((i, chips, pct));
+         });
+-        done += chunk;
+-        if (last_pct as f64) <= cfg.target_exploitability {
+-            break;
++        done = solver.iterations();
++        if let Some(path) = &args.checkpoint {
++            solver.save_checkpoint(path, checkpoint_fingerprint)?;
+         }
++        let (i, chips, pct) = measured.ok_or_else(|| "solver chunk produced no convergence report".to_string())?;
++        println!("iter {i:>8}  {metric} {chips:.6} {unit}  {pct:.4}% of pot  [measured]");
++        last_pct = pct;
++        if (last_pct as f64) <= cfg.target_exploitability { target_streak += 1; } else { target_streak = 0; }
+     }
+     let wall_seconds = start.elapsed().as_secs_f64();
+ 
+@@ -180,6 +227,27 @@ pub fn run(args: SolveArgs) -> Result<(), String> {
+     Ok(())
+ }
+ 
++fn checkpoint_config_fingerprint(cfg: &SolveConfig) -> Result<u64, String> {
++    // max_iterations and target_exploitability are stopping knobs, not game/DCFR
++    // semantics, so a checkpoint can safely resume with a larger ceiling or a tighter
++    // target. Every strategic knob (ranges, board, stacks, rake, sizings, DCFR params,
++    // locks, etc.) remains in the fingerprint.
++    let mut stable = cfg.clone();
++    stable.max_iterations = 0;
++    stable.target_exploitability = 0.0;
++    let text = toml::to_string(&stable).map_err(|e| format!("checkpoint config serialization failed: {e}"))?;
++    let mut h = 0xcbf29ce484222325u64;
++    for b in text.as_bytes() {
++        h ^= *b as u64;
++        h = h.wrapping_mul(0x00000100000001B3u64);
++    }
++    Ok(h)
++}
++
+ fn print_tree_stats(solver: &Solver<NlheGame>) {
+     let game = solver.game();
+     let counts = game.tree().counts();
+@@ -203,13 +271,19 @@ fn print_final_report(solver: &Solver<NlheGame>, wall_seconds: f64) {
+     println!("=== final report ===");
+     println!("iterations: {}", solver.iterations());
+     println!("wall time: {wall_seconds:.4} s [measured]");
+-    match &cfg.tournament {
+-        // Chips: the game is zero-sum, so this number is a genuine bound on what
+-        // either player can win by deviating.
+-        None => println!(
++    match (&cfg.tournament, cfg.rake.percent > 0.0) {
++        (None, false) => println!(
+             "exploitability: {:.6} chips  {:.4}% of pot  [measured]",
+             report.chips, report.pct_of_pot
+         ),
++        (None, true) => println!(
++            "NashConv: {:.6} chips  {:.4}% of pot  [measured]",
++            report.chips, report.pct_of_pot
++        ),
+         // Tournament equity: the game is general-sum (the frozen field trades
+         // equity), so the same slot holds NashConv and is never called
+         // exploitability. See the `engine::br` module docs.
+-        Some(_) => {
++        (Some(_), _) => {
+             println!("payoff unit: cste (chip-scaled tournament equity)");
+             println!(
+                 "NashConv: {:.6} cste chips  {:.4}% of pot  [measured]",
