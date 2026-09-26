@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { assessProbeCurve, parseNashConvCheckpoint } from '../src/cash-pro-lab/probe-convergence-guard.js';
 
-test('safe probe script parses before it can reach the VM',()=>{
-  const r=spawnSync(process.execPath,['--check','scripts/cash-pro-lab-safe-probe.mjs'],{encoding:'utf8'});
-  assert.equal(r.status,0,r.stderr||r.stdout);
+test('safe probe and safe pilot scripts parse before they can reach the VM',()=>{
+  for(const script of ['scripts/cash-pro-lab-safe-probe.mjs','scripts/cash-pro-lab-safe-pilot.mjs']){
+    const r=spawnSync(process.execPath,['--check',script],{encoding:'utf8'});
+    assert.equal(r.status,0,`${script}: ${r.stderr||r.stdout}`);
+  }
 });
 
 test('parses a measured NashConv checkpoint',()=>{
