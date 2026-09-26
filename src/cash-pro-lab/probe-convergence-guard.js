@@ -11,6 +11,7 @@ export function parseNashConvCheckpoint(line){
 }
 
 export const DEFAULT_PROBE_GUARD=Object.freeze({
+  targetConfirmationCheckpoints:3,
   minCheckpointsForDivergence:4,
   hardExplosionRatio:3,
   hardExplosionMinDeltaPct:0.5,
@@ -32,8 +33,19 @@ export function assessProbeCurve(curve,{targetPct=0.25,guard=DEFAULT_PROBE_GUARD
   const best=bestReport(curve);
   if(!finiteNumber(targetPct)||targetPct<=0) throw new TypeError('targetPct must be finite and > 0');
 
+  const confirms=Math.max(2,Number(guard.targetConfirmationCheckpoints)||3);
+  const confirmTail=curve.slice(-confirms);
+  if(confirmTail.length===confirms&&confirmTail.every(row=>row.pct<=targetPct)){
+    return {
+      status:'TARGET_STABLE',stop:true,ready:true,reason:'nashconv_target_stable',best,last,
+      detail:{confirmations:confirmTail},
+    };
+  }
   if(last.pct<=targetPct){
-    return {status:'TARGET_REACHED',stop:true,ready:true,reason:'nashconv_target_reached',best,last};
+    return {
+      status:'TARGET_CONFIRMING',stop:false,ready:false,reason:'nashconv_target_needs_confirmation',best,last,
+      detail:{required:confirms,consecutive:confirmTail.filter(row=>row.pct<=targetPct).length},
+    };
   }
 
   if(curve.length<guard.minCheckpointsForDivergence){
