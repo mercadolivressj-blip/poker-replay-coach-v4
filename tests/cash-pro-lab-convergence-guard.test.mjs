@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { assessProbeCurve, parseNashConvCheckpoint } from '../src/cash-pro-lab/probe-convergence-guard.js';
+
+test('safe probe script parses before it can reach the VM',()=>{
+  const r=spawnSync(process.execPath,['--check','scripts/cash-pro-lab-safe-probe.mjs'],{encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr||r.stdout);
+});
 
 test('parses a measured NashConv checkpoint',()=>{
   assert.deepEqual(
