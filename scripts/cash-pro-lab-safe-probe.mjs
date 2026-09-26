@@ -80,15 +80,17 @@ const summaryPath=path.join(workspace,'probe-safe-summary.json');
 fs.writeFileSync(progressPath,'');
 const startedAt=now();
 const startedMs=Date.now();
-const solverArgs=['solve','--config',configPath,'--report-every',String(reportEvery),'--threads',String(threads),'--max-iterations',String(maxIterations)];
-console.log(JSON.stringify({mode:'safe-probe',rowId:row.id,threads,maxIterations,reportEvery,targetPct,progressPath,artifactWritten:false},null,2));
+// The solver's own stop is intentionally set far below the production target. The probe
+// owns the production stop condition so one transient <=0.25% checkpoint cannot unlock a pilot.
+const solverArgs=['solve','--config',configPath,'--report-every',String(reportEvery),'--threads',String(threads),'--max-iterations',String(maxIterations),'--target-exploitability','0.000001'];
+console.log(JSON.stringify({mode:'safe-probe',rowId:row.id,threads,maxIterations,reportEvery,targetPct,requiredTargetConfirmations:3,progressPath,artifactWritten:false},null,2));
 
 const child=spawn(solverPath,solverArgs,{cwd:path.dirname(solverPath),stdio:['ignore','pipe','pipe']});
 child.stdout.setEncoding('utf8');
 child.stderr.setEncoding('utf8');
 let stdoutTail='',stderrTail='',lineBuf='',peakRssBytes=0,tree=null,strategyStorageBytes=null;
 let curve=[];
-let guardStop=null;
+let stopEvent=null;
 
 function sampleRss(){const rss=processRssBytes(child.pid);if(Number.isFinite(rss))peakRssBytes=Math.max(peakRssBytes,rss);}
 function appendCheckpoint(cp,assessment){
@@ -106,9 +108,10 @@ function consumeLine(line){
   curve.push(cp);
   const assessment=assessProbeCurve(curve,{targetPct});
   appendCheckpoint(cp,assessment);
-  if(assessment.status==='DIVERGED'&&!guardStop){
-    guardStop={at:now(),...assessment};
-    console.error(`[safe-probe] ABORT ${assessment.reason}: best=${assessment.best?.pct}% last=${assessment.last?.pct}%`);
+  if(!stopEvent&&['DIVERGED','TARGET_STABLE'].includes(assessment.status)){
+    stopEvent={at:now(),...assessment};
+    if(assessment.status==='DIVERGED') console.error(`[safe-probe] ABORT ${assessment.reason}: best=${assessment.best?.pct}% last=${assessment.last?.pct}%`);
+    else console.log(`[safe-probe] STOP ${assessment.reason}: three consecutive checkpoints <= ${targetPct}%`);
     child.kill('SIGTERM');
   }
 }
@@ -131,24 +134,25 @@ const assessment=assessProbeCurve(curve,{targetPct});
 const totalMemBytes=Number(preflight.hardware.totalMemGB)*GiB;
 const estimatedSavePeakBytes=peakRssBytes+(Number(strategyStorageBytes)||0);
 const memorySafe=peakRssBytes>0&&Number(strategyStorageBytes)>0&&estimatedSavePeakBytes<=totalMemBytes*0.85;
-const cleanExit=exit.code===0&&exit.signal==null;
-const targetReached=curve.some(r=>r.pct<=targetPct);
-const readyForPilot=cleanExit&&targetReached&&assessment.status!=='DIVERGED'&&memorySafe&&tree?.total>0;
-const passed=guardStop==null&&curve.length>0&&memorySafe&&tree?.total>0&&Number(strategyStorageBytes)>0;
+const diverged=stopEvent?.status==='DIVERGED'||assessment.status==='DIVERGED';
+const targetStable=stopEvent?.status==='TARGET_STABLE'||assessment.status==='TARGET_STABLE';
+const readyForPilot=targetStable&&!diverged&&memorySafe&&tree?.total>0;
+const passed=!diverged&&curve.length>0&&memorySafe&&tree?.total>0&&Number(strategyStorageBytes)>0;
 const bestReport=curve.length?curve.reduce((a,b)=>b.pct<a.pct?b:a,curve[0]):null;
 const lastReport=curve.at(-1)??null;
+const curveStatus=diverged?'DIVERGED':targetStable?'TARGET_STABLE':assessment.status;
 
 const probe={
   version:'cash-pro-lab-production-safe-probe-v1',startedAt,finishedAt:now(),passed,readyForPilot,
-  rowId:row.id,threads,iterationCeiling:maxIterations,reportEvery,targetConvergencePct:targetPct,
-  curve,bestReport,lastReport,curveStatus:guardStop?'DIVERGED':assessment.status,stopReason:guardStop?.reason??(targetReached?'nashconv_target_reached':'iteration_ceiling_reached'),
+  rowId:row.id,threads,iterationCeiling:maxIterations,reportEvery,targetConvergencePct:targetPct,requiredTargetConfirmations:3,
+  curve,bestReport,lastReport,curveStatus,stopReason:stopEvent?.reason??(targetStable?'nashconv_target_stable':'iteration_ceiling_reached'),
   measured:{tree,strategyStorageBytes,report:lastReport,wallSeconds:Number(((Date.now()-startedMs)/1000).toFixed(3))},
   peakRssGB:Number((peakRssBytes/GiB).toFixed(2)),estimatedSavePeakGB:Number((estimatedSavePeakBytes/GiB).toFixed(2)),memorySafe,
   solverSha256:toolchain.solver.sha256,solutionProofSha256:toolchain?.solutionProof?.sha256??null,enginePatchId:toolchain.localPatch.id,
   manifestPath,progressPath,artifactWritten:false,
   exit:{...exit,stderr:stderrTail.trim().slice(-4000)},
-  guardStop,
-  note:readyForPilot?'Target reached on a measured production-root checkpoint with bounded memory and no artifact write.':'Pilot remains blocked. Review the complete checkpoint curve before increasing the iteration ceiling.',
+  stopEvent,
+  note:readyForPilot?'Production target held for three consecutive measured checkpoints with bounded memory and no artifact write.':'Pilot remains blocked. Review the complete checkpoint curve before increasing the iteration ceiling.',
 };
 const state=loadState();state.probe=probe;saveState(state);jsonWrite(summaryPath,{ok:passed&&readyForPilot,mode:'safe-probe',probe});
 console.log(JSON.stringify({ok:passed&&readyForPilot,mode:'safe-probe',probe},null,2));
