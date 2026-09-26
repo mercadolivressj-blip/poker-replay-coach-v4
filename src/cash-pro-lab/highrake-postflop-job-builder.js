@@ -7,12 +7,13 @@ export const HIGHRake_POSTFLOP_ENGINE=Object.freeze({
   family:'ucsandman/postflop',
   sourceCommit:'5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de',
   localPatch:Object.freeze({
-    id:'cash-pro-lab-raked-nashconv-v1',
-    file:'patches/postflop-raked-nashconv-v1.patch',
+    id:'cash-pro-lab-raked-checkpoint-v2',
+    file:'patches/postflop-raked-checkpoint-v2.mjs',
+    kind:'deterministic-rewrite-script',
   }),
   convergenceMetric:'nashconv_pct_of_pot',
   license:'MIT',
-  cli:'solver solve --config <spot.toml> --report-every <n> --out <solution.json>',
+  cli:'solver solve --config <spot.toml> --report-every <n> --checkpoint <checkpoint.bin> --resume <checkpoint.bin> --out <solution.json>',
 });
 
 function finite(v){return typeof v==='number'&&Number.isFinite(v);}
@@ -145,17 +146,17 @@ export function buildHighRakePostflopFlopJob({root={},treeProfile,outputFile=nul
       outputFile:filename,
       configToml,
       configSha256,
-      invocation:{args:['solve','--config','<config>','--report-every',String(reportEvery),'--threads',String(threads),'--out','<output>']},
+      invocation:{args:['solve','--config','<config>','--report-every',String(reportEvery),'--threads',String(threads),'--checkpoint','<checkpoint>','--resume','<checkpoint>','--out','<output>']},
       authority:{
         highRakeDomain:true,
         strategyOracleCandidate:true,
         evAlternativeOracleCandidate:false,
-        reason:'The locally patched pinned engine measures raked-cash convergence as non-negative NashConv (sum of unilateral best-response gains). The saved strategy remains only a candidate until exact config, structure and convergence are independently validated.',
+        reason:'The locally patched pinned engine measures raked-cash convergence as non-negative NashConv, persists exact DCFR continuation checkpoints, and still requires independent saved-profile verification before authority.',
       },
       provenance:{
         builderVersion:'cash-pro-lab-highrake-postflop-job-v1',
         sourceRef:root.sourceRef??null,
-        note:'External offline high-rake solve specification using a deterministic local convergence patch over the pinned upstream commit. It is not a certified study until the returned solution matches this exact config, streaming structure proof, convergence gate and downstream independent-teacher audit.',
+        note:'External offline high-rake solve specification using a deterministic local convergence/checkpoint patch over the pinned upstream commit. It is not a certified study until the returned solution matches this exact config, streaming structure proof, independent saved-profile NashConv verification and downstream teacher audit.',
       },
     },
   };
