@@ -1,0 +1,99 @@
+name: cash-pro-lab-raked-curve-audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cash-pro-lab-v1
+    paths:
+      - .github/workflows/cash-pro-lab-raked-curve-audit.yml
+      - patches/postflop-raked-nashconv-v1.patch
+      - src/cash-pro-lab/probe-convergence-guard.js
+      - scripts/cash-pro-lab-safe-probe.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  tiny-raked-curve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch, patch and build exact solver
+        run: |
+          git clone --filter=blob:none https://github.com/ucsandman/postflop.git /tmp/postflop
+          git -C /tmp/postflop checkout 5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de
+          git -C /tmp/postflop apply --check "$GITHUB_WORKSPACE/patches/postflop-raked-nashconv-v1.patch"
+          git -C /tmp/postflop apply "$GITHUB_WORKSPACE/patches/postflop-raked-nashconv-v1.patch"
+          cargo build --release --manifest-path /tmp/postflop/Cargo.toml --bin solver
+          mkdir -p tiny-raked-curve
+
+      - name: Write tiny raked game that still has strategic choices
+        run: |
+          cat > tiny-raked-curve/spot.toml <<'EOF'
+          board = "Ks 7d 2c 8h 3d"
+          oop_range = "KK,A4s,A5s"
+          ip_range = "TT,JJ"
+          effective_stack = 10.0
+          starting_pot = 10.0
+          target_exploitability = 0.000001
+          max_iterations = 1500
+          allin_threshold = 1.5
+          raise_cap = 0
+          turn_chance_sampling = false
+          regret_floor = false
+          alpha = 1.5
+          beta = 0.0
+          gamma = 2.0
+
+          [rake]
+          percent = 5.0
+          cap = 2.5
+
+          [sizings.oop.river]
+          bet = { percents = [100.0] }
+          [sizings.ip.river]
+          bet = { percents = [100.0] }
+          EOF
+
+      - name: Run full tiny curve without saving a strategy artifact
+        run: |
+          /tmp/postflop/target/release/solver solve \
+            --config tiny-raked-curve/spot.toml \
+            --report-every 10 \
+            --threads 1 \
+            --max-iterations 1500 \
+            --target-exploitability 0.000001 \
+            2>&1 | tee tiny-raked-curve/solver.log
+
+      - name: Fail if the curve trips the same production divergence guard
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { assessProbeCurve, parseNashConvCheckpoint } from './src/cash-pro-lab/probe-convergence-guard.js';
+          const lines=fs.readFileSync('tiny-raked-curve/solver.log','utf8').split(/\r?\n/);
+          const curve=lines.map(parseNashConvCheckpoint).filter(Boolean);
+          if(curve.length<10) throw new Error(`too_few_checkpoints:${curve.length}`);
+          let stop=null;
+          for(let i=1;i<=curve.length;i++){
+            const a=assessProbeCurve(curve.slice(0,i),{targetPct:0.000001});
+            if(a.status==='DIVERGED'){stop={index:i,...a};break;}
+          }
+          const best=curve.reduce((a,b)=>b.pct<a.pct?b:a,curve[0]);
+          const last=curve.at(-1);
+          const evidence={version:'cash-pro-lab-tiny-raked-curve-audit-v1',checkpoints:curve.length,best,last,stop,curve};
+          fs.writeFileSync('tiny-raked-curve/evidence.json',JSON.stringify(evidence,null,2));
+          console.log(JSON.stringify({checkpoints:curve.length,best,last,stop},null,2));
+          if(stop) throw new Error(`raked_curve_diverged:${stop.reason}:best=${best.pct}:last=${last.pct}`);
+          NODE
+
+      - name: Upload curve evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cash-pro-lab-raked-curve-audit
+          path: tiny-raked-curve
+          if-no-files-found: error
+          retention-days: 14
