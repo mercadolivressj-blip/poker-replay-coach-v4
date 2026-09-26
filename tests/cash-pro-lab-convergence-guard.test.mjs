@@ -16,13 +16,25 @@ test('parses a measured NashConv checkpoint',()=>{
   assert.equal(parseNashConvCheckpoint('iter 100 exploitability -0.22 chips -4.0% of pot'),null);
 });
 
-test('target checkpoint becomes ready and stops',()=>{
+test('one target hit is not enough to unlock a pilot',()=>{
   const r=assessProbeCurve([
     {iterations:50,chips:0.5,pct:9},
     {iterations:100,chips:0.2,pct:2},
     {iterations:150,chips:0.02,pct:0.2},
   ],{targetPct:0.25});
-  assert.equal(r.status,'TARGET_REACHED');
+  assert.equal(r.status,'TARGET_CONFIRMING');
+  assert.equal(r.stop,false);
+  assert.equal(r.ready,false);
+});
+
+test('three consecutive target checkpoints become stable and ready',()=>{
+  const r=assessProbeCurve([
+    {iterations:50,chips:0.5,pct:9},
+    {iterations:100,chips:0.02,pct:0.20},
+    {iterations:150,chips:0.018,pct:0.18},
+    {iterations:200,chips:0.021,pct:0.21},
+  ],{targetPct:0.25});
+  assert.equal(r.status,'TARGET_STABLE');
   assert.equal(r.stop,true);
   assert.equal(r.ready,true);
 });
